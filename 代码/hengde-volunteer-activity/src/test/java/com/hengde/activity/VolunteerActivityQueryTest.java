@@ -7,8 +7,8 @@ import com.hengde.activity.entity.Activity;
 import com.hengde.activity.entity.ActivityEnrollment;
 import com.hengde.activity.entity.ActivitySlot;
 import com.hengde.activity.service.ActivityService;
-import com.hengde.activity.vo.ActivityListVO;
 import com.hengde.activity.vo.ActivityVolunteerDetailVO;
+import com.hengde.activity.vo.RecommendActivityVO;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
@@ -64,7 +64,7 @@ class VolunteerActivityQueryTest {
         query.setSize(10);
         // 领域模块测试上下文无分页拦截器（它在 api 的 MybatisPlusConfig），故断言 records 内容而非 total：
         // 无拦截器时 selectPage 不加 LIMIT，records 即为全部匹配行，正好验证 status=1 过滤。
-        List<ActivityListVO> records = activityService.listForVolunteer(query, kw).getRecords();
+        List<RecommendActivityVO> records = activityService.listForVolunteer(query, kw).getRecords();
 
         assertEquals(1, records.size(), "仅 1 个已发布活动应被列出");
         assertTrue(records.get(0).getTitle().endsWith("_published"));
@@ -122,7 +122,7 @@ class VolunteerActivityQueryTest {
         PageQuery query = new PageQuery();
         query.setPage(1);
         query.setSize(10);
-        List<ActivityListVO> records = activityService.listForVolunteer(query, kw).getRecords();
+        List<RecommendActivityVO> records = activityService.listForVolunteer(query, kw).getRecords();
 
         assertEquals(2, records.size());
         // 有名额优先：A_quota 排在 A_full 之前，尽管它开始时间更早

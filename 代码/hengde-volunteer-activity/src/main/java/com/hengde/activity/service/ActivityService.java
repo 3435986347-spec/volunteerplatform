@@ -15,6 +15,7 @@ import com.hengde.activity.vo.ActivityAdminDetailVO;
 import com.hengde.activity.vo.ActivityListVO;
 import com.hengde.activity.vo.ActivitySlotVO;
 import com.hengde.activity.vo.ActivityVolunteerDetailVO;
+import com.hengde.activity.vo.RecommendActivityVO;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
@@ -194,8 +195,8 @@ public class ActivityService {
      * 并带出报名人数(enrolledCount)与有名额标记(hasQuota)。排序与名额计算在 DB 层完成
      * （{@link ActivityMapper#selectRecommendPage}），保证跨分页正确。
      */
-    public PageResult<ActivityListVO> listForVolunteer(PageQuery query, String keyword) {
-        Page<ActivityListVO> page = query.toPage();
+    public PageResult<RecommendActivityVO> listForVolunteer(PageQuery query, String keyword) {
+        Page<RecommendActivityVO> page = query.toPage();
         activityMapper.selectRecommendPage(page, StringUtils.hasText(keyword) ? keyword : null);
         return PageResult.of(page.getRecords(), page.getTotal(), page.getCurrent(), page.getSize());
     }
@@ -333,6 +334,10 @@ public class ActivityService {
         if (activity.getNoticeCountdownSec() == null) {
             activity.setNoticeCountdownSec(0);
         }
+        // 有坐标才有意义设半径；半径不填默认 500m（与 DB 默认一致，显式落值便于管理端回显）
+        if (activity.getCheckInRadiusM() == null) {
+            activity.setCheckInRadiusM(500);
+        }
     }
 
     /** 入参业务校验：时间合法性 + 报名/取消截止 + 跨字段边界（Bean Validation 管不到的部分）。 */
@@ -346,6 +351,10 @@ public class ActivityService {
         // 直接拒绝 enrollScope=1，避免「看似限定分队、实际全平台放行」的配置错觉；分队模块就绪后放开并校验 targetSquadIds。
         if (dto.getEnrollScope() != null && dto.getEnrollScope() == 1) {
             throw new BusinessException("V1 暂不支持指定分队报名，enrollScope 仅可为 0");
+        }
+        // GPS 签到坐标：经纬度须同时提供或同时留空（留空=本活动不启用 GPS 签到）
+        if ((dto.getLat() == null) != (dto.getLng() == null)) {
+            throw new BusinessException("签到坐标经纬度必须同时填写");
         }
         if (dto.getEnrollDeadline() != null && dto.getEnrollDeadline().isAfter(start)) {
             throw new BusinessException("报名截止时间不能晚于活动开始时间");

@@ -11,9 +11,13 @@ import com.hengde.activity.entity.ActivityAttendance;
 import com.hengde.activity.entity.ActivityEnrollment;
 import com.hengde.activity.entity.ActivitySlot;
 import com.hengde.activity.entity.ActivityViolation;
+import com.hengde.activity.dto.ActivityCreateDTO;
+import com.hengde.activity.dto.ActivitySlotDTO;
 import com.hengde.activity.service.ActivityLeaderService;
+import com.hengde.activity.service.ActivityService;
 import com.hengde.activity.service.AttendanceService;
 import com.hengde.activity.service.ServiceRecordService;
+import com.hengde.activity.vo.ActivityAdminDetailVO;
 import com.hengde.auth.dao.VolunteerMapper;
 import com.hengde.auth.entity.Volunteer;
 import com.hengde.common.exception.BusinessException;
@@ -26,6 +30,7 @@ import org.springframework.context.annotation.Import;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -47,6 +52,8 @@ class ActivityAttendanceServiceTest {
     private static final BigDecimal ACT_LNG = new BigDecimal("110.0973");
     private static final BigDecimal FAR_LAT = new BigDecimal("22.2707");
 
+    @Autowired
+    private ActivityService activityService;
     @Autowired
     private ActivityLeaderService leaderService;
     @Autowired
@@ -283,6 +290,41 @@ class ActivityAttendanceServiceTest {
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> serviceRecordService.secretaryConfirm(att.getId(), 200L));
         assertTrue(ex.getMessage().contains("未签退") || ex.getMessage().contains("不存在"));
+    }
+
+    // ---------- 发布入参带坐标 → 可签到（回归 High finding） ----------
+
+    @Test
+    void publishWithCoords_thenCheckIn_ok() {
+        // 走真实发布入参 ActivityService.publish 配置签到坐标，再验证管理端详情回显 + GPS 签到可成功
+        LocalDateTime start = LocalDateTime.now().minusHours(1);
+        LocalDateTime end = LocalDateTime.now().plusHours(1);
+        ActivitySlotDTO slot = new ActivitySlotDTO();
+        slot.setProjectName("项目A");
+        slot.setStartTime(start);
+        slot.setEndTime(end);
+        slot.setNeedCount(10);
+        ActivityCreateDTO dto = new ActivityCreateDTO();
+        dto.setTitle("带坐标活动_" + System.nanoTime());
+        dto.setStartTime(start);
+        dto.setEndTime(end);
+        dto.setLat(ACT_LAT);
+        dto.setLng(ACT_LNG);
+        dto.setSlots(List.of(slot));
+
+        Long aid = activityService.publish(dto, 100L);
+
+        // 管理端详情回显坐标 + 默认半径 500
+        ActivityAdminDetailVO admin = activityService.detailForAdmin(aid);
+        assertEquals(0, ACT_LAT.compareTo(admin.getLat()), "管理端详情应回显纬度");
+        assertEquals(0, ACT_LNG.compareTo(admin.getLng()), "管理端详情应回显经度");
+        assertEquals(500, admin.getCheckInRadiusM().intValue(), "半径不填默认 500");
+
+        // 报名(已通过) + GPS 签到成功（不再「活动未设置签到坐标」）
+        Long vid = insertVolunteer();
+        approveEnroll(aid, vid);
+        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 2);
+        assertNotNull(findAtt(aid, vid).getCheckInTime(), "发布带坐标后应能签到");
     }
 
     // ---------- 活动开始/结束 ----------

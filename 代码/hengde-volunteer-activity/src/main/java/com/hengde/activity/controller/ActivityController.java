@@ -1,8 +1,8 @@
 package com.hengde.activity.controller;
 
 import com.hengde.activity.service.ActivityService;
-import com.hengde.activity.vo.ActivityListVO;
 import com.hengde.activity.vo.ActivityVolunteerDetailVO;
+import com.hengde.activity.vo.RecommendActivityVO;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
 import com.hengde.common.result.Result;
@@ -32,10 +32,10 @@ public class ActivityController {
         this.activityService = activityService;
     }
 
-    @Operation(summary = "活动列表（仅已发布）")
+    @Operation(summary = "活动列表/推荐（仅已发布；有名额优先排序，带报名人数/有名额标记）")
     @GetMapping
-    public Result<PageResult<ActivityListVO>> list(PageQuery query,
-                                                   @RequestParam(required = false) String keyword) {
+    public Result<PageResult<RecommendActivityVO>> list(PageQuery query,
+                                                        @RequestParam(required = false) String keyword) {
         return Result.ok(activityService.listForVolunteer(query, keyword));
     }
 

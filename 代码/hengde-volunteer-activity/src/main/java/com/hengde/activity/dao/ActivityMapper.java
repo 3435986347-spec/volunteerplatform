@@ -3,7 +3,7 @@ package com.hengde.activity.dao;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.hengde.activity.entity.Activity;
-import com.hengde.activity.vo.ActivityListVO;
+import com.hengde.activity.vo.RecommendActivityVO;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
@@ -42,5 +42,5 @@ public interface ActivityMapper extends BaseMapper<Activity> {
               AND (#{keyword} IS NULL OR a.title LIKE CONCAT('%', #{keyword}, '%'))
             ORDER BY has_quota DESC, a.start_time DESC, a.id DESC
             """)
-    IPage<ActivityListVO> selectRecommendPage(IPage<ActivityListVO> page, @Param("keyword") String keyword);
+    IPage<RecommendActivityVO> selectRecommendPage(IPage<RecommendActivityVO> page, @Param("keyword") String keyword);
 }

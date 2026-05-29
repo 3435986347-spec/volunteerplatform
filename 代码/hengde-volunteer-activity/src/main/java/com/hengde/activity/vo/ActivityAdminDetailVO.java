@@ -128,6 +128,15 @@ public class ActivityAdminDetailVO {
     /** 志愿者报名开放时间 */
     private LocalDateTime enrollOpenVolunteer;
 
+    /** 活动地点纬度（GPS 签到用） */
+    private BigDecimal lat;
+
+    /** 活动地点经度（GPS 签到用） */
+    private BigDecimal lng;
+
+    /** 签到半径（米，默认 500） */
+    private Integer checkInRadiusM;
+
     /** 时间段/子项目 */
     private List<ActivitySlotVO> slots;
 }

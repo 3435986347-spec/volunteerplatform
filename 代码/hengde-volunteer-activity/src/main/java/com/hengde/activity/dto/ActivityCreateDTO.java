@@ -1,6 +1,7 @@
 package com.hengde.activity.dto;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -141,6 +142,21 @@ public class ActivityCreateDTO {
 
     /** 志愿者报名开放时间（影响志愿者端 enroll/代报名） */
     private LocalDateTime enrollOpenVolunteer;
+
+    /** 活动地点纬度（GPS 签到用；与 lng 须同时填或同时空，留空=本活动不启用 GPS 签到） */
+    @DecimalMin(value = "-90", message = "纬度范围 -90~90")
+    @DecimalMax(value = "90", message = "纬度范围 -90~90")
+    private BigDecimal lat;
+
+    /** 活动地点经度（GPS 签到用） */
+    @DecimalMin(value = "-180", message = "经度范围 -180~180")
+    @DecimalMax(value = "180", message = "经度范围 -180~180")
+    private BigDecimal lng;
+
+    /** 签到半径（米，不填默认 500） */
+    @Min(value = 1, message = "签到半径必须大于0")
+    @Max(value = 50000, message = "签到半径过大")
+    private Integer checkInRadiusM;
 
     /** 时间段/子项目（至少一个） */
     @NotEmpty(message = "至少需要一个时间段")
