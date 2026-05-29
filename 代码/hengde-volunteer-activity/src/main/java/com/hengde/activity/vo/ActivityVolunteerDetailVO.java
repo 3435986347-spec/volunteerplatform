@@ -2,6 +2,7 @@ package com.hengde.activity.vo;
 
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -105,6 +106,24 @@ public class ActivityVolunteerDetailVO {
 
     /** 志愿者报名开放时间（前端据此渲染「X 月 X 日开放」或「立即报名」） */
     private LocalDateTime enrollOpenVolunteer;
+
+    /** 管理团队报名开放时间（内部展示「活动报名时间-管理团队」） */
+    private LocalDateTime enrollOpenManager;
+
+    /** 临时负责人报名开放时间（内部展示「活动报名时间-临时负责人」；V1 角色未落地，可能为 null） */
+    private LocalDateTime enrollOpenLeader;
+
+    /** 报名范围 0全平台/1指定分队（内部展示「报名限制」；V1 恒为 0=全平台） */
+    private Integer enrollScope;
+
+    /** 活动地点纬度（内部展示「定位」+ 前端「到点自动签到」距离预判用） */
+    private BigDecimal lat;
+
+    /** 活动地点经度 */
+    private BigDecimal lng;
+
+    /** 签到半径（米，默认 500；前端「到点自动签到」用） */
+    private Integer checkInRadiusM;
 
     /** 时间段/子项目 */
     private List<ActivitySlotVO> slots;
