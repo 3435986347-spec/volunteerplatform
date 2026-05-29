@@ -128,4 +128,39 @@ public class Activity extends BaseEntity {
 
     /** 志愿者报名开放时间（V8，EnrollmentService 据此拦截 enroll/proxy） */
     private LocalDateTime enrollOpenVolunteer;
+
+    // ---------- V10 签到/时长/积分闭环 + 现场负责人 ----------
+
+    /** 活动地点纬度（GPS 签到用，null=未设坐标则不可 GPS 签到） */
+    private BigDecimal lat;
+
+    /** 活动地点经度（GPS 签到用） */
+    private BigDecimal lng;
+
+    /** 签到半径（米，默认 500） */
+    private Integer checkInRadiusM;
+
+    /** 现场运行状态 0未开始/1进行中/2已结束（与发布态 status 正交） */
+    private Integer runStatus;
+
+    /** 负责人点「活动开始」时间 */
+    private LocalDateTime actualStartTime;
+
+    /** 负责人点「活动结束」时间 */
+    private LocalDateTime actualEndTime;
+
+    /** 活动总结文字（负责人上传） */
+    private String summaryText;
+
+    /** 活动总结图片URL（逗号分隔） */
+    private String summaryImages;
+
+    /** 总结上传人（volunteer.id 或 admin_user.id） */
+    private Long summaryBy;
+
+    /** 总结上传时间 */
+    private LocalDateTime summaryTime;
+
+    /** 已参加活动时长门槛（分钟，默认0=不限；第2批 eligibility 用） */
+    private Integer requireMinJoinMinutes;
 }

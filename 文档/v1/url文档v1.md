@@ -41,7 +41,8 @@
 |---|---|---|---|
 | POST | /v/auth/sms/codes | 发送短信验证码（注册/换绑手机号均调此接口） | 公开 |
 | POST | /v/auth/login/wechat | 微信小程序登录；未注册返回 `registered:false`，已注册返回 token | 公开 |
-| POST | /v/auth/register | 志愿者实名注册（身份证二要素 + 短信验证码 + 企业微信群校验） | 需登录（先微信登录拿游客 token） |
+| GET | /v/auth/agreement | 获取志愿者协议文本（注册前阅读） | 公开 |
+| POST | /v/auth/register | 志愿者实名注册（身份证二要素 + 短信验证码 + 企业微信群校验 + **协议手写签名图 URL**） | 需登录（先微信登录拿游客 token） |
 | GET | /v/auth/wechat/group-membership | 企业微信群成员资格校验 | 公开 |
 | POST | /v/auth/logout | 退出登录 | 需登录 |
 
@@ -93,6 +94,29 @@
 | DELETE | /v/activity/activities/{id}/enroll | 取消报名 | 需登录 |
 | POST | /v/activity/activities/{id}/proxy-enrollments | 同小组成员代报名 | 需登录 |
 | GET | /v/activity/my-enrollments | 我的报名列表 | 需登录 |
+| GET | /v/activity/my-activities | 我的活动（名称/时间段/负责人/签到状态/是否违规/考勤） | 需登录 |
+| GET | /v/activity/my-activities/{id} | 我的活动详情（含考勤 + 签到二维码数据） | 需登录 |
+| POST | /v/activity/activities/{id}/check-in | 自助签到（body: lat/lng；GPS 距活动 ≤ 签到半径 且在签到时间窗口内） | 需登录 |
+| POST | /v/activity/activities/{id}/confirm-home | 确认到家（body: lat/lng；活动结束 1h 内） | 需登录 |
+| POST | /v/activity/activities/{id}/photos | 上传活动照片+评论到活动相册（默认发交流平台，社区暂缓） | 需登录 |
+| POST | /v/activity/activities/{id}/review | 评价活动与负责人（body: 活动评分/负责人评分/评论） | 需登录 |
+| GET | /v/activity/service-records | 我的服务记录（活动名称/签到/签退/时长） | 需登录 |
+
+### 活动现场负责人 — 志愿者端 `/v/activity/managed-activities`
+
+> 仅活动的**已指派负责人（志愿者）**可访问；管理团队负责人走 `/a/activity`（下表对应动作）。
+
+| Method | URL | 说明 | 鉴权 |
+|---|---|---|---|
+| GET | /v/activity/managed-activities | 我负责的活动场次列表 | 需登录（活动负责人） |
+| GET | /v/activity/managed-activities/{id} | 负责详情（志愿者名单含名字/电话/学校 + 签到/签退二维码） | 需登录（活动负责人） |
+| POST | /v/activity/managed-activities/{id}/start | 点击活动开始 | 需登录（活动负责人） |
+| POST | /v/activity/managed-activities/{id}/finish | 点击活动结束 | 需登录（活动负责人） |
+| POST | /v/activity/managed-activities/{id}/check-outs | 统一签退（全部或指定志愿者；活动结束后 2h 内） | 需登录（活动负责人） |
+| PATCH | /v/activity/managed-activities/{id}/attendances/{volunteerId} | 标记到位状态（正常/请假/迟到/缺席）或确认签到 | 需登录（活动负责人） |
+| POST | /v/activity/managed-activities/{id}/attendances/{volunteerId}/violations | 记录违规（玩手机/服装/早退/交头接耳） | 需登录（活动负责人） |
+| PATCH | /v/activity/managed-activities/{id}/attendances/{volunteerId}/evaluation | 负责人评价志愿者 | 需登录（活动负责人） |
+| POST | /v/activity/managed-activities/{id}/summary | 上传活动总结（文字+图片） | 需登录（活动负责人） |
 
 ### 管理端 `/a/activity`
 
@@ -110,6 +134,49 @@
 | POST | /a/activity/enrollments/{id}/approve | 审核通过 | 需登录 |
 | POST | /a/activity/enrollments/{id}/reject | 审核拒绝（body 填拒绝原因） | 需登录 |
 | DELETE | /a/activity/enrollments/{id} | 删除报名记录 | 需登录 |
+| POST | /a/activity/activities/{id}/leaders | 指派活动负责人（志愿者或管理团队；不占人数） | 需登录（activity:leader-assign，组织部） |
+| GET | /a/activity/activities/{id}/leaders | 负责人列表 | 需登录 |
+| DELETE | /a/activity/activities/{id}/leaders/{leaderId} | 取消指派 | 需登录（activity:leader-assign） |
+| POST | /a/activity/activities/{id}/start | 活动开始（管理团队负责人） | 需登录（activity:manage） |
+| POST | /a/activity/activities/{id}/finish | 活动结束 | 需登录（activity:manage） |
+| POST | /a/activity/activities/{id}/check-outs | 统一签退 | 需登录（activity:manage） |
+| PATCH | /a/activity/activities/{id}/attendances/{volunteerId} | 标记到位状态/确认签到 | 需登录（activity:manage） |
+| POST | /a/activity/activities/{id}/attendances/{volunteerId}/violations | 记录违规 | 需登录（activity:manage） |
+| POST | /a/activity/activities/{id}/summary | 上传活动总结 | 需登录（activity:manage） |
+
+### 服务记录 / 秘书部确认 / 积分 — 管理端 `/a/activity`
+
+| Method | URL | 说明 | 鉴权 |
+|---|---|---|---|
+| GET | /a/activity/service-records | 服务记录大板块（全员，可按活动/志愿者/状态筛选） | 需登录 |
+| GET | /a/activity/service-records/pending | 待秘书部确认列表 | 需登录（activity:service-confirm，秘书部） |
+| POST | /a/activity/attendances/{id}/confirm | 秘书部确认时长（确认后汇入服务记录大板块） | 需登录（activity:service-confirm） |
+| POST | /a/activity/attendances/{id}/points | 发放积分（完成基数×倍率；违规减半/不发） | 需登录（activity:points-grant） |
+
+### 考勤/积分变更二次审核 — 管理端 `/a/activity`
+
+> 组织部修改签到/签退/积分 → **部长二次审核**通过后才生效。
+
+| Method | URL | 说明 | 鉴权 |
+|---|---|---|---|
+| POST | /a/activity/attendances/{id}/changes | 组织部申请改签到/签退/积分（待审，不立即生效） | 需登录（activity:attendance-edit，组织部） |
+| GET | /a/activity/attendance-changes | 变更申请列表（按状态筛选） | 需登录 |
+| POST | /a/activity/attendance-changes/{id}/approve | 部长二次审核通过（应用变更） | 需登录（activity:attendance-audit，部长） |
+| POST | /a/activity/attendance-changes/{id}/reject | 部长二次审核拒绝 | 需登录（activity:attendance-audit） |
+
+### 活动发布增强 / 留言 / 补录（V1.1 第 3 批）
+
+| Method | URL | 说明 | 鉴权 |
+|---|---|---|---|
+| GET | /v/activity/activities/{id}/messages | 活动留言列表 | 需登录 |
+| POST | /v/activity/activities/{id}/messages | 发表活动留言 | 需登录 |
+| DELETE | /a/activity/messages/{id} | 删除活动留言 | 需登录（activity:manage） |
+| POST | /a/activity/activities/recurring | 固定日期/人数/时间段批量发布多场活动 | 需登录（activity:publish） |
+| POST | /a/activity/activities/historical | 发布历史活动（之前未发布过，专用补录入口） | 需登录（activity:publish） |
+| POST | /a/activity/activities/{id}/backfills | 活动补录（搜手机号/姓名/身份证加指定时间段→得时长；已发布活动亦得积分、历史活动不得积分；待部长审核） | 需登录（activity:backfill） |
+| GET | /a/activity/backfills | 补录申请列表（待部长审核） | 需登录 |
+| POST | /a/activity/backfills/{id}/approve | 部长审核通过（生效） | 需登录（activity:backfill-audit） |
+| POST | /a/activity/backfills/{id}/reject | 部长审核拒绝 | 需登录（activity:backfill-audit） |
 
 ---
 
@@ -229,10 +296,7 @@
 
 | URL 示例 | 对应功能 | 暂缓原因 |
 |---|---|---|
-| POST /v/activity/activities/{id}/check-in | 活动签到 | V1 暂不做签到/时长/公示闭环 |
-| POST /v/activity/activities/{id}/check-out | 活动签退 | 同上 |
-| GET /v/activity/activities/{id}/roster | 名单公示 | 同上 |
-| GET /v/activity/service-records | 我的服务记录 | 同上 |
+| GET /v/activity/activities/{id}/roster | 名单公示 | 签到/时长/积分闭环已纳入 V1.1，但「名单公示」展示页仍暂缓 |
 | GET /v/honor/** | 排行榜/榜样/勋章/奖惩 | V1 暂缓 |
 | GET /v/social/** | 社区（帖子/私信/互动） | V1 暂缓 |
 | GET /v/donate/** | 积分兑换/众筹/捐书/微心愿/助学结对 | V1 暂缓 |

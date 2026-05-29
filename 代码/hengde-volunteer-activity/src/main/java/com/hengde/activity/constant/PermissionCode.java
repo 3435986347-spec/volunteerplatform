@@ -39,4 +39,22 @@ public final class PermissionCode {
 
     /** 报名审核 */
     public static final String ACTIVITY_ENROLL_AUDIT = "activity:enroll-audit";
+
+    /** 指派活动现场负责人（组织部） */
+    public static final String ACTIVITY_LEADER_ASSIGN = "activity:leader-assign";
+
+    /** 活动现场管理（开始/结束/统一签退/标到位/记违规/总结） */
+    public static final String ACTIVITY_MANAGE = "activity:manage";
+
+    /** 秘书部确认时长 */
+    public static final String ACTIVITY_SERVICE_CONFIRM = "activity:service-confirm";
+
+    /** 活动积分发放 */
+    public static final String ACTIVITY_POINTS_GRANT = "activity:points-grant";
+
+    /** 改签到/签退/积分（组织部，需部长二次审核；第2批） */
+    public static final String ACTIVITY_ATTENDANCE_EDIT = "activity:attendance-edit";
+
+    /** 考勤变更二次审核（部长；第2批） */
+    public static final String ACTIVITY_ATTENDANCE_AUDIT = "activity:attendance-audit";
 }
