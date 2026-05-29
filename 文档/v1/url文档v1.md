@@ -98,7 +98,7 @@
 | GET | /v/activity/my-activities/{id} | 我的活动详情（含考勤 + 签到二维码数据） | 需登录 |
 | POST | /v/activity/activities/{id}/check-in | 自助签到（body: lat/lng；GPS 距活动 ≤ 签到半径 且在签到时间窗口内） | 需登录 |
 | POST | /v/activity/activities/{id}/confirm-home | 确认到家（body: lat/lng；活动结束后；超时仅记录不拒绝） | 需登录 |
-| POST | /v/activity/activities/{id}/review | 评价活动与负责人（body: 活动评分/负责人评分/评论） | 需登录 |
+| POST | /v/activity/activities/{id}/review | 评价活动与负责人（body: 活动评分1~5/负责人评分1~5/评论；须实际签到、活动结束后；可覆盖） | 需登录 |
 | GET | /v/activity/service-records | 我的服务记录（活动名称/签到/签退/时长） | 需登录 |
 
 ### 活动现场负责人 — 志愿者端 `/v/activity/managed-activities`
@@ -115,16 +115,16 @@
 | PATCH | /v/activity/managed-activities/{id}/attendances/{volunteerId} | 标记到位状态（正常/请假/迟到/缺席）或确认签到 | 需登录（活动负责人） |
 | POST | /v/activity/managed-activities/{id}/attendances/{volunteerId}/violations | 记录违规（玩手机/服装/早退/交头接耳） | 需登录（活动负责人） |
 | PATCH | /v/activity/managed-activities/{id}/attendances/{volunteerId}/evaluation | 负责人评价志愿者 | 需登录（活动负责人） |
-| POST | /v/activity/managed-activities/{id}/summary | 上传活动总结（文字+图片） | 需登录（活动负责人） |
+| POST | /v/activity/managed-activities/{id}/summary | 上传活动总结（文字+图片；须活动已结束） | 需登录（活动负责人） |
 
 ### 管理端 `/a/activity`
 
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
 | GET | /a/activity/activities | 活动列表 | 需登录 |
-| POST | /a/activity/activities | 发布活动（含子时间段/积分倍率/报名限制；GPS 签到坐标 `lat`/`lng`/`checkInRadiusM` 默认500，经纬度须同填或同空） | 需登录 |
+| POST | /a/activity/activities | 发布活动（含子时间段/积分倍率/报名限制——`requireMinJoinCount` 已参加次数门槛、`requireMinJoinMinutes` 已参加服务时长门槛(分钟)；GPS 签到坐标 `lat`/`lng`/`checkInRadiusM` 默认500，经纬度须同填或同空） | 需登录 |
 | GET | /a/activity/activities/{id} | 活动详情（回显 `lat`/`lng`/`checkInRadiusM` 等全字段） | 需登录 |
-| PUT | /a/activity/activities/{id} | 修改活动（同发布入参，含 GPS 坐标 `lat`/`lng`/`checkInRadiusM`，经纬度须同填或同空） | 需登录 |
+| PUT | /a/activity/activities/{id} | 修改活动（同发布入参，含 `requireMinJoinCount`/`requireMinJoinMinutes` 报名门槛、GPS 坐标 `lat`/`lng`/`checkInRadiusM`，经纬度须同填或同空） | 需登录 |
 | DELETE | /a/activity/activities/{id} | 删除活动 | 需登录 |
 | POST | /a/activity/activities/{id}/copy | 复制活动 | 需登录 |
 | GET | /a/activity/activities/{id}/enrollments | 报名列表（优先展示管理团队/临时负责人） | 需登录 |
@@ -141,7 +141,7 @@
 | POST | /a/activity/activities/{id}/check-outs | 统一签退 | 需登录（activity:manage） |
 | PATCH | /a/activity/activities/{id}/attendances/{volunteerId} | 标记到位状态/确认签到 | 需登录（activity:manage） |
 | POST | /a/activity/activities/{id}/attendances/{volunteerId}/violations | 记录违规 | 需登录（activity:manage） |
-| POST | /a/activity/activities/{id}/summary | 上传活动总结 | 需登录（activity:manage） |
+| POST | /a/activity/activities/{id}/summary | 上传活动总结（须活动已结束） | 需登录（activity:manage） |
 
 ### 服务记录 / 秘书部确认 / 积分 — 管理端 `/a/activity`
 

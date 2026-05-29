@@ -338,6 +338,26 @@ class ActivityAttendanceServiceTest {
         assertNotNull(findAtt(aid, vid).getCheckInTime(), "发布带坐标后应能签到");
     }
 
+    @Test
+    void publishWithMinJoinMinutes_echoedInAdminDetail() {
+        // 回归 High：发布入参可配「已参加时长门槛」，落库并在管理端详情回显
+        ActivitySlotDTO slot = new ActivitySlotDTO();
+        slot.setProjectName("项目A");
+        slot.setStartTime(LocalDateTime.now());
+        slot.setEndTime(LocalDateTime.now().plusHours(2));
+        slot.setNeedCount(10);
+        ActivityCreateDTO dto = new ActivityCreateDTO();
+        dto.setTitle("时长门槛活动_" + System.nanoTime());
+        dto.setStartTime(LocalDateTime.now());
+        dto.setEndTime(LocalDateTime.now().plusHours(3));
+        dto.setRequireMinJoinMinutes(120);
+        dto.setSlots(List.of(slot));
+
+        Long aid = activityService.publish(dto, 100L);
+        ActivityAdminDetailVO admin = activityService.detailForAdmin(aid);
+        assertEquals(120, admin.getRequireMinJoinMinutes().intValue(), "发布入参的时长门槛应落库并回显");
+    }
+
     // ---------- 活动开始/结束 ----------
 
     @Test
@@ -427,7 +447,19 @@ class ActivityAttendanceServiceTest {
         approveEnroll(aid, vid);   // 没签到→无考勤行
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> attendanceService.submitReview(aid, vid, 5, 5, "x"));
-        assertTrue(ex.getMessage().contains("未参加"));
+        assertTrue(ex.getMessage().contains("未实际参加") || ex.getMessage().contains("签到"));
+    }
+
+    @Test
+    void submitReview_afterLeaderEvaluateOnly_rejected() {
+        // 负责人先评价补建了考勤行（无 check_in_time），未签到本人不应能评价
+        Long aid = insertEndedActivity();
+        Long vid = insertVolunteer();
+        approveEnroll(aid, vid);
+        attendanceService.leaderEvaluate(aid, vid, "评一下", 100L);   // 补建行，无签到
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> attendanceService.submitReview(aid, vid, 5, 5, "x"));
+        assertTrue(ex.getMessage().contains("未实际参加") || ex.getMessage().contains("签到"));
     }
 
     @Test
@@ -441,12 +473,20 @@ class ActivityAttendanceServiceTest {
 
     @Test
     void uploadSummary_writesActivitySummary() {
-        Long aid = insertInProgressActivity();
+        Long aid = insertEndedActivity();
         attendanceService.uploadSummary(aid, "活动很成功", "img1,img2", 100L);
         Activity a = activityMapper.selectById(aid);
         assertEquals("活动很成功", a.getSummaryText());
         assertEquals("img1,img2", a.getSummaryImages());
         assertEquals(100L, a.getSummaryBy());
+    }
+
+    @Test
+    void uploadSummary_beforeEnd_rejected() {
+        Long aid = insertInProgressActivity();   // 未结束
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> attendanceService.uploadSummary(aid, "x", null, 100L));
+        assertTrue(ex.getMessage().contains("尚未结束"));
     }
 
     // ---------- helpers ----------

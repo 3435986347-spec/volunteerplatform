@@ -316,9 +316,11 @@ public class AttendanceService {
         }
         requireScore(activityScore, "活动评分");
         requireScore(leaderScore, "负责人评分");
+        // 要求「实际签到」才能评价：负责人评价/标记请假缺席都会补建考勤行（无 check_in_time），
+        // 仅判 att != null 会让未到场者也能评价，故以 check_in_time 作实际参加凭据。
         ActivityAttendance att = findAttendance(activityId, volunteerId);
-        if (att == null) {
-            throw new BusinessException("您未参加该活动，无法评价");
+        if (att == null || att.getCheckInTime() == null) {
+            throw new BusinessException("您未实际参加（签到）该活动，无法评价");
         }
         att.setVolActivityScore(activityScore);
         att.setVolLeaderScore(leaderScore);
@@ -354,6 +356,9 @@ public class AttendanceService {
     @Transactional(rollbackFor = Exception.class)
     public void uploadSummary(Long activityId, String text, String images, Long operatorId) {
         Activity a = requirePublished(activityId);
+        if (!isEnded(a)) {
+            throw new BusinessException("活动尚未结束，暂不能上传总结");
+        }
         a.setSummaryText(text);
         a.setSummaryImages(images);
         a.setSummaryBy(operatorId);

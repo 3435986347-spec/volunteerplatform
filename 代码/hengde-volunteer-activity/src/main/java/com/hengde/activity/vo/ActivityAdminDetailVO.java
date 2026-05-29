@@ -83,6 +83,9 @@ public class ActivityAdminDetailVO {
     /** 已参加活动次数门槛 */
     private Integer requireMinJoinCount;
 
+    /** 已参加服务时长门槛（分钟，0=不限） */
+    private Integer requireMinJoinMinutes;
+
     /** 最少需报名项目数 */
     private Integer minProjects;
 

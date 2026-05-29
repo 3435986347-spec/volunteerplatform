@@ -104,6 +104,10 @@ public class ActivityCreateDTO {
     @Min(value = 0, message = "次数门槛不能为负")
     private Integer requireMinJoinCount;
 
+    /** 已参加服务时长门槛（分钟；累计秘书已确认时长须 ≥ 此值方可报名，0=不限） */
+    @Min(value = 0, message = "时长门槛不能为负")
+    private Integer requireMinJoinMinutes;
+
     /** 最少需报名项目数 */
     @Min(value = 0, message = "最少报名项目数不能为负")
     private Integer minProjects;
