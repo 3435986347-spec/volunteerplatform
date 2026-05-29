@@ -74,6 +74,17 @@ public class VolunteerQueryService {
                 .collect(Collectors.toMap(VolunteerDisplayView::id, Function.identity()));
     }
 
+    /**
+     * 该志愿者是否被标记为「管理团队」（V11 manager_flag）。供 activity 积分发放判定 ×1.2 倍率。
+     *
+     * @param volunteerId 志愿者 id
+     * @return true=管理团队成员；志愿者不存在或未标记返回 false
+     */
+    public boolean isManager(Long volunteerId) {
+        Volunteer v = volunteerMapper.selectById(volunteerId);
+        return v != null && Integer.valueOf(1).equals(v.getManagerFlag());
+    }
+
     private VolunteerDisplayView toDisplay(Volunteer v) {
         Integer genderCode = v.getGender() == null ? Gender.UNKNOWN.getCode() : v.getGender().getCode();
         Integer gradeCode = v.getGrade() == null ? null : v.getGrade().getCode();

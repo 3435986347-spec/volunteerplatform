@@ -300,5 +300,6 @@
 | GET /v/honor/** | 排行榜/榜样/勋章/奖惩 | V1 暂缓 |
 | GET /v/social/** | 社区（帖子/私信/互动） | V1 暂缓 |
 | GET /v/donate/** | 积分兑换/众筹/捐书/微心愿/助学结对 | V1 暂缓 |
-| GET /v/organization/exams/** | 活动临时负责人考试 | V1 暂缓 |
+| /a/organization/manager-applications/** | 报名管理团队（问卷式申请+批量下载，回写 volunteer.manager_flag） | V1.1 预留，本期不建 |
+| GET /v/organization/exams/** | 活动临时负责人考试（达分获资格/主观题人工审核/历史考试/评价过低组织部审核取消） | V1 暂缓 |
 | GET /e/** | 爱心企业端全部接口 | V1 暂缓 |

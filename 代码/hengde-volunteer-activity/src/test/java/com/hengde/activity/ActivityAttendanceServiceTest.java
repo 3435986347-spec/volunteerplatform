@@ -133,6 +133,21 @@ class ActivityAttendanceServiceTest {
     }
 
     @Test
+    void closedLoop_manager_gets_1_2x_points() {
+        Long aid = insertInProgressActivity();
+        Long vid = insertManagerVolunteer();   // manager_flag=1
+        approveEnroll(aid, vid);
+
+        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 2);
+        attendanceService.bulkCheckOut(aid, null, 100L);
+        ActivityAttendance att = findAtt(aid, vid);
+        serviceRecordService.secretaryConfirm(att.getId(), 200L);
+
+        int award = serviceRecordService.grantPoints(att.getId(), 0, 200L);
+        assertEquals(120, award, "管理团队 = 基数100 ×1.2");
+    }
+
+    @Test
     void grantPoints_violationFactor_halfAndNone() {
         // 减半
         Long aid = insertInProgressActivity();
@@ -334,6 +349,18 @@ class ActivityAttendanceServiceTest {
         v.setOpenid("openid_" + System.nanoTime());
         v.setRealName("测试志愿者");
         v.setStatus(0);
+        v.setRegisterTime(LocalDateTime.now());
+        volunteerMapper.insert(v);
+        return v.getId();
+    }
+
+    /** 插入一个被标记为管理团队（manager_flag=1）的志愿者。 */
+    private Long insertManagerVolunteer() {
+        Volunteer v = new Volunteer();
+        v.setOpenid("openid_" + System.nanoTime());
+        v.setRealName("管理团队志愿者");
+        v.setStatus(0);
+        v.setManagerFlag(1);
         v.setRegisterTime(LocalDateTime.now());
         volunteerMapper.insert(v);
         return v.getId();

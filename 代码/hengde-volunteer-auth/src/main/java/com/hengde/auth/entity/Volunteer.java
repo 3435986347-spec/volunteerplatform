@@ -84,6 +84,9 @@ public class Volunteer extends BaseEntity {
     /** 职位（后台设置，前端名字下展示） */
     private String position;
 
+    /** 管理团队标记 0否/1是（V11；参加活动积分按管理团队倍率 ×1.2。报名管理团队/审批为预留功能） */
+    private Integer managerFlag;
+
     /** 所属分队（organization 域） */
     private Long squadId;
 

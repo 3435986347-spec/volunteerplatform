@@ -182,10 +182,14 @@ public class ServiceRecordService {
             return 0;
         }
         int base = activity.getPointsBase() == null ? 0 : activity.getPointsBase();
+        // 角色倍率：现场负责人 ×1.4 优先于 管理团队 ×1.2，普通 ×1.0
         double roleMult = 1.0;
         if (activityLeaderService.isVolunteerLeader(att.getActivityId(), att.getVolunteerId())) {
             BigDecimal lm = activity.getLeaderMultiplier();
             roleMult = lm == null ? 1.4 : lm.doubleValue();
+        } else if (volunteerQueryService.isManager(att.getVolunteerId())) {
+            BigDecimal mm = activity.getManagerMultiplier();
+            roleMult = mm == null ? 1.2 : mm.doubleValue();
         }
         double factorMult = switch (factor) {
             case FACTOR_HALF -> 0.5;
