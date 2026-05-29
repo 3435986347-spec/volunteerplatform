@@ -1,13 +1,17 @@
 package com.hengde.organization.biz;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.hengde.auth.dao.VolunteerMapper;
+import com.hengde.auth.entity.Volunteer;
 import com.hengde.common.exception.BusinessException;
+import com.hengde.common.testsupport.RedisTestcontainersConfig;
 import com.hengde.common.testsupport.TestcontainersConfig;
 import com.hengde.organization.biz.dao.OrganizationStructureNodeMapper;
 import com.hengde.organization.biz.dao.VolunteerGroupLeaderHistoryMapper;
 import com.hengde.organization.biz.dao.VolunteerGroupMapper;
 import com.hengde.organization.biz.dao.VolunteerGroupMemberMapper;
 import com.hengde.organization.biz.dao.VolunteerSquadMapper;
+import com.hengde.organization.biz.dto.GroupCreateDTO;
 import com.hengde.organization.biz.dto.SquadDTO;
 import com.hengde.organization.biz.entity.VolunteerGroup;
 import com.hengde.organization.biz.entity.VolunteerGroupLeaderHistory;
@@ -21,6 +25,11 @@ import org.springframework.context.annotation.Import;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -28,7 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest
-@Import(TestcontainersConfig.class)
+@Import({TestcontainersConfig.class, RedisTestcontainersConfig.class})
 class OrganizationBizTest {
 
     private OrganizationStructureNodeMapper nodeMapper;
@@ -38,6 +47,7 @@ class OrganizationBizTest {
     private VolunteerGroupMapper groupMapper;
     private VolunteerGroupMemberMapper memberMapper;
     private VolunteerGroupLeaderHistoryMapper leaderHistoryMapper;
+    private VolunteerMapper volunteerMapper;
 
     @Autowired
     public void setNodeMapper(OrganizationStructureNodeMapper nodeMapper) {
@@ -72,6 +82,11 @@ class OrganizationBizTest {
     @Autowired
     public void setLeaderHistoryMapper(VolunteerGroupLeaderHistoryMapper leaderHistoryMapper) {
         this.leaderHistoryMapper = leaderHistoryMapper;
+    }
+
+    @Autowired
+    public void setVolunteerMapper(VolunteerMapper volunteerMapper) {
+        this.volunteerMapper = volunteerMapper;
     }
 
     @Test
@@ -175,7 +190,66 @@ class OrganizationBizTest {
         assertEquals(4, m.getStatus());
     }
 
+    // ---------- 并发：志愿者维度锁防同人多组 ----------
+
+    @Test
+    void create_concurrentSameVolunteer_onlyOneSucceeds() throws Exception {
+        // 关键不变量：同一志愿者并发触发 N 次建组，应当只有 1 个成功落库，其余被「一人一组」拦截。
+        // 没有 Redisson 锁时两个并发请求会都读到空、各自插一条，最终一人多组。
+        Long vid = insertNormalVolunteer();
+        int N = 5;
+        CountDownLatch start = new CountDownLatch(1);
+        AtomicInteger ok = new AtomicInteger();
+        AtomicInteger biz = new AtomicInteger();
+        AtomicInteger other = new AtomicInteger();
+
+        ExecutorService pool = Executors.newFixedThreadPool(N);
+        Future<?>[] futures = new Future[N];
+        for (int i = 0; i < N; i++) {
+            futures[i] = pool.submit(() -> {
+                try {
+                    start.await();
+                    GroupCreateDTO dto = new GroupCreateDTO();
+                    dto.setName("并发测试_" + Thread.currentThread().getId());
+                    // 直接走带 volunteerId 的内部入口绕过 Sa-Token ThreadLocal——
+                    // 与生产路径(create)只差「id 来源」，锁与事务路径完全相同
+                    groupService.createForVolunteer(vid, dto);
+                    ok.incrementAndGet();
+                } catch (BusinessException ex) {
+                    biz.incrementAndGet();
+                } catch (Throwable t) {
+                    other.incrementAndGet();
+                    t.printStackTrace();
+                }
+            });
+        }
+        start.countDown();
+        for (Future<?> f : futures) f.get();
+        pool.shutdown();
+
+        assertEquals(0, other.get(), "不应有非业务异常");
+        assertEquals(1, ok.get(), "锁应使只有 1 个建组成功");
+        assertEquals(N - 1, biz.get(), "其他应被「一人一组」拦截");
+
+        // 数据库视角：该志愿者只有 1 条 PENDING 组长成员行
+        Long pendingCount = memberMapper.selectCount(Wrappers.<VolunteerGroupMember>lambdaQuery()
+                .eq(VolunteerGroupMember::getVolunteerId, vid)
+                .eq(VolunteerGroupMember::getStatus, 0));
+        assertEquals(1L, pendingCount);
+    }
+
     // ---------- helpers ----------
+
+    /** 插入一个 status=正常 的志愿者，返回 id。 */
+    private Long insertNormalVolunteer() {
+        Volunteer v = new Volunteer();
+        v.setOpenid("openid_" + System.nanoTime());
+        v.setRealName("测试");
+        v.setStatus(0);
+        v.setRegisterTime(LocalDateTime.now());
+        volunteerMapper.insert(v);
+        return v.getId();
+    }
 
     private VolunteerGroup insertGroup(Long leaderId, int status) {
         VolunteerGroup g = new VolunteerGroup();

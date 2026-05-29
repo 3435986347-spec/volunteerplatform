@@ -24,9 +24,13 @@ import com.hengde.organization.biz.entity.VolunteerGroupMember;
 import com.hengde.organization.biz.vo.GroupLeaderHistoryVO;
 import com.hengde.organization.biz.vo.GroupMemberVO;
 import com.hengde.organization.biz.vo.GroupVO;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -37,6 +41,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 @Service
@@ -65,11 +71,16 @@ public class GroupService {
     /** 组长变更：建组审批首次任命 */
     private static final int OP_TYPE_INITIAL = 3;
 
+    /** 「志愿者维度」锁等待秒数（与 EnrollmentService 一致） */
+    private static final long LOCK_WAIT_SEC = 5;
+
     private VolunteerGroupMapper groupMapper;
     private VolunteerGroupMemberMapper memberMapper;
     private VolunteerGroupLeaderHistoryMapper leaderHistoryMapper;
     private VolunteerMapper volunteerMapper;
     private VolunteerQueryService volunteerQueryService;
+    private RedissonClient redissonClient;
+    private TransactionTemplate transactionTemplate;
 
     @Autowired
     public void setGroupMapper(VolunteerGroupMapper groupMapper) {
@@ -94,6 +105,16 @@ public class GroupService {
     @Autowired
     public void setVolunteerQueryService(VolunteerQueryService volunteerQueryService) {
         this.volunteerQueryService = volunteerQueryService;
+    }
+
+    @Autowired
+    public void setRedissonClient(RedissonClient redissonClient) {
+        this.redissonClient = redissonClient;
+    }
+
+    @Autowired
+    public void setTransactionManager(PlatformTransactionManager transactionManager) {
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
     public PageResult<GroupVO> list(PageQuery query, String keyword, boolean admin) {
@@ -147,9 +168,28 @@ public class GroupService {
         return toGroupVO(group);
     }
 
-    @Transactional(rollbackFor = Exception.class)
+    /**
+     * 发起新小组。
+     *
+     * <p>并发：以「志愿者维度」分布式锁串行化同一发起人的 create/join——单纯靠 ensureNoActiveGroup 的「读后写」
+     * 在并发下有 read-then-insert 竞态（两个请求都读到空，最后各插一条 → 同一人多组）。锁外开锁内开事务、
+     * 事务提交后才释放锁，避免另一请求拿到锁时读不到未提交的插入。</p>
+     */
     public Long create(GroupCreateDTO dto) {
-        Long volunteerId = currentVolunteerId();
+        return createForVolunteer(currentVolunteerId(), dto);
+    }
+
+    /**
+     * 带显式 volunteerId 的建组入口。
+     *
+     * <p>用途：(a) 并发测试绕过 Sa-Token ThreadLocal；(b) 未来若加「管理员代发起小组」场景可直接复用。
+     * 业务正常调用仍走 {@link #create(GroupCreateDTO)}——后者从 Sa-Token 取 loginId，对外接口不变。</p>
+     */
+    public Long createForVolunteer(Long volunteerId, GroupCreateDTO dto) {
+        return runLocked(volunteerId, () -> transactionTemplate.execute(s -> doCreate(dto, volunteerId)));
+    }
+
+    private Long doCreate(GroupCreateDTO dto, Long volunteerId) {
         ensureNormalVolunteer(volunteerId);
         ensureNoActiveGroup(volunteerId);
 
@@ -226,9 +266,18 @@ public class GroupService {
         return count;
     }
 
-    @Transactional(rollbackFor = Exception.class)
+    /**
+     * 申请加入小组。锁策略同 {@link #create}：志愿者维度锁 + 事务，串行化「检查-插入」防同人多组。
+     */
     public void join(Long groupId) {
         Long volunteerId = currentVolunteerId();
+        runLocked(volunteerId, () -> transactionTemplate.execute(s -> {
+            doJoin(groupId, volunteerId);
+            return null;
+        }));
+    }
+
+    private void doJoin(Long groupId, Long volunteerId) {
         ensureNormalVolunteer(volunteerId);
         VolunteerGroup group = requireGroup(groupId);
         if (!Objects.equals(group.getStatus(), GROUP_ACTIVE)) {
@@ -638,5 +687,35 @@ public class GroupService {
 
     private Long currentVolunteerId() {
         return StpUtil.getLoginIdAsLong();
+    }
+
+    /**
+     * 在「志愿者维度」分布式锁内执行动作，关闭 create/join 的 read-then-insert 竞态。
+     *
+     * <p>锁前缀 {@code lock:group:volunteer:} 与 EnrollmentService 的 {@code lock:enroll:volunteer:} 隔离，
+     * 二者锁不同领域的操作、互不抢占——同一志愿者可同时被同步报名+建组，但两个建组请求会被串行化。</p>
+     *
+     * <p>不指定 leaseTime：走 Redisson watchdog 自动续期，避免「事务未提交锁已到期」窗口。
+     * 调用约定：supplier 内必须用 TransactionTemplate 包出事务，提交后才会回到 finally 释放锁。</p>
+     */
+    private <T> T runLocked(Long volunteerId, Supplier<T> action) {
+        RLock lock = redissonClient.getLock("lock:group:volunteer:" + volunteerId);
+        boolean locked;
+        try {
+            locked = lock.tryLock(LOCK_WAIT_SEC, TimeUnit.SECONDS);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException("操作被中断，请重试");
+        }
+        if (!locked) {
+            throw new BusinessException("操作太频繁，请稍后再试");
+        }
+        try {
+            return action.get();
+        } finally {
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
     }
 }

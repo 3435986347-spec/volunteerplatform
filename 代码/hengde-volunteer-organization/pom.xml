@@ -60,6 +60,13 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
+        <!-- Redisson：志愿者维度分布式锁（小组 create/join 串行化，防同人多组竞态）。
+             与 activity 同款 4.x 适配 Boot 4；starter 自动从 spring.data.redis 装配 RedissonClient -->
+        <dependency>
+            <groupId>org.redisson</groupId>
+            <artifactId>redisson-spring-boot-starter</artifactId>
+        </dependency>
+
         <!-- Lombok（common 里是 provided 不传递，本模块需单独声明） -->
         <dependency>
             <groupId>org.projectlombok</groupId>
