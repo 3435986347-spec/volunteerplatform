@@ -270,4 +270,73 @@ class OrganizationBizTest {
         m.setApplyTime(LocalDateTime.now());
         memberMapper.insert(m);
     }
+
+    // ---------- V9 CAS 审批：重复/并发调用 ----------
+
+    @Test
+    void approveCreate_secondCall_rejected() {
+        // 第一次 approve 成功后 group.status = ACTIVE，第二次 CAS 拿不到 PENDING 行 → 业务异常
+        Long leaderId = insertNormalVolunteer();
+        VolunteerGroup g = insertGroup(leaderId, 0);      // PENDING
+        insertMember(g.getId(), leaderId, 1, 0);           // PENDING 组长成员
+
+        groupService.approveCreate(g.getId(), 1L);         // 第一次：应成功
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> groupService.approveCreate(g.getId(), 1L));  // 第二次：CAS 命中 0 行
+        assertTrue(ex.getMessage().contains("待审核"));
+    }
+
+    @Test
+    void rejectCreate_secondCall_rejected() {
+        Long leaderId = insertNormalVolunteer();
+        VolunteerGroup g = insertGroup(leaderId, 0);
+        insertMember(g.getId(), leaderId, 1, 0);
+
+        groupService.rejectCreate(g.getId(), "不符合要求");
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> groupService.rejectCreate(g.getId(), "再来一次"));
+        assertTrue(ex.getMessage().contains("待审核"));
+    }
+
+    @Test
+    void approveMember_secondCall_rejected() {
+        // 第一次 approve 成功后 status = ACTIVE，第二次 CAS where status=PENDING 命中 0 → 业务异常
+        Long leaderId = insertNormalVolunteer();
+        Long applicantId = insertNormalVolunteer();
+        VolunteerGroup g = insertGroup(leaderId, 1);        // ACTIVE 小组
+        insertMember(g.getId(), leaderId, 1, 1);             // ACTIVE 组长
+        insertMember(g.getId(), applicantId, 0, 0);          // PENDING 申请者
+
+        VolunteerGroupMember app = memberMapper.selectOne(Wrappers.<VolunteerGroupMember>lambdaQuery()
+                .eq(VolunteerGroupMember::getGroupId, g.getId())
+                .eq(VolunteerGroupMember::getVolunteerId, applicantId)
+                .last("limit 1"));
+
+        // 用 approveMemberBy 绕过 Sa-Token 上下文，auditorId = leaderId
+        groupService.approveMemberBy(g.getId(), app.getId(), leaderId);   // 第一次：成功
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> groupService.approveMemberBy(g.getId(), app.getId(), leaderId));  // 第二次：CAS 0 行
+        assertTrue(ex.getMessage().contains("待审核"));
+    }
+
+    @Test
+    void rejectMember_secondCall_rejected() {
+        Long leaderId = insertNormalVolunteer();
+        Long applicantId = insertNormalVolunteer();
+        VolunteerGroup g = insertGroup(leaderId, 1);
+        insertMember(g.getId(), leaderId, 1, 1);
+        insertMember(g.getId(), applicantId, 0, 0);
+
+        VolunteerGroupMember app = memberMapper.selectOne(Wrappers.<VolunteerGroupMember>lambdaQuery()
+                .eq(VolunteerGroupMember::getGroupId, g.getId())
+                .eq(VolunteerGroupMember::getVolunteerId, applicantId)
+                .last("limit 1"));
+
+        groupService.rejectMemberBy(g.getId(), app.getId(), leaderId);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> groupService.rejectMemberBy(g.getId(), app.getId(), leaderId));
+        assertTrue(ex.getMessage().contains("待审核"));
+    }
 }

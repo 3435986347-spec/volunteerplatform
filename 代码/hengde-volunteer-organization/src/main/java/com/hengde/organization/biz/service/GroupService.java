@@ -36,6 +36,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
+import org.springframework.dao.DuplicateKeyException;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -243,12 +244,20 @@ public class GroupService {
                 throw new BusinessException("小组编号已存在：" + groupNo);
             }
 
+            int status = row.getStatus() == null ? GROUP_ACTIVE : row.getStatus();
+
+            // 导入 ACTIVE/PENDING 小组时先校验「一人一组」（与 create()/join() 语义一致）；
+            // 即便绕过这里，V9 DB 唯一约束也会在 insert 时给最后一道兜底。
+            if (status == GROUP_ACTIVE || status == GROUP_PENDING) {
+                ensureNoActiveGroup(row.getLeaderId());
+            }
+
             VolunteerGroup group = new VolunteerGroup();
             group.setGroupNo(groupNo);
             group.setName(row.getName());
             group.setDescription(row.getDescription());
             group.setLeaderId(row.getLeaderId());
-            group.setStatus(row.getStatus() == null ? GROUP_ACTIVE : row.getStatus());
+            group.setStatus(status);
             groupMapper.insert(group);
 
             if (Objects.equals(group.getStatus(), GROUP_ACTIVE)) {
@@ -259,7 +268,12 @@ public class GroupService {
                 leader.setStatus(MEMBER_ACTIVE);
                 leader.setApplyTime(LocalDateTime.now());
                 leader.setAuditTime(LocalDateTime.now());
-                memberMapper.insert(leader);
+                try {
+                    memberMapper.insert(leader);
+                } catch (DuplicateKeyException e) {
+                    // V9 唯一约束：active_volunteer_lock 冲突 = 志愿者已在其他 active/pending 小组
+                    throw new BusinessException("导入失败：志愿者 id=" + row.getLeaderId() + " 已在其他小组");
+                }
             }
             count++;
         }
@@ -326,38 +340,35 @@ public class GroupService {
     @Transactional(rollbackFor = Exception.class)
     public void approveCreate(Long groupId, Long adminId) {
         VolunteerGroup group = requireGroup(groupId);
-        if (!Objects.equals(group.getStatus(), GROUP_PENDING)) {
+        LocalDateTime now = LocalDateTime.now();
+        // CAS：仅当仍是 PENDING 时置 ACTIVE，affected=1 才算本次审批生效——
+        // 防两个管理员并发 approve/reject 同一申请互相覆盖（rows!=1 即被对方抢先处理）。
+        // wrapper 更新不触发 MetaObjectHandler，故显式 set update_time。
+        int rows = groupMapper.update(null, Wrappers.<VolunteerGroup>lambdaUpdate()
+                .set(VolunteerGroup::getStatus, GROUP_ACTIVE)
+                .set(VolunteerGroup::getApprovedTime, now)
+                .set(VolunteerGroup::getApprovedBy, adminId)
+                .set(VolunteerGroup::getUpdateTime, now)
+                .eq(VolunteerGroup::getId, groupId)
+                .eq(VolunteerGroup::getStatus, GROUP_PENDING));
+        if (rows != 1) {
             throw new BusinessException("小组不在待审核状态");
         }
-        LocalDateTime now = LocalDateTime.now();
-        group.setStatus(GROUP_ACTIVE);
-        group.setApprovedTime(now);
-        group.setApprovedBy(adminId);
-        groupMapper.updateById(group);
 
-        // 把 create() 阶段就插好的 PENDING 组长成员升级为 ACTIVE（而不是插新行——避免一人多行）。
-        // 兼容历史：若由于某种原因没有 PENDING 行（例如旧版本数据），兜底插一条 ACTIVE。
-        VolunteerGroupMember pendingLeader = memberMapper.selectOne(Wrappers.<VolunteerGroupMember>lambdaQuery()
+        // 把 create() 阶段就插好的 PENDING 组长成员升级为 ACTIVE（CAS 命中后才执行）。
+        // V7+ create() 必插 PENDING 组长行，故此处必命中；若缺失视为数据异常，明确报错——
+        // 不再无校验兜底插入（旧兜底分支会绕过「一人一组」，已移除）。
+        int upgraded = memberMapper.update(null, Wrappers.<VolunteerGroupMember>lambdaUpdate()
+                .set(VolunteerGroupMember::getStatus, MEMBER_ACTIVE)
+                .set(VolunteerGroupMember::getAuditTime, now)
+                .set(VolunteerGroupMember::getAuditBy, adminId)
+                .set(VolunteerGroupMember::getUpdateTime, now)
                 .eq(VolunteerGroupMember::getGroupId, groupId)
                 .eq(VolunteerGroupMember::getVolunteerId, group.getLeaderId())
                 .eq(VolunteerGroupMember::getRole, ROLE_LEADER)
-                .eq(VolunteerGroupMember::getStatus, MEMBER_PENDING)
-                .last("limit 1"));
-        if (pendingLeader != null) {
-            pendingLeader.setStatus(MEMBER_ACTIVE);
-            pendingLeader.setAuditTime(now);
-            pendingLeader.setAuditBy(adminId);
-            memberMapper.updateById(pendingLeader);
-        } else {
-            VolunteerGroupMember leader = new VolunteerGroupMember();
-            leader.setGroupId(groupId);
-            leader.setVolunteerId(group.getLeaderId());
-            leader.setRole(ROLE_LEADER);
-            leader.setStatus(MEMBER_ACTIVE);
-            leader.setApplyTime(now);
-            leader.setAuditTime(now);
-            leader.setAuditBy(adminId);
-            memberMapper.insert(leader);
+                .eq(VolunteerGroupMember::getStatus, MEMBER_PENDING));
+        if (upgraded != 1) {
+            throw new BusinessException("建组数据异常：未找到待生效的组长成员记录");
         }
 
         // 建组首次任命也算一次组长变更，作为历史起点
@@ -366,48 +377,84 @@ public class GroupService {
 
     @Transactional(rollbackFor = Exception.class)
     public void rejectCreate(Long groupId, String reason) {
-        VolunteerGroup group = requireGroup(groupId);
-        if (!Objects.equals(group.getStatus(), GROUP_PENDING)) {
+        requireGroup(groupId);
+        LocalDateTime now = LocalDateTime.now();
+        // CAS：仅当仍 PENDING 时置 REJECTED；与 approveCreate 互斥，谁先命中谁定终态
+        int rows = groupMapper.update(null, Wrappers.<VolunteerGroup>lambdaUpdate()
+                .set(VolunteerGroup::getStatus, GROUP_REJECTED)
+                .set(VolunteerGroup::getRejectReason, reason)
+                .set(VolunteerGroup::getUpdateTime, now)
+                .eq(VolunteerGroup::getId, groupId)
+                .eq(VolunteerGroup::getStatus, GROUP_PENDING));
+        if (rows != 1) {
             throw new BusinessException("小组不在待审核状态");
         }
-        group.setStatus(GROUP_REJECTED);
-        group.setRejectReason(reason);
-        groupMapper.updateById(group);
 
         // 释放发起人在「一人一组」上的占用：把 create() 时插的 PENDING 组长成员置为已拒绝
-        LocalDateTime now = LocalDateTime.now();
         memberMapper.update(null, Wrappers.<VolunteerGroupMember>lambdaUpdate()
                 .set(VolunteerGroupMember::getStatus, MEMBER_REJECTED)
                 .set(VolunteerGroupMember::getAuditTime, now)
+                .set(VolunteerGroupMember::getUpdateTime, now)
                 .eq(VolunteerGroupMember::getGroupId, groupId)
                 .eq(VolunteerGroupMember::getStatus, MEMBER_PENDING));
     }
 
-    @Transactional(rollbackFor = Exception.class)
     public void approveMember(Long groupId, Long memberId) {
-        Long auditor = ensureLeaderOrAdmin(groupId);
-        VolunteerGroupMember member = requireMember(memberId);
-        if (!Objects.equals(member.getGroupId(), groupId) || !Objects.equals(member.getStatus(), MEMBER_PENDING)) {
-            throw new BusinessException("成员申请不在待审核状态");
-        }
-        ensureNoOtherPendingOrActiveGroup(member.getVolunteerId(), member.getId());
-        member.setStatus(MEMBER_ACTIVE);
-        member.setAuditTime(LocalDateTime.now());
-        member.setAuditBy(auditor);
-        memberMapper.updateById(member);
+        Long auditor = currentVolunteerId();
+        ensureLeaderOrAdminById(groupId, auditor);
+        approveMemberBy(groupId, memberId, auditor);
     }
 
-    @Transactional(rollbackFor = Exception.class)
-    public void rejectMember(Long groupId, Long memberId) {
-        Long auditor = ensureLeaderOrAdmin(groupId);
+    /**
+     * 带显式 auditorId 的批准加入入口，供测试及后台管理员代操作绕过 Sa-Token 上下文。
+     */
+    public void approveMemberBy(Long groupId, Long memberId, Long auditorId) {
         VolunteerGroupMember member = requireMember(memberId);
-        if (!Objects.equals(member.getGroupId(), groupId) || !Objects.equals(member.getStatus(), MEMBER_PENDING)) {
+        if (!Objects.equals(member.getGroupId(), groupId)) {
+            throw new BusinessException("成员申请不属于该小组");
+        }
+        ensureNoOtherPendingOrActiveGroup(member.getVolunteerId(), member.getId());
+        LocalDateTime now = LocalDateTime.now();
+        // CAS：仅当仍 MEMBER_PENDING 时置 ACTIVE，affected=1 才算成功——防并发 approve/reject 覆盖
+        int rows = memberMapper.update(null, Wrappers.<VolunteerGroupMember>lambdaUpdate()
+                .set(VolunteerGroupMember::getStatus, MEMBER_ACTIVE)
+                .set(VolunteerGroupMember::getAuditTime, now)
+                .set(VolunteerGroupMember::getAuditBy, auditorId)
+                .set(VolunteerGroupMember::getUpdateTime, now)
+                .eq(VolunteerGroupMember::getId, memberId)
+                .eq(VolunteerGroupMember::getGroupId, groupId)
+                .eq(VolunteerGroupMember::getStatus, MEMBER_PENDING));
+        if (rows != 1) {
             throw new BusinessException("成员申请不在待审核状态");
         }
-        member.setStatus(MEMBER_REJECTED);
-        member.setAuditTime(LocalDateTime.now());
-        member.setAuditBy(auditor);
-        memberMapper.updateById(member);
+    }
+
+    public void rejectMember(Long groupId, Long memberId) {
+        Long auditor = currentVolunteerId();
+        ensureLeaderOrAdminById(groupId, auditor);
+        rejectMemberBy(groupId, memberId, auditor);
+    }
+
+    /**
+     * 带显式 auditorId 的拒绝入口，供测试及后台管理员代操作绕过 Sa-Token 上下文。
+     */
+    public void rejectMemberBy(Long groupId, Long memberId, Long auditorId) {
+        VolunteerGroupMember member = requireMember(memberId);
+        if (!Objects.equals(member.getGroupId(), groupId)) {
+            throw new BusinessException("成员申请不属于该小组");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        int rows = memberMapper.update(null, Wrappers.<VolunteerGroupMember>lambdaUpdate()
+                .set(VolunteerGroupMember::getStatus, MEMBER_REJECTED)
+                .set(VolunteerGroupMember::getAuditTime, now)
+                .set(VolunteerGroupMember::getAuditBy, auditorId)
+                .set(VolunteerGroupMember::getUpdateTime, now)
+                .eq(VolunteerGroupMember::getId, memberId)
+                .eq(VolunteerGroupMember::getGroupId, groupId)
+                .eq(VolunteerGroupMember::getStatus, MEMBER_PENDING));
+        if (rows != 1) {
+            throw new BusinessException("成员申请不在待审核状态");
+        }
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -652,11 +699,16 @@ public class GroupService {
      */
     private Long ensureLeaderOrAdmin(Long groupId) {
         Long volunteerId = currentVolunteerId();
+        ensureLeaderOrAdminById(groupId, volunteerId);
+        return volunteerId;
+    }
+
+    /** 用显式 volunteerId 校验组长/管理员，供测试及需要绕过 Sa-Token 上下文的入口调用。 */
+    private void ensureLeaderOrAdminById(Long groupId, Long volunteerId) {
         VolunteerGroupMember member = currentActiveMember(groupId, volunteerId);
         if (!Objects.equals(member.getRole(), ROLE_LEADER) && !Objects.equals(member.getRole(), ROLE_ADMIN)) {
             throw new BusinessException("仅小组负责人或管理员可操作");
         }
-        return volunteerId;
     }
 
     private void ensureNoActiveGroup(Long volunteerId) {
