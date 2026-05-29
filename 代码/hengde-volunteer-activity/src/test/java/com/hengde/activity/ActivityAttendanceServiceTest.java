@@ -201,6 +201,17 @@ class ActivityAttendanceServiceTest {
     }
 
     @Test
+    void checkIn_coordOutOfRange_rejected() {
+        // lat+360：Haversine 三角函数周期性会让距离≈0，必须被服务层范围守卫拦下（防绕过半径）
+        Long aid = insertInProgressActivity();
+        Long vid = insertVolunteer();
+        approveEnroll(aid, vid);
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> attendanceService.checkIn(aid, vid, ACT_LAT.add(BigDecimal.valueOf(360)), ACT_LNG, 2));
+        assertTrue(ex.getMessage().contains("坐标"));
+    }
+
+    @Test
     void checkIn_notEnrolled_rejected() {
         Long aid = insertInProgressActivity();
         Long vid = insertVolunteer();   // 未报名

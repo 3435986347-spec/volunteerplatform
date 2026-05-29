@@ -152,6 +152,10 @@ public class AttendanceService {
         }
         requireApprovedEnrollment(activityId, volunteerId, "您未报名该活动或报名未通过，无法签到");
 
+        // 服务层兜底范围守卫：Haversine 三角函数有周期性，lat+360/lng+360 会让距离≈0 从而绕过半径校验。
+        // 即便 CheckInDTO 已加 Bean Validation，service 入口（测试/未来内部调用）也必须自己拦。
+        requireValidCoord(lat, lng);
+
         int radius = a.getCheckInRadiusM() == null ? 500 : a.getCheckInRadiusM();
         double dist = distanceMeters(lat, lng, a.getLat(), a.getLng());
         if (dist > radius) {
@@ -449,6 +453,15 @@ public class AttendanceService {
                 .eq(ActivityEnrollment::getActivityId, activityId)
                 .eq(ActivityEnrollment::getStatus, ENROLL_APPROVED));
         return enrolls.stream().map(ActivityEnrollment::getVolunteerId).distinct().count();
+    }
+
+    /** 经纬度范围守卫：纬度 [-90,90]、经度 [-180,180]，否则拒绝（防三角函数周期性绕过半径）。 */
+    private void requireValidCoord(BigDecimal lat, BigDecimal lng) {
+        if (lat == null || lng == null
+                || lat.doubleValue() < -90 || lat.doubleValue() > 90
+                || lng.doubleValue() < -180 || lng.doubleValue() > 180) {
+            throw new BusinessException("签到坐标非法");
+        }
     }
 
     /** Haversine 距离（米）。 */

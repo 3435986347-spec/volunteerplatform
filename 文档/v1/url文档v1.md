@@ -124,8 +124,8 @@
 |---|---|---|---|
 | GET | /a/activity/activities | 活动列表 | 需登录 |
 | POST | /a/activity/activities | 发布活动（含子时间段/积分倍率/报名限制；GPS 签到坐标 `lat`/`lng`/`checkInRadiusM` 默认500，经纬度须同填或同空） | 需登录 |
-| GET | /a/activity/activities/{id} | 活动详情 | 需登录 |
-| PUT | /a/activity/activities/{id} | 修改活动 | 需登录 |
+| GET | /a/activity/activities/{id} | 活动详情（回显 `lat`/`lng`/`checkInRadiusM` 等全字段） | 需登录 |
+| PUT | /a/activity/activities/{id} | 修改活动（同发布入参，含 GPS 坐标 `lat`/`lng`/`checkInRadiusM`，经纬度须同填或同空） | 需登录 |
 | DELETE | /a/activity/activities/{id} | 删除活动 | 需登录 |
 | POST | /a/activity/activities/{id}/copy | 复制活动 | 需登录 |
 | GET | /a/activity/activities/{id}/enrollments | 报名列表（优先展示管理团队/临时负责人） | 需登录 |
