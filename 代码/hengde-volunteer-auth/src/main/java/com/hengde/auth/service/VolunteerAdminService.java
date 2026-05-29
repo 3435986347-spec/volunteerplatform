@@ -40,10 +40,15 @@ public class VolunteerAdminService {
      *
      * @param volunteerId 志愿者 id
      * @param flag        目标标记，仅允许 0（取消）/1（设为管理团队）
-     * @param operatorId  操作人 admin_user.id（落审计列）
+     * @param operatorId  操作人 admin_user.id（落审计列，不可为空）
      */
     public void setManagerFlag(Long volunteerId, Integer flag, Long operatorId) {
         int target = requireValidFlag(flag);
+        // V13 目标是「记录操作人」——operator 缺失会写出 manager_flag_by=null 的不完整审计。
+        // 控制器走 StpAdminUtil 必非空，此处 public 入口先卡死，防测试/未来复用（如问卷审批）误传 null。
+        if (operatorId == null) {
+            throw new BusinessException("操作人不能为空");
+        }
         Volunteer v = volunteerMapper.selectById(volunteerId);
         if (v == null) {
             throw new BusinessException("志愿者不存在");

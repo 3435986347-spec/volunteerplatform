@@ -102,6 +102,16 @@ class VolunteerAdminServiceTest {
     }
 
     @Test
+    void setManagerFlag_nullOperatorRejected() {
+        Long id = insertVolunteer(true);
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> volunteerAdminService.setManagerFlag(id, 1, null), "缺操作人应被拒绝，避免不完整审计");
+        assertEquals("操作人不能为空", ex.getMessage());
+        // 拒绝后标记不应改动
+        assertEquals(0, volunteerMapper.selectById(id).getManagerFlag());
+    }
+
+    @Test
     void setManagerFlag_notExistRejected() {
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> volunteerAdminService.setManagerFlag(99999999L, 1, OPERATOR_A));
