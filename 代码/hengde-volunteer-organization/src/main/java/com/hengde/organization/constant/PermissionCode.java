@@ -39,6 +39,8 @@ public final class PermissionCode {
     public static final String ORG_GROUP_AUDIT = "org:group-audit";
     public static final String ORG_SQUAD_MANAGE = "org:squad-manage";
     public static final String ORG_SQUAD_AUDIT = "org:squad-audit";
+    /** 志愿者「管理团队」标记手动开关（V12；积分 ×1.2 倍率通道，预留的报名管理团队审批将回写同一标记） */
+    public static final String ORG_MANAGER_FLAG = "org:manager-flag";
 
     // publicity 公示
     public static final String PUB_BANNER = "pub:banner";

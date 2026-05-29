@@ -250,6 +250,12 @@
 | POST | /a/organization/squads/applications/{id}/approve | 批准加入 | 需登录 |
 | POST | /a/organization/squads/applications/{id}/reject | 拒绝加入 | 需登录 |
 
+### 志愿者管理团队标记 — 管理端 `/a/organization/volunteers`
+
+| Method | URL | 说明 | 鉴权 |
+|---|---|---|---|
+| PUT | /a/organization/volunteers/{id}/manager-flag | 设置/取消志愿者「管理团队」标记（body `flag` 0取消/1设为；仅已实名志愿者；积分 ×1.2 倍率通道） | 需登录（org:manager-flag） |
+
 ---
 
 ## 公示 publicity
@@ -300,6 +306,6 @@
 | GET /v/honor/** | 排行榜/榜样/勋章/奖惩 | V1 暂缓 |
 | GET /v/social/** | 社区（帖子/私信/互动） | V1 暂缓 |
 | GET /v/donate/** | 积分兑换/众筹/捐书/微心愿/助学结对 | V1 暂缓 |
-| /a/organization/manager-applications/** | 报名管理团队（问卷式申请+批量下载，回写 volunteer.manager_flag） | V1.1 预留，本期不建 |
+| /a/organization/manager-applications/** | 报名管理团队（问卷式申请+批量下载，回写 volunteer.manager_flag；标记本身已可经上方 manager-flag 接口手动开关） | V1.1 预留，本期不建 |
 | GET /v/organization/exams/** | 活动临时负责人考试（达分获资格/主观题人工审核/历史考试/评价过低组织部审核取消） | V1 暂缓 |
 | GET /e/** | 爱心企业端全部接口 | V1 暂缓 |
