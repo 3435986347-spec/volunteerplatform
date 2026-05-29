@@ -88,8 +88,8 @@
 
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | /v/activity/activities | 活动列表 | 需登录 |
-| GET | /v/activity/activities/{id} | 活动详情（含子时间段/子项目/报名须知） | 需登录 |
+| GET | /v/activity/activities | 活动列表/推荐（排序：有名额优先→最新活动时间；返回含 `enrolledCount` 报名人数、`hasQuota` 是否有名额） | 需登录 |
+| GET | /v/activity/activities/{id} | 活动详情（含子时间段/子项目/报名须知；内部展示全字段：定位+经纬度、三类报名开放时间、报名限制等） | 需登录 |
 | POST | /v/activity/activities/{id}/enroll | 报名（body 指定时间段） | 需登录 |
 | DELETE | /v/activity/activities/{id}/enroll | 取消报名 | 需登录 |
 | POST | /v/activity/activities/{id}/proxy-enrollments | 同小组成员代报名 | 需登录 |

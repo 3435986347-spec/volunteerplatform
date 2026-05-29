@@ -1,8 +1,10 @@
 package com.hengde.activity;
 
+import com.hengde.activity.dao.ActivityEnrollmentMapper;
 import com.hengde.activity.dao.ActivityMapper;
 import com.hengde.activity.dao.ActivitySlotMapper;
 import com.hengde.activity.entity.Activity;
+import com.hengde.activity.entity.ActivityEnrollment;
 import com.hengde.activity.entity.ActivitySlot;
 import com.hengde.activity.service.ActivityService;
 import com.hengde.activity.vo.ActivityListVO;
@@ -47,6 +49,8 @@ class VolunteerActivityQueryTest {
     private ActivityMapper activityMapper;
     @Autowired
     private ActivitySlotMapper activitySlotMapper;
+    @Autowired
+    private ActivityEnrollmentMapper enrollmentMapper;
 
     @Test
     void listForVolunteer_onlyReturnsPublished() {
@@ -103,14 +107,66 @@ class VolunteerActivityQueryTest {
         assertEquals("活动不存在", ex.getMessage());
     }
 
+    @Test
+    void listForVolunteer_recommendSort_quotaFirst_andEnrolledCount() {
+        String kw = "RECO_" + System.nanoTime();
+        // A_full：开始时间更晚，但名额已满（1 需求 / 1 报名）
+        Long full = insertActivityAt(kw + "_full", STATUS_PUBLISHED, LocalDateTime.now().plusDays(10));
+        Long fullSlot = insertSlotReturning(full, 1);
+        insertActiveEnrollment(full, fullSlot, 9001L);
+        // A_quota：开始时间更早，但仍有名额（5 需求 / 1 报名）
+        Long quota = insertActivityAt(kw + "_quota", STATUS_PUBLISHED, LocalDateTime.now().plusDays(1));
+        Long quotaSlot = insertSlotReturning(quota, 5);
+        insertActiveEnrollment(quota, quotaSlot, 9002L);
+
+        PageQuery query = new PageQuery();
+        query.setPage(1);
+        query.setSize(10);
+        List<ActivityListVO> records = activityService.listForVolunteer(query, kw).getRecords();
+
+        assertEquals(2, records.size());
+        // 有名额优先：A_quota 排在 A_full 之前，尽管它开始时间更早
+        assertEquals(quota, records.get(0).getId(), "有名额的活动应排在满员活动之前");
+        assertEquals(1, records.get(0).getHasQuota().intValue());
+        assertEquals(0, records.get(1).getHasQuota().intValue());
+        // 报名人数带出
+        assertEquals(1L, records.get(0).getEnrolledCount().longValue());
+        assertEquals(1L, records.get(1).getEnrolledCount().longValue());
+    }
+
     private Long insertActivity(String title, int status) {
+        return insertActivityAt(title, status, LocalDateTime.now().plusDays(7));
+    }
+
+    private Long insertActivityAt(String title, int status, LocalDateTime start) {
         Activity a = new Activity();
         a.setTitle(title);
-        a.setStartTime(LocalDateTime.now().plusDays(7));
-        a.setEndTime(LocalDateTime.now().plusDays(7).plusHours(8));
+        a.setStartTime(start);
+        a.setEndTime(start.plusHours(8));
         a.setStatus(status);
         activityMapper.insert(a);
         return a.getId();
+    }
+
+    private Long insertSlotReturning(Long activityId, int needCount) {
+        ActivitySlot slot = new ActivitySlot();
+        slot.setActivityId(activityId);
+        slot.setProjectName("项目_" + System.nanoTime());
+        slot.setStartTime(LocalDateTime.now().plusDays(1));
+        slot.setEndTime(LocalDateTime.now().plusDays(1).plusHours(2));
+        slot.setNeedCount(needCount);
+        activitySlotMapper.insert(slot);
+        return slot.getId();
+    }
+
+    private void insertActiveEnrollment(Long activityId, Long slotId, Long volunteerId) {
+        ActivityEnrollment e = new ActivityEnrollment();
+        e.setActivityId(activityId);
+        e.setSlotId(slotId);
+        e.setVolunteerId(volunteerId);
+        e.setStatus(1);
+        e.setEnrollTime(LocalDateTime.now());
+        enrollmentMapper.insert(e);
     }
 
     private void insertSlot(Long activityId, String projectName) {

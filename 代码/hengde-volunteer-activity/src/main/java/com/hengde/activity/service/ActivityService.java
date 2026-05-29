@@ -190,18 +190,14 @@ public class ActivityService {
     }
 
     /**
-     * 志愿者端活动列表：仅已发布，按开始时间升序（临近的在前）。
+     * 志愿者端「推荐活动」列表：仅已发布，<b>有名额优先、否则按最新活动时间</b>排序，
+     * 并带出报名人数(enrolledCount)与有名额标记(hasQuota)。排序与名额计算在 DB 层完成
+     * （{@link ActivityMapper#selectRecommendPage}），保证跨分页正确。
      */
     public PageResult<ActivityListVO> listForVolunteer(PageQuery query, String keyword) {
-        Page<Activity> page = query.toPage();
-        var wrapper = Wrappers.<Activity>lambdaQuery()
-                .eq(Activity::getStatus, STATUS_PUBLISHED);
-        if (StringUtils.hasText(keyword)) {
-            wrapper.like(Activity::getTitle, keyword);
-        }
-        wrapper.orderByAsc(Activity::getStartTime);
-        activityMapper.selectPage(page, wrapper);
-        return toListResult(page);
+        Page<ActivityListVO> page = query.toPage();
+        activityMapper.selectRecommendPage(page, StringUtils.hasText(keyword) ? keyword : null);
+        return PageResult.of(page.getRecords(), page.getTotal(), page.getCurrent(), page.getSize());
     }
 
     /** 全局搜索：已发布活动按标题匹配的命中总数（供 api 聚合层算精确分页 total）。 */

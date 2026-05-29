@@ -41,4 +41,10 @@ public class ActivityListVO {
 
     /** 状态 0草稿/1已发布/2已结束/3已取消 */
     private Integer status;
+
+    /** 报名人数（活跃报名去重志愿者数：待审核+已通过） */
+    private Long enrolledCount;
+
+    /** 是否有名额 1有/0满（任一时间段未满或不限即为有名额；用于推荐排序与「名额已满」标记） */
+    private Integer hasQuota;
 }
