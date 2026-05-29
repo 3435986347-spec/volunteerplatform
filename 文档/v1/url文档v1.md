@@ -254,7 +254,7 @@
 
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
-| PUT | /a/organization/volunteers/{id}/manager-flag | 设置/取消志愿者「管理团队」标记（body `flag` 0取消/1设为；仅已实名志愿者；积分 ×1.2 倍率通道） | 需登录（org:manager-flag） |
+| PUT | /a/organization/volunteers/{id}/manager-flag | 设置/取消志愿者「管理团队」标记（body `flag` 0取消/1设为；设为 1 仅限已实名、取消 0 不限；积分 ×1.2 倍率通道；记录操作人/时间） | 需登录（org:manager-flag） |
 
 ---
 

@@ -1,6 +1,7 @@
 package com.hengde.organization.biz.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.hengde.auth.config.StpAdminUtil;
 import com.hengde.auth.service.VolunteerAdminService;
 import com.hengde.common.result.Result;
 import com.hengde.organization.constant.PermissionCode;
@@ -40,7 +41,7 @@ public class OrganizationVolunteerController {
     @SaCheckPermission(value = PermissionCode.ORG_MANAGER_FLAG, type = "admin")
     @PutMapping("/{id}/manager-flag")
     public Result<Void> setManagerFlag(@PathVariable Long id, @RequestBody @Valid ManagerFlagDTO dto) {
-        volunteerAdminService.setManagerFlag(id, dto.getFlag());
+        volunteerAdminService.setManagerFlag(id, dto.getFlag(), StpAdminUtil.getLoginIdAsLong());
         return Result.ok();
     }
 }

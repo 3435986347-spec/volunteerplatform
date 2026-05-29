@@ -27,8 +27,9 @@ import java.util.Map;
  * <p>闭环次序：统一签退（有 check_out_time）→ 秘书部确认（secretary_status=1）→ 积分发放（points_status=1）。
  * 确认 / 发放都用 CAS 条件更新保原子，避免并发重复确认 / 重复发分。</p>
  *
- * <p>积分 = 基数 × 角色倍率 × 违规系数：现场负责人 ×1.4、普通志愿者 ×1.0（管理团队 ×1.2 待
- * 「参与者=管理团队」数据通道，本批先按 ×1.0）；请假 / 缺席记 0；违规系数 正常1 / 减半0.5 / 不发0。</p>
+ * <p>积分 = 基数 × 角色倍率 × 违规系数：现场负责人 ×1.4、管理团队 ×1.2（经 V11
+ * {@code volunteer.manager_flag} + {@link VolunteerQueryService#isManager}）、普通志愿者 ×1.0；
+ * 请假 / 缺席记 0；违规系数 正常1 / 减半0.5 / 不发0。</p>
  *
  * @author hengde
  */
