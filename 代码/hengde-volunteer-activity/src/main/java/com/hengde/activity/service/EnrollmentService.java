@@ -128,6 +128,9 @@ public class EnrollmentService {
         if (activity == null || !Integer.valueOf(STATUS_ACTIVITY_PUBLISHED).equals(activity.getStatus())) {
             throw new BusinessException("活动不存在");
         }
+        if (activity.getEnrollOpenVolunteer() != null && now.isBefore(activity.getEnrollOpenVolunteer())) {
+            throw new BusinessException("尚未开放报名");
+        }
         if (activity.getEnrollDeadline() != null && now.isAfter(activity.getEnrollDeadline())) {
             throw new BusinessException("报名已截止");
         }
@@ -288,6 +291,10 @@ public class EnrollmentService {
         Activity activity = activityMapper.selectById(activityId);
         if (activity == null || !Integer.valueOf(STATUS_ACTIVITY_PUBLISHED).equals(activity.getStatus())) {
             throw new BusinessException("活动不存在");
+        }
+        // 代报名也属于「志愿者端报名」语义，被代者按志愿者角色受同一道开放时间约束
+        if (activity.getEnrollOpenVolunteer() != null && now.isBefore(activity.getEnrollOpenVolunteer())) {
+            throw new BusinessException("尚未开放报名");
         }
         if (activity.getEnrollDeadline() != null && now.isAfter(activity.getEnrollDeadline())) {
             throw new BusinessException("报名已截止");

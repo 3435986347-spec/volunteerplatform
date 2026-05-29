@@ -220,6 +220,20 @@ class EnrollmentServiceTest {
     }
 
     @Test
+    void enroll_beforeOpenVolunteer_rejected() {
+        Long vid = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
+        Long aid = insertActivity(a -> {
+            a.setNeedAudit(0);
+            a.setEnrollOpenVolunteer(LocalDateTime.now().plusHours(1));   // 1h 后才开放
+        });
+        Long slot = insertSlot(aid, A_START, A_START.plusHours(2));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> enrollmentService.enroll(aid, List.of(slot), vid));
+        assertEquals("尚未开放报名", ex.getMessage());
+    }
+
+    @Test
     void enroll_pastEnrollDeadline_rejected() {
         Long vid = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
         Long aid = insertActivity(a -> {

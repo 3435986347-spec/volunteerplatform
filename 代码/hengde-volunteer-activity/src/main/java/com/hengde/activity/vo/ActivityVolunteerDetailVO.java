@@ -94,6 +94,18 @@ public class ActivityVolunteerDetailVO {
     /** 状态 0草稿/1已发布/2已结束/3已取消 */
     private Integer status;
 
+    /** 联系人姓名 */
+    private String contactName;
+
+    /** 联系人电话 */
+    private String contactPhone;
+
+    /** 发布团队/部门名称 */
+    private String publisherDeptName;
+
+    /** 志愿者报名开放时间（前端据此渲染「X 月 X 日开放」或「立即报名」） */
+    private LocalDateTime enrollOpenVolunteer;
+
     /** 时间段/子项目 */
     private List<ActivitySlotVO> slots;
 }

@@ -110,4 +110,22 @@ public class Activity extends BaseEntity {
 
     /** 发布人 admin_user.id */
     private Long createBy;
+
+    /** 联系人姓名（V8） */
+    private String contactName;
+
+    /** 联系人电话（V8） */
+    private String contactPhone;
+
+    /** 发布团队/部门名称（V8） */
+    private String publisherDeptName;
+
+    /** 管理团队报名开放时间（V8，null=即时可报） */
+    private LocalDateTime enrollOpenManager;
+
+    /** 临时负责人报名开放时间（V8，V1 未落地角色，字段预留） */
+    private LocalDateTime enrollOpenLeader;
+
+    /** 志愿者报名开放时间（V8，EnrollmentService 据此拦截 enroll/proxy） */
+    private LocalDateTime enrollOpenVolunteer;
 }

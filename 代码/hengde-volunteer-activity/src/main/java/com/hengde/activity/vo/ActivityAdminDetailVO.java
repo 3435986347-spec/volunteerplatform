@@ -110,6 +110,24 @@ public class ActivityAdminDetailVO {
     /** 创建时间 */
     private LocalDateTime createTime;
 
+    /** 联系人姓名 */
+    private String contactName;
+
+    /** 联系人电话 */
+    private String contactPhone;
+
+    /** 发布团队/部门名称 */
+    private String publisherDeptName;
+
+    /** 管理团队报名开放时间 */
+    private LocalDateTime enrollOpenManager;
+
+    /** 临时负责人报名开放时间 */
+    private LocalDateTime enrollOpenLeader;
+
+    /** 志愿者报名开放时间 */
+    private LocalDateTime enrollOpenVolunteer;
+
     /** 时间段/子项目 */
     private List<ActivitySlotVO> slots;
 }
