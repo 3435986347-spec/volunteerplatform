@@ -229,6 +229,18 @@ public class GroupService {
         } catch (IOException e) {
             throw new BusinessException("读取导入文件失败");
         }
+        return importGroupRows(rows);
+    }
+
+    /**
+     * 批量导入小组的核心处理（行数据已从 Excel 解析完成）。与 {@link #importGroups(MultipartFile)} 拆开，
+     * 使校验/落库逻辑可脱离 Excel 解析单独测试；二者共用同一事务语义（整批任一行失败则全回滚）。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Integer importGroupRows(List<GroupImportRow> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return 0;
+        }
         int count = 0;
         for (GroupImportRow row : rows) {
             if (row == null || !StringUtils.hasText(row.getName()) || row.getLeaderId() == null) {
@@ -244,36 +256,39 @@ public class GroupService {
                 throw new BusinessException("小组编号已存在：" + groupNo);
             }
 
-            int status = row.getStatus() == null ? GROUP_ACTIVE : row.getStatus();
-
-            // 导入 ACTIVE/PENDING 小组时先校验「一人一组」（与 create()/join() 语义一致）；
-            // 即便绕过这里，V9 DB 唯一约束也会在 insert 时给最后一道兜底。
-            if (status == GROUP_ACTIVE || status == GROUP_PENDING) {
-                ensureNoActiveGroup(row.getLeaderId());
+            // 批量导入仅用于「把线下已成立的小组录入系统」，一律建为正常(ACTIVE)状态：
+            //   - 管理员的导入动作本身即等同审批，无需也不该再走待审核(PENDING)流程；
+            //   - 若放行 PENDING，导入时不会插组长成员行（占不住「一人一组」），后续 approveCreate
+            //     又找不到待生效组长行而失败——既绕开 V9 DB 兜底，又造出永远无法批准的死小组。
+            // 状态列留空默认 ACTIVE；显式填非 ACTIVE 一律拒绝（已拒绝/已解散历史组无 row 字段支撑，亦无导入场景）。
+            if (row.getStatus() != null && !Objects.equals(row.getStatus(), GROUP_ACTIVE)) {
+                throw new BusinessException("批量导入仅支持正常状态的小组（状态列请留空或填 1）");
             }
+
+            // 与 create()/join() 同义的「一人一组」前置校验；即便并发绕过，下方插组长成员行时
+            // V9 DB 唯一约束(active_volunteer_lock)会再兜一道（DuplicateKeyException → 友好提示）。
+            ensureNoActiveGroup(row.getLeaderId());
 
             VolunteerGroup group = new VolunteerGroup();
             group.setGroupNo(groupNo);
             group.setName(row.getName());
             group.setDescription(row.getDescription());
             group.setLeaderId(row.getLeaderId());
-            group.setStatus(status);
+            group.setStatus(GROUP_ACTIVE);
             groupMapper.insert(group);
 
-            if (Objects.equals(group.getStatus(), GROUP_ACTIVE)) {
-                VolunteerGroupMember leader = new VolunteerGroupMember();
-                leader.setGroupId(group.getId());
-                leader.setVolunteerId(row.getLeaderId());
-                leader.setRole(ROLE_LEADER);
-                leader.setStatus(MEMBER_ACTIVE);
-                leader.setApplyTime(LocalDateTime.now());
-                leader.setAuditTime(LocalDateTime.now());
-                try {
-                    memberMapper.insert(leader);
-                } catch (DuplicateKeyException e) {
-                    // V9 唯一约束：active_volunteer_lock 冲突 = 志愿者已在其他 active/pending 小组
-                    throw new BusinessException("导入失败：志愿者 id=" + row.getLeaderId() + " 已在其他小组");
-                }
+            VolunteerGroupMember leader = new VolunteerGroupMember();
+            leader.setGroupId(group.getId());
+            leader.setVolunteerId(row.getLeaderId());
+            leader.setRole(ROLE_LEADER);
+            leader.setStatus(MEMBER_ACTIVE);
+            leader.setApplyTime(LocalDateTime.now());
+            leader.setAuditTime(LocalDateTime.now());
+            try {
+                memberMapper.insert(leader);
+            } catch (DuplicateKeyException e) {
+                // V9 唯一约束：active_volunteer_lock 冲突 = 志愿者已在其他 active/pending 小组
+                throw new BusinessException("导入失败：志愿者 id=" + row.getLeaderId() + " 已在其他小组");
             }
             count++;
         }

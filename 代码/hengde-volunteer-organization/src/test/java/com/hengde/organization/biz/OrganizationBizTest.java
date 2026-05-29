@@ -12,6 +12,7 @@ import com.hengde.organization.biz.dao.VolunteerGroupMapper;
 import com.hengde.organization.biz.dao.VolunteerGroupMemberMapper;
 import com.hengde.organization.biz.dao.VolunteerSquadMapper;
 import com.hengde.organization.biz.dto.GroupCreateDTO;
+import com.hengde.organization.biz.dto.GroupImportRow;
 import com.hengde.organization.biz.dto.SquadDTO;
 import com.hengde.organization.biz.entity.VolunteerGroup;
 import com.hengde.organization.biz.entity.VolunteerGroupLeaderHistory;
@@ -338,5 +339,72 @@ class OrganizationBizTest {
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> groupService.rejectMemberBy(g.getId(), app.getId(), leaderId));
         assertTrue(ex.getMessage().contains("待审核"));
+    }
+
+    // ---------- 批量导入：仅建 ACTIVE 小组 + 必插组长成员行 ----------
+    // 注：直接喂已解析的行（importGroupRows），跳过 Excel 解析——
+    // importGroups(MultipartFile) 仅负责解析后委托给本方法，二者同一事务语义。
+
+    @Test
+    void importGroups_activeRow_insertsActiveLeaderMember() {
+        // 状态列留空 → 默认 ACTIVE：必须同步插一条 ACTIVE 组长成员行，
+        // 否则该组长不占「一人一组」、成员名单也查不到组长
+        Long leaderId = insertNormalVolunteer();
+        GroupImportRow row = new GroupImportRow();
+        row.setName("导入小组_active");
+        row.setLeaderId(leaderId);
+
+        Integer count = groupService.importGroupRows(List.of(row));
+        assertEquals(1, count);
+
+        VolunteerGroupMember leader = memberMapper.selectOne(Wrappers.<VolunteerGroupMember>lambdaQuery()
+                .eq(VolunteerGroupMember::getVolunteerId, leaderId)
+                .last("limit 1"));
+        assertNotNull(leader, "导入 ACTIVE 小组必须落组长成员行");
+        assertEquals(1, leader.getRole(), "role=LEADER");
+        assertEquals(1, leader.getStatus(), "status=ACTIVE");
+    }
+
+    @Test
+    void importGroups_pendingStatus_rejectedAndRollsBack() {
+        // 回归：导入 PENDING 既不占「一人一组」又会让 approveCreate 找不到组长行而成死组——直接拒绝。
+        // 用两行（前 ACTIVE 后 PENDING）验证整批回滚：第一行虽合法，也应随第二行失败一并回滚。
+        Long okLeader = insertNormalVolunteer();
+        Long badLeader = insertNormalVolunteer();
+        GroupImportRow ok = new GroupImportRow();
+        ok.setName("导入小组_ok");
+        ok.setLeaderId(okLeader);
+        GroupImportRow bad = new GroupImportRow();
+        bad.setName("导入小组_pending");
+        bad.setLeaderId(badLeader);
+        bad.setStatus(0); // PENDING
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> groupService.importGroupRows(List.of(ok, bad)));
+        assertTrue(ex.getMessage().contains("批量导入"));
+
+        // 整批回滚：合法的第一行也不应落库
+        Long groups = groupMapper.selectCount(Wrappers.<VolunteerGroup>lambdaQuery()
+                .in(VolunteerGroup::getLeaderId, List.of(okLeader, badLeader)));
+        assertEquals(0L, groups, "任一行失败应整批回滚，不留半成品小组");
+        Long members = memberMapper.selectCount(Wrappers.<VolunteerGroupMember>lambdaQuery()
+                .in(VolunteerGroupMember::getVolunteerId, List.of(okLeader, badLeader)));
+        assertEquals(0L, members, "组长成员行也应随事务回滚");
+    }
+
+    @Test
+    void importGroups_leaderAlreadyInGroup_rejected() {
+        // 组长已在其他活跃小组 → 应用层 ensureNoActiveGroup 先拦下（V9 唯一键是并发兜底）
+        Long leaderId = insertNormalVolunteer();
+        VolunteerGroup existing = insertGroup(leaderId, 1); // ACTIVE
+        insertMember(existing.getId(), leaderId, 1, 1);      // 已是某组 ACTIVE 组长
+
+        GroupImportRow row = new GroupImportRow();
+        row.setName("导入小组_dup");
+        row.setLeaderId(leaderId);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> groupService.importGroupRows(List.of(row)));
+        assertTrue(ex.getMessage().contains("只能加入一个小组"));
     }
 }
