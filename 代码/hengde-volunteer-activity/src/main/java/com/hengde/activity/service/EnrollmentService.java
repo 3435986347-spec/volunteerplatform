@@ -2,6 +2,7 @@ package com.hengde.activity.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.hengde.activity.dao.ActivityAttendanceMapper;
 import com.hengde.activity.dao.ActivityEnrollmentMapper;
 import com.hengde.activity.dao.ActivityMapper;
 import com.hengde.activity.dao.ActivitySlotMapper;
@@ -70,6 +71,7 @@ public class EnrollmentService {
     private ActivityMapper activityMapper;
     private ActivitySlotMapper activitySlotMapper;
     private ActivityEnrollmentMapper enrollmentMapper;
+    private ActivityAttendanceMapper attendanceMapper;
     private VolunteerQueryService volunteerQueryService;
     private GroupQueryService groupQueryService;
     private RedissonClient redissonClient;
@@ -88,6 +90,11 @@ public class EnrollmentService {
     @Autowired
     public void setEnrollmentMapper(ActivityEnrollmentMapper enrollmentMapper) {
         this.enrollmentMapper = enrollmentMapper;
+    }
+
+    @Autowired
+    public void setAttendanceMapper(ActivityAttendanceMapper attendanceMapper) {
+        this.attendanceMapper = attendanceMapper;
     }
 
     @Autowired
@@ -475,6 +482,14 @@ public class EnrollmentService {
             long joinedCount = enrollmentMapper.countDistinctJoinedActivities(volunteerId, ENROLL_APPROVED);
             if (joinedCount < minJoin) {
                 throw new BusinessException("已参加活动次数不足（需 ≥ " + minJoin + " 次）");
+            }
+        }
+        // 已参加「服务时长」门槛：累计秘书部已确认（secretary_status=1）的 service_minutes 之和须达标。
+        Integer minMinutes = activity.getRequireMinJoinMinutes();
+        if (minMinutes != null && minMinutes > 0) {
+            long confirmedMinutes = attendanceMapper.sumConfirmedMinutes(volunteerId);
+            if (confirmedMinutes < minMinutes) {
+                throw new BusinessException("已参加服务时长不足（需 ≥ " + minMinutes + " 分钟）");
             }
         }
     }

@@ -348,10 +348,116 @@ class ActivityAttendanceServiceTest {
         assertTrue(ex.getMessage().contains("未在进行中"));
     }
 
+    // ---------- 确认到家 / 双向评价 / 活动总结（第 2 批） ----------
+
+    @Test
+    void confirmHome_recordsTimeAndCoord() {
+        Long aid = insertEndedActivity();
+        Long vid = insertVolunteer();
+        approveEnroll(aid, vid);
+        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 2);
+
+        attendanceService.confirmHome(aid, vid, ACT_LAT, ACT_LNG);
+        ActivityAttendance att = findAtt(aid, vid);
+        assertNotNull(att.getConfirmHomeTime(), "应记录确认到家时间");
+        assertEquals(0, ACT_LAT.compareTo(att.getConfirmHomeLat()));
+    }
+
+    @Test
+    void confirmHome_beforeActivityEnd_rejected() {
+        Long aid = insertInProgressActivity();   // end +1h，未结束
+        Long vid = insertVolunteer();
+        approveEnroll(aid, vid);
+        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 2);
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> attendanceService.confirmHome(aid, vid, ACT_LAT, ACT_LNG));
+        assertTrue(ex.getMessage().contains("尚未结束"));
+    }
+
+    @Test
+    void confirmHome_notCheckedIn_rejected() {
+        Long aid = insertEndedActivity();
+        Long vid = insertVolunteer();
+        approveEnroll(aid, vid);   // 报名但没签到
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> attendanceService.confirmHome(aid, vid, ACT_LAT, ACT_LNG));
+        assertTrue(ex.getMessage().contains("未签到"));
+    }
+
+    @Test
+    void confirmHome_coordOutOfRange_rejected() {
+        Long aid = insertEndedActivity();
+        Long vid = insertVolunteer();
+        approveEnroll(aid, vid);
+        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 2);
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> attendanceService.confirmHome(aid, vid, ACT_LAT.add(BigDecimal.valueOf(360)), ACT_LNG));
+        assertTrue(ex.getMessage().contains("坐标"));
+    }
+
+    @Test
+    void submitReview_writesScores() {
+        Long aid = insertEndedActivity();
+        Long vid = insertVolunteer();
+        approveEnroll(aid, vid);
+        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 2);
+
+        attendanceService.submitReview(aid, vid, 5, 4, "很好");
+        ActivityAttendance att = findAtt(aid, vid);
+        assertEquals(5, att.getVolActivityScore());
+        assertEquals(4, att.getVolLeaderScore());
+        assertEquals("很好", att.getVolComment());
+    }
+
+    @Test
+    void submitReview_scoreOutOfRange_rejected() {
+        Long aid = insertEndedActivity();
+        Long vid = insertVolunteer();
+        approveEnroll(aid, vid);
+        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 2);
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> attendanceService.submitReview(aid, vid, 6, 4, "越界"));
+        assertTrue(ex.getMessage().contains("1~5"));
+    }
+
+    @Test
+    void submitReview_notParticipated_rejected() {
+        Long aid = insertEndedActivity();
+        Long vid = insertVolunteer();
+        approveEnroll(aid, vid);   // 没签到→无考勤行
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> attendanceService.submitReview(aid, vid, 5, 5, "x"));
+        assertTrue(ex.getMessage().contains("未参加"));
+    }
+
+    @Test
+    void leaderEvaluate_writesEvaluation_creatingRowIfAbsent() {
+        Long aid = insertInProgressActivity();
+        Long vid = insertVolunteer();
+        approveEnroll(aid, vid);   // 无考勤行
+        attendanceService.leaderEvaluate(aid, vid, "表现优秀", 100L);
+        assertEquals("表现优秀", findAtt(aid, vid).getLeaderEvaluation());
+    }
+
+    @Test
+    void uploadSummary_writesActivitySummary() {
+        Long aid = insertInProgressActivity();
+        attendanceService.uploadSummary(aid, "活动很成功", "img1,img2", 100L);
+        Activity a = activityMapper.selectById(aid);
+        assertEquals("活动很成功", a.getSummaryText());
+        assertEquals("img1,img2", a.getSummaryImages());
+        assertEquals(100L, a.getSummaryBy());
+    }
+
     // ---------- helpers ----------
 
     private Long insertInProgressActivity() {
         return insertActivity(LocalDateTime.now().minusHours(1), LocalDateTime.now().plusHours(1));
+    }
+
+    /** 已结束活动：start -3h、end -1h（仍在签到窗 end+2h 内，可先签到再测确认到家/评价）。 */
+    private Long insertEndedActivity() {
+        return insertActivity(LocalDateTime.now().minusHours(3), LocalDateTime.now().minusHours(1));
     }
 
     private Long insertActivity(LocalDateTime start, LocalDateTime end) {

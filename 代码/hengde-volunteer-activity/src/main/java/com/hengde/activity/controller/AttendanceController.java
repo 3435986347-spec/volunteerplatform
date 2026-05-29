@@ -1,7 +1,9 @@
 package com.hengde.activity.controller;
 
 import cn.dev33.satoken.stp.StpUtil;
+import com.hengde.activity.dto.ActivityReviewDTO;
 import com.hengde.activity.dto.CheckInDTO;
+import com.hengde.activity.dto.ConfirmHomeDTO;
 import com.hengde.activity.service.AttendanceService;
 import com.hengde.activity.service.ServiceRecordService;
 import com.hengde.activity.vo.ServiceRecordVO;
@@ -46,6 +48,21 @@ public class AttendanceController {
     @PostMapping("/activities/{id}/check-in")
     public Result<Void> checkIn(@PathVariable Long id, @RequestBody @Valid CheckInDTO dto) {
         attendanceService.checkIn(id, StpUtil.getLoginIdAsLong(), dto.getLat(), dto.getLng(), dto.getMethod());
+        return Result.ok();
+    }
+
+    @Operation(summary = "确认到家（活动结束后；超时仅记录）")
+    @PostMapping("/activities/{id}/confirm-home")
+    public Result<Void> confirmHome(@PathVariable Long id, @RequestBody @Valid ConfirmHomeDTO dto) {
+        attendanceService.confirmHome(id, StpUtil.getLoginIdAsLong(), dto.getLat(), dto.getLng());
+        return Result.ok();
+    }
+
+    @Operation(summary = "评价活动与负责人（活动评分/负责人评分/评论）")
+    @PostMapping("/activities/{id}/review")
+    public Result<Void> review(@PathVariable Long id, @RequestBody @Valid ActivityReviewDTO dto) {
+        attendanceService.submitReview(id, StpUtil.getLoginIdAsLong(), dto.getActivityScore(),
+                dto.getLeaderScore(), dto.getComment());
         return Result.ok();
     }
 

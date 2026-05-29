@@ -97,8 +97,7 @@
 | GET | /v/activity/my-activities | 我的活动（名称/时间段/负责人/签到状态/是否违规/考勤） | 需登录 |
 | GET | /v/activity/my-activities/{id} | 我的活动详情（含考勤 + 签到二维码数据） | 需登录 |
 | POST | /v/activity/activities/{id}/check-in | 自助签到（body: lat/lng；GPS 距活动 ≤ 签到半径 且在签到时间窗口内） | 需登录 |
-| POST | /v/activity/activities/{id}/confirm-home | 确认到家（body: lat/lng；活动结束 1h 内） | 需登录 |
-| POST | /v/activity/activities/{id}/photos | 上传活动照片+评论到活动相册（默认发交流平台，社区暂缓） | 需登录 |
+| POST | /v/activity/activities/{id}/confirm-home | 确认到家（body: lat/lng；活动结束后；超时仅记录不拒绝） | 需登录 |
 | POST | /v/activity/activities/{id}/review | 评价活动与负责人（body: 活动评分/负责人评分/评论） | 需登录 |
 | GET | /v/activity/service-records | 我的服务记录（活动名称/签到/签退/时长） | 需登录 |
 
@@ -305,6 +304,7 @@
 | GET /v/activity/activities/{id}/roster | 名单公示 | 签到/时长/积分闭环已纳入 V1.1，但「名单公示」展示页仍暂缓 |
 | GET /v/honor/** | 排行榜/榜样/勋章/奖惩 | V1 暂缓 |
 | GET /v/social/** | 社区（帖子/私信/互动） | V1 暂缓 |
+| POST /v/activity/activities/{id}/photos | 活动相册（上传照片+评论，默认发交流平台） | 依赖社区(social)，推迟到 social 落地一起做 |
 | GET /v/donate/** | 积分兑换/众筹/捐书/微心愿/助学结对 | V1 暂缓 |
 | /a/organization/manager-applications/** | 报名管理团队（问卷式申请+批量下载，回写 volunteer.manager_flag；标记本身已可经上方 manager-flag 接口手动开关） | V1.1 预留，本期不建 |
 | GET /v/organization/exams/** | 活动临时负责人考试（达分获资格/主观题人工审核/历史考试/评价过低组织部审核取消） | V1 暂缓 |

@@ -1,11 +1,13 @@
 package com.hengde.activity;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.hengde.activity.dao.ActivityAttendanceMapper;
 import com.hengde.activity.dao.ActivityEnrollmentMapper;
 import com.hengde.activity.dao.ActivityMapper;
 import com.hengde.activity.dao.ActivitySlotMapper;
 import com.hengde.activity.dto.ProxyEnrollDTO;
 import com.hengde.activity.entity.Activity;
+import com.hengde.activity.entity.ActivityAttendance;
 import com.hengde.activity.entity.ActivityEnrollment;
 import com.hengde.activity.entity.ActivitySlot;
 import com.hengde.activity.service.EnrollmentService;
@@ -56,6 +58,8 @@ class EnrollmentServiceTest {
     private ActivityEnrollmentMapper enrollmentMapper;
     @Autowired
     private VolunteerMapper volunteerMapper;
+    @Autowired
+    private ActivityAttendanceMapper attendanceMapper;
     @Autowired
     private VolunteerGroupMapper groupMapper;
     @Autowired
@@ -217,6 +221,33 @@ class EnrollmentServiceTest {
         Long slot = insertSlot(aid, A_START, A_START.plusHours(2));
 
         assertEquals(1, enrollmentService.enroll(aid, List.of(slot), vid), "已参加 2 个不同活动应满足门槛");
+    }
+
+    @Test
+    void eligibility_minJoinMinutes_rejected() {
+        Long vid = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
+        Long aid = insertActivity(a -> {
+            a.setNeedAudit(0);
+            a.setRequireMinJoinMinutes(120);   // 需累计 ≥120 分钟已确认服务时长
+        });
+        Long slot = insertSlot(aid, A_START, A_START.plusHours(2));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> enrollmentService.enroll(aid, List.of(slot), vid));
+        assertTrue(ex.getMessage().contains("已参加服务时长不足"));
+    }
+
+    @Test
+    void eligibility_minJoinMinutes_passesWhenEnough() {
+        Long vid = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
+        insertConfirmedAttendance(vid, 120);   // 历史已确认 120 分钟
+        Long aid = insertActivity(a -> {
+            a.setNeedAudit(0);
+            a.setRequireMinJoinMinutes(120);
+        });
+        Long slot = insertSlot(aid, A_START, A_START.plusHours(2));
+
+        assertEquals(1, enrollmentService.enroll(aid, List.of(slot), vid), "已确认时长达标应通过");
     }
 
     @Test
@@ -425,6 +456,19 @@ class EnrollmentServiceTest {
         v.setRegisterTime(LocalDateTime.now());
         volunteerMapper.insert(v);
         return v.getId();
+    }
+
+    /** 插入一条「秘书部已确认」的考勤行（计入 sumConfirmedMinutes），用于「已参加时长门槛」测试。 */
+    private void insertConfirmedAttendance(Long volunteerId, int minutes) {
+        Long histAid = insertActivity(a -> a.setNeedAudit(0));
+        ActivityAttendance att = new ActivityAttendance();
+        att.setActivityId(histAid);
+        att.setVolunteerId(volunteerId);
+        att.setServiceMinutes(minutes);
+        att.setSecretaryStatus(1);
+        att.setPointsStatus(0);
+        att.setPointsFactor(0);
+        attendanceMapper.insert(att);
     }
 
     private void insertApprovedEnrollment(Long activityId, Long slotId, Long volunteerId) {

@@ -1,7 +1,9 @@
 package com.hengde.activity.controller;
 
 import cn.dev33.satoken.stp.StpUtil;
+import com.hengde.activity.dto.ActivitySummaryDTO;
 import com.hengde.activity.dto.BulkCheckOutDTO;
+import com.hengde.activity.dto.LeaderEvaluationDTO;
 import com.hengde.activity.dto.MarkAttendanceDTO;
 import com.hengde.activity.dto.ViolationDTO;
 import com.hengde.activity.service.ActivityLeaderService;
@@ -105,5 +107,24 @@ public class ManagedActivityController {
         activityLeaderService.requireVolunteerLeader(id, vid);
         return Result.ok(attendanceService.recordViolation(id, volunteerId, dto.getViolationType(),
                 dto.getDescription(), vid));
+    }
+
+    @Operation(summary = "负责人评价志愿者")
+    @PatchMapping("/{id}/attendances/{volunteerId}/evaluation")
+    public Result<Void> evaluate(@PathVariable Long id, @PathVariable Long volunteerId,
+                                 @RequestBody @Valid LeaderEvaluationDTO dto) {
+        Long vid = StpUtil.getLoginIdAsLong();
+        activityLeaderService.requireVolunteerLeader(id, vid);
+        attendanceService.leaderEvaluate(id, volunteerId, dto.getEvaluation(), vid);
+        return Result.ok();
+    }
+
+    @Operation(summary = "上传活动总结（文字+图片）")
+    @PostMapping("/{id}/summary")
+    public Result<Void> summary(@PathVariable Long id, @RequestBody @Valid ActivitySummaryDTO dto) {
+        Long vid = StpUtil.getLoginIdAsLong();
+        activityLeaderService.requireVolunteerLeader(id, vid);
+        attendanceService.uploadSummary(id, dto.getSummaryText(), dto.getSummaryImages(), vid);
+        return Result.ok();
     }
 }

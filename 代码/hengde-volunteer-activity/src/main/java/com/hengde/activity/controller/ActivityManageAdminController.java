@@ -2,6 +2,7 @@ package com.hengde.activity.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.hengde.activity.constant.PermissionCode;
+import com.hengde.activity.dto.ActivitySummaryDTO;
 import com.hengde.activity.dto.AssignLeaderDTO;
 import com.hengde.activity.dto.BulkCheckOutDTO;
 import com.hengde.activity.dto.MarkAttendanceDTO;
@@ -113,5 +114,14 @@ public class ActivityManageAdminController {
                                         @RequestBody @Valid ViolationDTO dto) {
         return Result.ok(attendanceService.recordViolation(id, volunteerId, dto.getViolationType(),
                 dto.getDescription(), StpAdminUtil.getLoginIdAsLong()));
+    }
+
+    @Operation(summary = "上传活动总结（文字+图片）")
+    @SaCheckPermission(value = PermissionCode.ACTIVITY_MANAGE, type = "admin")
+    @PostMapping("/activities/{id}/summary")
+    public Result<Void> summary(@PathVariable Long id, @RequestBody @Valid ActivitySummaryDTO dto) {
+        attendanceService.uploadSummary(id, dto.getSummaryText(), dto.getSummaryImages(),
+                StpAdminUtil.getLoginIdAsLong());
+        return Result.ok();
     }
 }

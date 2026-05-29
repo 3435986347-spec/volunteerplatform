@@ -282,6 +282,85 @@ public class AttendanceService {
         return count;
     }
 
+    // ---------- 确认到家 / 双向评价 / 活动总结（第 2 批） ----------
+
+    /**
+     * 志愿者确认到家：活动结束后可点，记录时间与坐标。
+     * 超时（结束 1h 后）不在此拒绝——仅由视图层派生标记，故此处只要求活动已结束。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void confirmHome(Long activityId, Long volunteerId, BigDecimal lat, BigDecimal lng) {
+        Activity a = requirePublished(activityId);
+        if (!isEnded(a)) {
+            throw new BusinessException("活动尚未结束，暂不能确认到家");
+        }
+        requireValidCoord(lat, lng);
+        ActivityAttendance att = findAttendance(activityId, volunteerId);
+        if (att == null || att.getCheckInTime() == null) {
+            throw new BusinessException("您未签到该活动，无需确认到家");
+        }
+        att.setConfirmHomeTime(LocalDateTime.now());
+        att.setConfirmHomeLat(lat);
+        att.setConfirmHomeLng(lng);
+        attendanceMapper.updateById(att);
+    }
+
+    /**
+     * 志愿者评价活动 + 负责人：活动结束后、本人有考勤记录方可，写本人 attendance 行的评分/留言（可覆盖）。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void submitReview(Long activityId, Long volunteerId, Integer activityScore, Integer leaderScore, String comment) {
+        Activity a = requirePublished(activityId);
+        if (!isEnded(a)) {
+            throw new BusinessException("活动尚未结束，暂不能评价");
+        }
+        requireScore(activityScore, "活动评分");
+        requireScore(leaderScore, "负责人评分");
+        ActivityAttendance att = findAttendance(activityId, volunteerId);
+        if (att == null) {
+            throw new BusinessException("您未参加该活动，无法评价");
+        }
+        att.setVolActivityScore(activityScore);
+        att.setVolLeaderScore(leaderScore);
+        att.setVolComment(comment);
+        attendanceMapper.updateById(att);
+    }
+
+    /**
+     * 负责人评价志愿者：写该志愿者 attendance 行的 leader_evaluation（无行则补建，鉴权在 controller）。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void leaderEvaluate(Long activityId, Long volunteerId, String evaluation, Long operatorId) {
+        requirePublished(activityId);
+        requireApprovedEnrollment(activityId, volunteerId, "该志愿者未报名或报名未通过");
+        ActivityAttendance att = findAttendance(activityId, volunteerId);
+        if (att == null) {
+            att = newAttendance(activityId, volunteerId);
+            att.setLeaderEvaluation(evaluation);
+            try {
+                attendanceMapper.insert(att);
+                return;
+            } catch (DuplicateKeyException e) {
+                att = findAttendance(activityId, volunteerId);
+            }
+        }
+        att.setLeaderEvaluation(evaluation);
+        attendanceMapper.updateById(att);
+    }
+
+    /**
+     * 上传活动总结（负责人 /v 或管理端 /a 共用）：写 activity.summary_*。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void uploadSummary(Long activityId, String text, String images, Long operatorId) {
+        Activity a = requirePublished(activityId);
+        a.setSummaryText(text);
+        a.setSummaryImages(images);
+        a.setSummaryBy(operatorId);
+        a.setSummaryTime(LocalDateTime.now());
+        activityMapper.updateById(a);
+    }
+
     // ---------- 负责人视图 ----------
 
     /** 「我负责的活动」场次列表（leaderType=1 的志愿者负责人）。 */
@@ -436,6 +515,21 @@ public class AttendanceService {
             throw new BusinessException("活动不存在");
         }
         return a;
+    }
+
+    /** 活动是否已结束：负责人点过结束（run_status=2）或已过 end_time。 */
+    private boolean isEnded(Activity a) {
+        if (Integer.valueOf(RUN_ENDED).equals(a.getRunStatus())) {
+            return true;
+        }
+        return a.getEndTime() != null && LocalDateTime.now().isAfter(a.getEndTime());
+    }
+
+    /** 评分范围守卫：必须 1~5。 */
+    private void requireScore(Integer score, String label) {
+        if (score == null || score < 1 || score > 5) {
+            throw new BusinessException(label + "范围 1~5");
+        }
     }
 
     private void requireApprovedEnrollment(Long activityId, Long volunteerId, String message) {
