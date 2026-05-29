@@ -160,6 +160,17 @@ public class GroupService {
         group.setLeaderId(volunteerId);
         group.setStatus(GROUP_PENDING);
         groupMapper.insert(group);
+
+        // 同步给发起人插一条 PENDING 组长成员行，让待审核期间也命中「一人一组」(ensureNoActiveGroup 按 PENDING/ACTIVE 统计)
+        // 避免：建组待审核期间又去申请/加入别的小组，等批准后形成一人多组
+        VolunteerGroupMember pendingLeader = new VolunteerGroupMember();
+        pendingLeader.setGroupId(group.getId());
+        pendingLeader.setVolunteerId(volunteerId);
+        pendingLeader.setRole(ROLE_LEADER);
+        pendingLeader.setStatus(MEMBER_PENDING);
+        pendingLeader.setApplyTime(LocalDateTime.now());
+        memberMapper.insert(pendingLeader);
+
         return group.getId();
     }
 
@@ -275,15 +286,30 @@ public class GroupService {
         group.setApprovedBy(adminId);
         groupMapper.updateById(group);
 
-        VolunteerGroupMember leader = new VolunteerGroupMember();
-        leader.setGroupId(groupId);
-        leader.setVolunteerId(group.getLeaderId());
-        leader.setRole(ROLE_LEADER);
-        leader.setStatus(MEMBER_ACTIVE);
-        leader.setApplyTime(now);
-        leader.setAuditTime(now);
-        leader.setAuditBy(adminId);
-        memberMapper.insert(leader);
+        // 把 create() 阶段就插好的 PENDING 组长成员升级为 ACTIVE（而不是插新行——避免一人多行）。
+        // 兼容历史：若由于某种原因没有 PENDING 行（例如旧版本数据），兜底插一条 ACTIVE。
+        VolunteerGroupMember pendingLeader = memberMapper.selectOne(Wrappers.<VolunteerGroupMember>lambdaQuery()
+                .eq(VolunteerGroupMember::getGroupId, groupId)
+                .eq(VolunteerGroupMember::getVolunteerId, group.getLeaderId())
+                .eq(VolunteerGroupMember::getRole, ROLE_LEADER)
+                .eq(VolunteerGroupMember::getStatus, MEMBER_PENDING)
+                .last("limit 1"));
+        if (pendingLeader != null) {
+            pendingLeader.setStatus(MEMBER_ACTIVE);
+            pendingLeader.setAuditTime(now);
+            pendingLeader.setAuditBy(adminId);
+            memberMapper.updateById(pendingLeader);
+        } else {
+            VolunteerGroupMember leader = new VolunteerGroupMember();
+            leader.setGroupId(groupId);
+            leader.setVolunteerId(group.getLeaderId());
+            leader.setRole(ROLE_LEADER);
+            leader.setStatus(MEMBER_ACTIVE);
+            leader.setApplyTime(now);
+            leader.setAuditTime(now);
+            leader.setAuditBy(adminId);
+            memberMapper.insert(leader);
+        }
 
         // 建组首次任命也算一次组长变更，作为历史起点
         recordLeaderChange(groupId, null, group.getLeaderId(), OP_TYPE_INITIAL, adminId, "建组审批通过首次任命");
@@ -298,6 +324,14 @@ public class GroupService {
         group.setStatus(GROUP_REJECTED);
         group.setRejectReason(reason);
         groupMapper.updateById(group);
+
+        // 释放发起人在「一人一组」上的占用：把 create() 时插的 PENDING 组长成员置为已拒绝
+        LocalDateTime now = LocalDateTime.now();
+        memberMapper.update(null, Wrappers.<VolunteerGroupMember>lambdaUpdate()
+                .set(VolunteerGroupMember::getStatus, MEMBER_REJECTED)
+                .set(VolunteerGroupMember::getAuditTime, now)
+                .eq(VolunteerGroupMember::getGroupId, groupId)
+                .eq(VolunteerGroupMember::getStatus, MEMBER_PENDING));
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -384,6 +418,10 @@ public class GroupService {
     @Transactional(rollbackFor = Exception.class)
     public void dissolve(Long groupId, String reason, Long adminId) {
         VolunteerGroup group = requireGroup(groupId);
+        // 仅 ACTIVE 小组可解散：待审核应走 rejectCreate；已拒绝/已解散重复调用会覆盖 dissolve_* 字段，拒绝
+        if (!Objects.equals(group.getStatus(), GROUP_ACTIVE)) {
+            throw new BusinessException("仅正常状态的小组可解散");
+        }
         LocalDateTime now = LocalDateTime.now();
         group.setStatus(GROUP_DISSOLVED);
         group.setDissolveTime(now);

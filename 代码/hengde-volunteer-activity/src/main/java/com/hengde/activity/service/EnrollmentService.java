@@ -266,10 +266,7 @@ public class EnrollmentService {
      * @return 实际新增的报名记录条数（= target 数 × slot 数）
      */
     public int proxyEnroll(Long activityId, ProxyEnrollDTO dto, Long actorId) {
-        // 1. 同小组校验（不暴露具体是谁不在组里）
-        groupQueryService.requireSameActiveGroup(actorId, dto.getVolunteerIds());
-
-        // 2. 去重 + 排序锁顺序
+        // 1. 先做廉价的本地校验：去重 + 上限 + 排序锁顺序——任何远程查询前先把异常 payload 挡在门外
         List<Long> targets = new ArrayList<>(new LinkedHashSet<>(dto.getVolunteerIds()));
         if (targets.size() > PROXY_BATCH_MAX) {
             throw new BusinessException("一次最多代报名 " + PROXY_BATCH_MAX + " 名同组成员");
@@ -277,11 +274,15 @@ public class EnrollmentService {
         Collections.sort(targets);
         List<Long> distinctSlotIds = new ArrayList<>(new LinkedHashSet<>(dto.getSlotIds()));
 
+        // 2. 同小组校验由 doProxyEnroll 在事务内再做一次：避免「校验通过 → 加锁 → 被移出组」TOCTOU 窗口
         return runLockedMany(targets,
                 () -> transactionTemplate.execute(s -> doProxyEnroll(activityId, distinctSlotIds, targets, actorId)));
     }
 
     private int doProxyEnroll(Long activityId, List<Long> slotIds, List<Long> targets, Long actorId) {
+        // 事务+锁内再校验同组：把 TOCTOU 窗口缩到「再校验 → 提交」的几毫秒内
+        groupQueryService.requireSameActiveGroup(actorId, targets);
+
         LocalDateTime now = LocalDateTime.now();
 
         Activity activity = activityMapper.selectById(activityId);
