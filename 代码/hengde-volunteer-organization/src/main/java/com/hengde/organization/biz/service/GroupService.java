@@ -1,0 +1,604 @@
+package com.hengde.organization.biz.service;
+
+import cn.dev33.satoken.stp.StpUtil;
+import com.alibaba.excel.EasyExcel;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.hengde.auth.dao.VolunteerMapper;
+import com.hengde.auth.entity.Volunteer;
+import com.hengde.auth.service.VolunteerQueryService;
+import com.hengde.auth.vo.VolunteerDisplayView;
+import com.hengde.common.exception.BusinessException;
+import com.hengde.common.page.PageQuery;
+import com.hengde.common.page.PageResult;
+import com.hengde.common.search.SearchItemVO;
+import com.hengde.organization.biz.dao.VolunteerGroupLeaderHistoryMapper;
+import com.hengde.organization.biz.dao.VolunteerGroupMapper;
+import com.hengde.organization.biz.dao.VolunteerGroupMemberMapper;
+import com.hengde.organization.biz.dto.GroupCreateDTO;
+import com.hengde.organization.biz.dto.GroupImportRow;
+import com.hengde.organization.biz.entity.VolunteerGroup;
+import com.hengde.organization.biz.entity.VolunteerGroupLeaderHistory;
+import com.hengde.organization.biz.entity.VolunteerGroupMember;
+import com.hengde.organization.biz.vo.GroupLeaderHistoryVO;
+import com.hengde.organization.biz.vo.GroupMemberVO;
+import com.hengde.organization.biz.vo.GroupVO;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+@Service
+public class GroupService {
+
+    private static final int GROUP_PENDING = 0;
+    private static final int GROUP_ACTIVE = 1;
+    private static final int GROUP_REJECTED = 2;
+    private static final int GROUP_DISSOLVED = 3;
+    private static final int MEMBER_PENDING = 0;
+    private static final int MEMBER_ACTIVE = 1;
+    private static final int MEMBER_REJECTED = 2;
+    private static final int MEMBER_LEFT = 3;
+    private static final int MEMBER_REMOVED = 4;
+    private static final int ROLE_MEMBER = 0;
+    private static final int ROLE_LEADER = 1;
+    /** 管理员（V7 起接口启用），承担日常审批/移除，与组长协同；不参与组长转移 */
+    private static final int ROLE_ADMIN = 2;
+    /** 管理员人数上限（不含组长） */
+    private static final int MAX_ADMIN_COUNT = 3;
+
+    /** 组长变更：志愿者主动转移（V1 未开放志愿者端入口，预留） */
+    private static final int OP_TYPE_VOLUNTEER_TRANSFER = 1;
+    /** 组长变更：后台管理员转移 */
+    private static final int OP_TYPE_ADMIN_TRANSFER = 2;
+    /** 组长变更：建组审批首次任命 */
+    private static final int OP_TYPE_INITIAL = 3;
+
+    private VolunteerGroupMapper groupMapper;
+    private VolunteerGroupMemberMapper memberMapper;
+    private VolunteerGroupLeaderHistoryMapper leaderHistoryMapper;
+    private VolunteerMapper volunteerMapper;
+    private VolunteerQueryService volunteerQueryService;
+
+    @Autowired
+    public void setGroupMapper(VolunteerGroupMapper groupMapper) {
+        this.groupMapper = groupMapper;
+    }
+
+    @Autowired
+    public void setMemberMapper(VolunteerGroupMemberMapper memberMapper) {
+        this.memberMapper = memberMapper;
+    }
+
+    @Autowired
+    public void setLeaderHistoryMapper(VolunteerGroupLeaderHistoryMapper leaderHistoryMapper) {
+        this.leaderHistoryMapper = leaderHistoryMapper;
+    }
+
+    @Autowired
+    public void setVolunteerMapper(VolunteerMapper volunteerMapper) {
+        this.volunteerMapper = volunteerMapper;
+    }
+
+    @Autowired
+    public void setVolunteerQueryService(VolunteerQueryService volunteerQueryService) {
+        this.volunteerQueryService = volunteerQueryService;
+    }
+
+    public PageResult<GroupVO> list(PageQuery query, String keyword, boolean admin) {
+        LambdaQueryWrapper<VolunteerGroup> wrapper = Wrappers.lambdaQuery();
+        if (!admin) {
+            wrapper.eq(VolunteerGroup::getStatus, GROUP_ACTIVE);
+        }
+        if (StringUtils.hasText(keyword)) {
+            wrapper.and(w -> w.like(VolunteerGroup::getName, keyword).or().like(VolunteerGroup::getGroupNo, keyword));
+        }
+        wrapper.orderByDesc(VolunteerGroup::getId);
+        IPage<VolunteerGroup> page = groupMapper.selectPage(query.toPage(), wrapper);
+        return PageResult.of(page.convert(this::toGroupVO));
+    }
+
+    public PageResult<GroupVO> applications(PageQuery query) {
+        IPage<VolunteerGroup> page = groupMapper.selectPage(query.toPage(), Wrappers.<VolunteerGroup>lambdaQuery()
+                .eq(VolunteerGroup::getStatus, GROUP_PENDING)
+                .orderByDesc(VolunteerGroup::getId));
+        return PageResult.of(page.convert(this::toGroupVO));
+    }
+
+    /** 全局搜索：正常状态小组按名称/编号匹配的命中总数（供 api 聚合层算精确分页 total）。 */
+    public long countSearch(String keyword) {
+        if (!StringUtils.hasText(keyword)) {
+            return 0;
+        }
+        Long c = groupMapper.selectCount(Wrappers.<VolunteerGroup>lambdaQuery()
+                .eq(VolunteerGroup::getStatus, GROUP_ACTIVE)
+                .and(w -> w.like(VolunteerGroup::getName, keyword).or().like(VolunteerGroup::getGroupNo, keyword)));
+        return c == null ? 0 : c;
+    }
+
+    /** 全局搜索：正常状态小组按名称/编号匹配，取 [offset, offset+limit) 窗口（供 api 聚合层跨领域分页）。 */
+    public List<SearchItemVO> search(String keyword, int offset, int limit) {
+        if (!StringUtils.hasText(keyword) || limit <= 0) {
+            return List.of();
+        }
+        List<VolunteerGroup> list = groupMapper.selectList(Wrappers.<VolunteerGroup>lambdaQuery()
+                .eq(VolunteerGroup::getStatus, GROUP_ACTIVE)
+                .and(w -> w.like(VolunteerGroup::getName, keyword).or().like(VolunteerGroup::getGroupNo, keyword))
+                .orderByDesc(VolunteerGroup::getId)
+                .last("limit " + offset + "," + limit));
+        return list.stream()
+                .map(g -> new SearchItemVO("group", g.getId(), g.getName(), g.getDescription(), null))
+                .toList();
+    }
+
+    public GroupVO detail(Long id) {
+        VolunteerGroup group = requireGroup(id);
+        return toGroupVO(group);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Long create(GroupCreateDTO dto) {
+        Long volunteerId = currentVolunteerId();
+        ensureNormalVolunteer(volunteerId);
+        ensureNoActiveGroup(volunteerId);
+
+        VolunteerGroup group = new VolunteerGroup();
+        group.setGroupNo("G" + System.currentTimeMillis());
+        group.setName(dto.getName());
+        group.setDescription(dto.getDescription());
+        group.setLeaderId(volunteerId);
+        group.setStatus(GROUP_PENDING);
+        groupMapper.insert(group);
+        return group.getId();
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Integer importGroups(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new BusinessException("导入文件不能为空");
+        }
+        List<GroupImportRow> rows;
+        try {
+            rows = EasyExcel.read(file.getInputStream())
+                    .head(GroupImportRow.class)
+                    .sheet()
+                    .doReadSync();
+        } catch (IOException e) {
+            throw new BusinessException("读取导入文件失败");
+        }
+        int count = 0;
+        for (GroupImportRow row : rows) {
+            if (row == null || !StringUtils.hasText(row.getName()) || row.getLeaderId() == null) {
+                continue;
+            }
+            ensureNormalVolunteer(row.getLeaderId());
+            String groupNo = StringUtils.hasText(row.getGroupNo())
+                    ? row.getGroupNo()
+                    : "G" + System.currentTimeMillis() + count;
+            Long exists = groupMapper.selectCount(Wrappers.<VolunteerGroup>lambdaQuery()
+                    .eq(VolunteerGroup::getGroupNo, groupNo));
+            if (exists != null && exists > 0) {
+                throw new BusinessException("小组编号已存在：" + groupNo);
+            }
+
+            VolunteerGroup group = new VolunteerGroup();
+            group.setGroupNo(groupNo);
+            group.setName(row.getName());
+            group.setDescription(row.getDescription());
+            group.setLeaderId(row.getLeaderId());
+            group.setStatus(row.getStatus() == null ? GROUP_ACTIVE : row.getStatus());
+            groupMapper.insert(group);
+
+            if (Objects.equals(group.getStatus(), GROUP_ACTIVE)) {
+                VolunteerGroupMember leader = new VolunteerGroupMember();
+                leader.setGroupId(group.getId());
+                leader.setVolunteerId(row.getLeaderId());
+                leader.setRole(ROLE_LEADER);
+                leader.setStatus(MEMBER_ACTIVE);
+                leader.setApplyTime(LocalDateTime.now());
+                leader.setAuditTime(LocalDateTime.now());
+                memberMapper.insert(leader);
+            }
+            count++;
+        }
+        return count;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void join(Long groupId) {
+        Long volunteerId = currentVolunteerId();
+        ensureNormalVolunteer(volunteerId);
+        VolunteerGroup group = requireGroup(groupId);
+        if (!Objects.equals(group.getStatus(), GROUP_ACTIVE)) {
+            throw new BusinessException("小组未开放加入");
+        }
+        ensureNoActiveGroup(volunteerId);
+
+        VolunteerGroupMember member = new VolunteerGroupMember();
+        member.setGroupId(groupId);
+        member.setVolunteerId(volunteerId);
+        member.setRole(ROLE_MEMBER);
+        member.setStatus(MEMBER_PENDING);
+        member.setApplyTime(LocalDateTime.now());
+        memberMapper.insert(member);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void leave(Long groupId) {
+        Long volunteerId = currentVolunteerId();
+        VolunteerGroupMember member = currentActiveMember(groupId, volunteerId);
+        if (Objects.equals(member.getRole(), ROLE_LEADER)) {
+            throw new BusinessException("组长需先转移组长后才能退出");
+        }
+        member.setStatus(MEMBER_LEFT);
+        memberMapper.updateById(member);
+    }
+
+    public List<GroupMemberVO> members(Long groupId) {
+        requireGroup(groupId);
+        // 同组内可见：仅本组在册成员可查看成员名单，防止任意志愿者凭 id 窥探他组成员信息
+        currentActiveMember(groupId, currentVolunteerId());
+        List<VolunteerGroupMember> rows = memberMapper.selectList(Wrappers.<VolunteerGroupMember>lambdaQuery()
+                .eq(VolunteerGroupMember::getGroupId, groupId)
+                .eq(VolunteerGroupMember::getStatus, MEMBER_ACTIVE)
+                .orderByAsc(VolunteerGroupMember::getRole)
+                .orderByAsc(VolunteerGroupMember::getId));
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+        // 同组内展示姓名/学校/电话；手机号经 auth 解密，避免直接读加密字段
+        List<Long> ids = rows.stream().map(VolunteerGroupMember::getVolunteerId).distinct().toList();
+        Map<Long, VolunteerDisplayView> displayById = volunteerQueryService.listDisplayByIds(ids);
+        return rows.stream().map(m -> toMemberVO(m, displayById)).toList();
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void approveCreate(Long groupId, Long adminId) {
+        VolunteerGroup group = requireGroup(groupId);
+        if (!Objects.equals(group.getStatus(), GROUP_PENDING)) {
+            throw new BusinessException("小组不在待审核状态");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        group.setStatus(GROUP_ACTIVE);
+        group.setApprovedTime(now);
+        group.setApprovedBy(adminId);
+        groupMapper.updateById(group);
+
+        VolunteerGroupMember leader = new VolunteerGroupMember();
+        leader.setGroupId(groupId);
+        leader.setVolunteerId(group.getLeaderId());
+        leader.setRole(ROLE_LEADER);
+        leader.setStatus(MEMBER_ACTIVE);
+        leader.setApplyTime(now);
+        leader.setAuditTime(now);
+        leader.setAuditBy(adminId);
+        memberMapper.insert(leader);
+
+        // 建组首次任命也算一次组长变更，作为历史起点
+        recordLeaderChange(groupId, null, group.getLeaderId(), OP_TYPE_INITIAL, adminId, "建组审批通过首次任命");
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void rejectCreate(Long groupId, String reason) {
+        VolunteerGroup group = requireGroup(groupId);
+        if (!Objects.equals(group.getStatus(), GROUP_PENDING)) {
+            throw new BusinessException("小组不在待审核状态");
+        }
+        group.setStatus(GROUP_REJECTED);
+        group.setRejectReason(reason);
+        groupMapper.updateById(group);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void approveMember(Long groupId, Long memberId) {
+        Long auditor = ensureLeaderOrAdmin(groupId);
+        VolunteerGroupMember member = requireMember(memberId);
+        if (!Objects.equals(member.getGroupId(), groupId) || !Objects.equals(member.getStatus(), MEMBER_PENDING)) {
+            throw new BusinessException("成员申请不在待审核状态");
+        }
+        ensureNoOtherPendingOrActiveGroup(member.getVolunteerId(), member.getId());
+        member.setStatus(MEMBER_ACTIVE);
+        member.setAuditTime(LocalDateTime.now());
+        member.setAuditBy(auditor);
+        memberMapper.updateById(member);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void rejectMember(Long groupId, Long memberId) {
+        Long auditor = ensureLeaderOrAdmin(groupId);
+        VolunteerGroupMember member = requireMember(memberId);
+        if (!Objects.equals(member.getGroupId(), groupId) || !Objects.equals(member.getStatus(), MEMBER_PENDING)) {
+            throw new BusinessException("成员申请不在待审核状态");
+        }
+        member.setStatus(MEMBER_REJECTED);
+        member.setAuditTime(LocalDateTime.now());
+        member.setAuditBy(auditor);
+        memberMapper.updateById(member);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void removeMember(Long groupId, Long memberId) {
+        ensureLeaderOrAdmin(groupId);
+        VolunteerGroupMember member = requireMember(memberId);
+        if (Objects.equals(member.getRole(), ROLE_LEADER)) {
+            throw new BusinessException("不能移除组长");
+        }
+        member.setStatus(MEMBER_REMOVED);
+        memberMapper.updateById(member);
+    }
+
+    /**
+     * 组长指定一名 ACTIVE 成员为管理员（≤3 人）。仅组长可操作。
+     * 不允许把组长自己设为管理员；不允许重复设置已是管理员的成员。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void setAdmin(Long groupId, Long memberId) {
+        ensureCurrentLeader(groupId);
+        VolunteerGroupMember member = requireMember(memberId);
+        if (!Objects.equals(member.getGroupId(), groupId) || !Objects.equals(member.getStatus(), MEMBER_ACTIVE)) {
+            throw new BusinessException("仅可对在册成员设置管理员");
+        }
+        if (Objects.equals(member.getRole(), ROLE_LEADER)) {
+            throw new BusinessException("组长无需设置为管理员");
+        }
+        if (Objects.equals(member.getRole(), ROLE_ADMIN)) {
+            throw new BusinessException("该成员已是管理员");
+        }
+        Long current = memberMapper.selectCount(Wrappers.<VolunteerGroupMember>lambdaQuery()
+                .eq(VolunteerGroupMember::getGroupId, groupId)
+                .eq(VolunteerGroupMember::getRole, ROLE_ADMIN)
+                .eq(VolunteerGroupMember::getStatus, MEMBER_ACTIVE));
+        if (current != null && current >= MAX_ADMIN_COUNT) {
+            throw new BusinessException("管理员数量已达上限（" + MAX_ADMIN_COUNT + " 人）");
+        }
+        member.setRole(ROLE_ADMIN);
+        memberMapper.updateById(member);
+    }
+
+    /** 组长取消某管理员，恢复为普通成员。仅组长可操作。 */
+    @Transactional(rollbackFor = Exception.class)
+    public void revokeAdmin(Long groupId, Long memberId) {
+        ensureCurrentLeader(groupId);
+        VolunteerGroupMember member = requireMember(memberId);
+        if (!Objects.equals(member.getGroupId(), groupId) || !Objects.equals(member.getStatus(), MEMBER_ACTIVE)) {
+            throw new BusinessException("仅可对在册管理员取消");
+        }
+        if (!Objects.equals(member.getRole(), ROLE_ADMIN)) {
+            throw new BusinessException("该成员不是管理员");
+        }
+        member.setRole(ROLE_MEMBER);
+        memberMapper.updateById(member);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void dissolve(Long groupId, String reason, Long adminId) {
+        VolunteerGroup group = requireGroup(groupId);
+        LocalDateTime now = LocalDateTime.now();
+        group.setStatus(GROUP_DISSOLVED);
+        group.setDissolveTime(now);
+        group.setDissolveReason(reason);
+        group.setDissolveBy(adminId);
+        groupMapper.updateById(group);
+
+        // 解散同时清空成员关系，否则原成员仍被「一人一组」规则(ensureNoActiveGroup 按 PENDING/ACTIVE 统计)
+        // 视为已有小组，无法加入/发起新组。待加入(PENDING)置为已拒绝，在册(ACTIVE)置为已移除。
+        memberMapper.update(null, Wrappers.<VolunteerGroupMember>lambdaUpdate()
+                .set(VolunteerGroupMember::getStatus, MEMBER_REJECTED)
+                .set(VolunteerGroupMember::getAuditTime, now)
+                .set(VolunteerGroupMember::getUpdateTime, now)
+                .eq(VolunteerGroupMember::getGroupId, groupId)
+                .eq(VolunteerGroupMember::getStatus, MEMBER_PENDING));
+        memberMapper.update(null, Wrappers.<VolunteerGroupMember>lambdaUpdate()
+                .set(VolunteerGroupMember::getStatus, MEMBER_REMOVED)
+                .set(VolunteerGroupMember::getUpdateTime, now)
+                .eq(VolunteerGroupMember::getGroupId, groupId)
+                .eq(VolunteerGroupMember::getStatus, MEMBER_ACTIVE));
+    }
+
+    /**
+     * 后台管理员转移组长。operatorType={@code 2}，写入组长变更历史。
+     *
+     * <p>新组长若原为管理员，提升为组长后管理员角色自动让位（role 字段唯一）；
+     * 旧组长降为普通成员。如需保留旧组长的管理员身份，后续由当前组长手动 {@link #setAdmin}。</p>
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void transferLeader(Long groupId, Long volunteerId, Long adminId, String reason) {
+        VolunteerGroup group = requireGroup(groupId);
+        Long oldLeaderId = group.getLeaderId();
+        VolunteerGroupMember next = memberMapper.selectOne(Wrappers.<VolunteerGroupMember>lambdaQuery()
+                .eq(VolunteerGroupMember::getGroupId, groupId)
+                .eq(VolunteerGroupMember::getVolunteerId, volunteerId)
+                .eq(VolunteerGroupMember::getStatus, MEMBER_ACTIVE)
+                .last("limit 1"));
+        if (next == null) {
+            throw new BusinessException("新组长必须是当前小组成员");
+        }
+        if (Objects.equals(oldLeaderId, volunteerId)) {
+            throw new BusinessException("新组长不能与现任组长相同");
+        }
+        List<VolunteerGroupMember> leaders = memberMapper.selectList(Wrappers.<VolunteerGroupMember>lambdaQuery()
+                .eq(VolunteerGroupMember::getGroupId, groupId)
+                .eq(VolunteerGroupMember::getRole, ROLE_LEADER)
+                .eq(VolunteerGroupMember::getStatus, MEMBER_ACTIVE));
+        for (VolunteerGroupMember leader : leaders) {
+            leader.setRole(ROLE_MEMBER);
+            memberMapper.updateById(leader);
+        }
+        next.setRole(ROLE_LEADER);
+        memberMapper.updateById(next);
+        group.setLeaderId(volunteerId);
+        groupMapper.updateById(group);
+
+        recordLeaderChange(groupId, oldLeaderId, volunteerId, OP_TYPE_ADMIN_TRANSFER, adminId, reason);
+    }
+
+    /** 管理端：查询某小组的组长变更历史，按时间倒序。 */
+    public List<GroupLeaderHistoryVO> leaderHistory(Long groupId) {
+        requireGroup(groupId);
+        List<VolunteerGroupLeaderHistory> rows = leaderHistoryMapper.selectList(
+                Wrappers.<VolunteerGroupLeaderHistory>lambdaQuery()
+                        .eq(VolunteerGroupLeaderHistory::getGroupId, groupId)
+                        .orderByDesc(VolunteerGroupLeaderHistory::getChangeTime));
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+        // 一次拉齐前后任组长姓名，避免 N+1
+        Set<Long> ids = new HashSet<>();
+        for (VolunteerGroupLeaderHistory h : rows) {
+            if (h.getOldLeaderId() != null) {
+                ids.add(h.getOldLeaderId());
+            }
+            ids.add(h.getNewLeaderId());
+        }
+        Map<Long, String> nameById = volunteerMapper.selectBatchIds(ids).stream()
+                .collect(Collectors.toMap(Volunteer::getId, Volunteer::getRealName));
+        return rows.stream().map(h -> {
+            GroupLeaderHistoryVO vo = new GroupLeaderHistoryVO();
+            vo.setId(h.getId());
+            vo.setOldLeaderId(h.getOldLeaderId());
+            vo.setOldLeaderName(h.getOldLeaderId() == null ? null : nameById.get(h.getOldLeaderId()));
+            vo.setNewLeaderId(h.getNewLeaderId());
+            vo.setNewLeaderName(nameById.get(h.getNewLeaderId()));
+            vo.setChangeTime(h.getChangeTime());
+            vo.setOperatorType(h.getOperatorType());
+            vo.setOperatorId(h.getOperatorId());
+            vo.setReason(h.getReason());
+            return vo;
+        }).toList();
+    }
+
+    private void recordLeaderChange(Long groupId, Long oldLeaderId, Long newLeaderId,
+                                    int operatorType, Long operatorId, String reason) {
+        VolunteerGroupLeaderHistory h = new VolunteerGroupLeaderHistory();
+        h.setGroupId(groupId);
+        h.setOldLeaderId(oldLeaderId);
+        h.setNewLeaderId(newLeaderId);
+        h.setChangeTime(LocalDateTime.now());
+        h.setOperatorType(operatorType);
+        h.setOperatorId(operatorId);
+        h.setReason(reason);
+        leaderHistoryMapper.insert(h);
+    }
+
+    private GroupVO toGroupVO(VolunteerGroup group) {
+        GroupVO vo = new GroupVO();
+        vo.setId(group.getId());
+        vo.setGroupNo(group.getGroupNo());
+        vo.setName(group.getName());
+        vo.setDescription(group.getDescription());
+        vo.setLeaderId(group.getLeaderId());
+        Volunteer leader = volunteerMapper.selectById(group.getLeaderId());
+        vo.setLeaderName(leader == null ? null : leader.getRealName());
+        vo.setStatus(group.getStatus());
+        vo.setRejectReason(group.getRejectReason());
+        vo.setCreateTime(group.getCreateTime());
+        vo.setMemberCount(memberMapper.selectCount(Wrappers.<VolunteerGroupMember>lambdaQuery()
+                .eq(VolunteerGroupMember::getGroupId, group.getId())
+                .eq(VolunteerGroupMember::getStatus, MEMBER_ACTIVE)));
+        return vo;
+    }
+
+    private GroupMemberVO toMemberVO(VolunteerGroupMember member, Map<Long, VolunteerDisplayView> displayById) {
+        GroupMemberVO vo = new GroupMemberVO();
+        vo.setId(member.getId());
+        vo.setVolunteerId(member.getVolunteerId());
+        VolunteerDisplayView d = displayById.get(member.getVolunteerId());
+        if (d != null) {
+            vo.setRealName(d.realName());
+            vo.setSchool(d.school());
+            vo.setPhone(d.phone());
+        }
+        vo.setRole(member.getRole());
+        vo.setStatus(member.getStatus());
+        return vo;
+    }
+
+    private VolunteerGroup requireGroup(Long id) {
+        VolunteerGroup group = groupMapper.selectById(id);
+        if (group == null) {
+            throw new BusinessException("小组不存在");
+        }
+        return group;
+    }
+
+    private VolunteerGroupMember requireMember(Long id) {
+        VolunteerGroupMember member = memberMapper.selectById(id);
+        if (member == null) {
+            throw new BusinessException("成员不存在");
+        }
+        return member;
+    }
+
+    private VolunteerGroupMember currentActiveMember(Long groupId, Long volunteerId) {
+        VolunteerGroupMember member = memberMapper.selectOne(Wrappers.<VolunteerGroupMember>lambdaQuery()
+                .eq(VolunteerGroupMember::getGroupId, groupId)
+                .eq(VolunteerGroupMember::getVolunteerId, volunteerId)
+                .eq(VolunteerGroupMember::getStatus, MEMBER_ACTIVE)
+                .last("limit 1"));
+        if (member == null) {
+            throw new BusinessException("不是该小组成员");
+        }
+        return member;
+    }
+
+    private void ensureCurrentLeader(Long groupId) {
+        VolunteerGroupMember member = currentActiveMember(groupId, currentVolunteerId());
+        if (!Objects.equals(member.getRole(), ROLE_LEADER)) {
+            throw new BusinessException("仅小组负责人可操作");
+        }
+    }
+
+    /**
+     * 校验当前志愿者是该小组的组长或管理员，返回其 volunteerId 作为审批人 audit_by。
+     * 用于审批加入、移除成员等"日常运营"动作。
+     */
+    private Long ensureLeaderOrAdmin(Long groupId) {
+        Long volunteerId = currentVolunteerId();
+        VolunteerGroupMember member = currentActiveMember(groupId, volunteerId);
+        if (!Objects.equals(member.getRole(), ROLE_LEADER) && !Objects.equals(member.getRole(), ROLE_ADMIN)) {
+            throw new BusinessException("仅小组负责人或管理员可操作");
+        }
+        return volunteerId;
+    }
+
+    private void ensureNoActiveGroup(Long volunteerId) {
+        Long count = memberMapper.selectCount(Wrappers.<VolunteerGroupMember>lambdaQuery()
+                .eq(VolunteerGroupMember::getVolunteerId, volunteerId)
+                .in(VolunteerGroupMember::getStatus, MEMBER_PENDING, MEMBER_ACTIVE));
+        if (count > 0) {
+            throw new BusinessException("一个志愿者只能加入一个小组");
+        }
+    }
+
+    private void ensureNoOtherPendingOrActiveGroup(Long volunteerId, Long currentMemberId) {
+        Long count = memberMapper.selectCount(Wrappers.<VolunteerGroupMember>lambdaQuery()
+                .eq(VolunteerGroupMember::getVolunteerId, volunteerId)
+                .ne(VolunteerGroupMember::getId, currentMemberId)
+                .in(VolunteerGroupMember::getStatus, MEMBER_PENDING, MEMBER_ACTIVE));
+        if (count > 0) {
+            throw new BusinessException("一个志愿者只能加入一个小组");
+        }
+    }
+
+    private void ensureNormalVolunteer(Long volunteerId) {
+        Volunteer volunteer = volunteerMapper.selectById(volunteerId);
+        if (volunteer == null || !Integer.valueOf(0).equals(volunteer.getStatus())) {
+            throw new BusinessException("志愿者账号不可用");
+        }
+    }
+
+    private Long currentVolunteerId() {
+        return StpUtil.getLoginIdAsLong();
+    }
+}

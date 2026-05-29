@@ -1,0 +1,29 @@
+# 恒德志愿者平台 联调依赖：仅 MySQL + Redis 放 Docker 跑，api 用 java -jar 本机启动。
+# 用法：
+#   docker compose up -d      # 后台拉起 mysql + redis
+#   java -jar hengde-volunteer-api-1.0-SNAPSHOT.jar   # 本机跑 api（默认连 localhost，正好对上）
+#   docker compose down       # 停止（加 -v 连数据一起删）
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: hengde_volunteer   # 自动建空库，无需手动 CREATE DATABASE
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"                      # 映射到本机 3306，jar 默认连 localhost:3306 正好对上
+    volumes:
+      - hengde-mysql-data:/var/lib/mysql # 数据持久化，重启不丢
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"                      # 映射到本机 6379
+
+volumes:
+  hengde-mysql-data:

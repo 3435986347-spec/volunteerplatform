@@ -1,0 +1,64 @@
+# --- Maven / Java 构建产物 ---
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+hs_err_pid*
+replay_pid*
+
+# Maven wrapper：jar 不入库（脚本/properties 仍入库，运行时会按需下载）
+.mvn/wrapper/maven-wrapper.jar
+
+# Spring Boot 默认生成
+HELP.md
+
+# --- IDE ---
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.classpath
+.project
+.settings/
+.springBeans
+.sts4-cache
+.apt_generated
+.factorypath
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Office 锁文件（Word/Excel 打开时的临时副本）---
+~$*.xlsx
+~$*.docx
+~$*.pptx
+
+# --- 日志 / 临时 ---
+*.log
+logs/
+*.tmp
+*.swp
+*~
+
+# --- 配置中的敏感项（绝不入库）---
+# application-prod.* / application-local.* 这类含真实密钥的覆盖配置
+application-prod.yml
+application-prod.yaml
+application-prod.properties
+application-local.yml
+application-local.yaml
+application-local.properties
+.env
+.env.*
+secrets/
+*.key
+*.pem
+
+# --- Claude Code 本地化配置 ---
+# settings.local.json 含本机授权/路径，不应共享；其他 .claude/ 文件（如 hooks）想共享可单独 allow
+.claude/settings.local.json
