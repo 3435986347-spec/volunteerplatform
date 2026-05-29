@@ -73,7 +73,7 @@ public class AdminGroupController {
     @SaCheckPermission(value = "org:group-manage", type = "admin")
     @PostMapping("/import")
     public Result<Integer> importGroups(@RequestParam("file") MultipartFile file) {
-        return Result.ok(groupService.importGroups(file));
+        return Result.ok(groupService.importGroups(file, StpAdminUtil.getLoginIdAsLong()));
     }
 
     @Operation(summary = "建组申请列表")

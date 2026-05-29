@@ -216,7 +216,7 @@ public class GroupService {
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public Integer importGroups(MultipartFile file) {
+    public Integer importGroups(MultipartFile file, Long adminId) {
         if (file == null || file.isEmpty()) {
             throw new BusinessException("导入文件不能为空");
         }
@@ -229,15 +229,19 @@ public class GroupService {
         } catch (IOException e) {
             throw new BusinessException("读取导入文件失败");
         }
-        return importGroupRows(rows);
+        return importGroupRows(rows, adminId);
     }
 
     /**
-     * 批量导入小组的核心处理（行数据已从 Excel 解析完成）。与 {@link #importGroups(MultipartFile)} 拆开，
+     * 批量导入小组的核心处理（行数据已从 Excel 解析完成）。与 {@link #importGroups(MultipartFile, Long)} 拆开，
      * 使校验/落库逻辑可脱离 Excel 解析单独测试；二者共用同一事务语义（整批任一行失败则全回滚）。
+     *
+     * <p>导入语义＝「线下已成立小组直接入库」，管理员的导入动作视同审批：每个小组写
+     * approved_time/approved_by、组长成员行写 audit_by，并补一条 {@link #OP_TYPE_INITIAL} 组长历史，
+     * 使其审批轨迹与 {@link #approveCreate} 创建的小组完全一致（finding：导入不能断审计链）。</p>
      */
     @Transactional(rollbackFor = Exception.class)
-    public Integer importGroupRows(List<GroupImportRow> rows) {
+    public Integer importGroupRows(List<GroupImportRow> rows, Long adminId) {
         if (rows == null || rows.isEmpty()) {
             return 0;
         }
@@ -269,12 +273,16 @@ public class GroupService {
             // V9 DB 唯一约束(active_volunteer_lock)会再兜一道（DuplicateKeyException → 友好提示）。
             ensureNoActiveGroup(row.getLeaderId());
 
+            LocalDateTime now = LocalDateTime.now();
             VolunteerGroup group = new VolunteerGroup();
             group.setGroupNo(groupNo);
             group.setName(row.getName());
             group.setDescription(row.getDescription());
             group.setLeaderId(row.getLeaderId());
             group.setStatus(GROUP_ACTIVE);
+            // 导入视同审批：补审批元数据，与 approveCreate 一致，避免审计链断裂
+            group.setApprovedTime(now);
+            group.setApprovedBy(adminId);
             groupMapper.insert(group);
 
             VolunteerGroupMember leader = new VolunteerGroupMember();
@@ -282,14 +290,19 @@ public class GroupService {
             leader.setVolunteerId(row.getLeaderId());
             leader.setRole(ROLE_LEADER);
             leader.setStatus(MEMBER_ACTIVE);
-            leader.setApplyTime(LocalDateTime.now());
-            leader.setAuditTime(LocalDateTime.now());
+            leader.setApplyTime(now);
+            leader.setAuditTime(now);
+            leader.setAuditBy(adminId);
             try {
                 memberMapper.insert(leader);
             } catch (DuplicateKeyException e) {
                 // V9 唯一约束：active_volunteer_lock 冲突 = 志愿者已在其他 active/pending 小组
                 throw new BusinessException("导入失败：志愿者 id=" + row.getLeaderId() + " 已在其他小组");
             }
+
+            // 补首条组长历史，作为该组组长变更轨迹起点（与 approveCreate 的 OP_TYPE_INITIAL 一致）
+            recordLeaderChange(group.getId(), null, row.getLeaderId(), OP_TYPE_INITIAL, adminId,
+                    "批量导入直接入库视同审批首次任命");
             count++;
         }
         return count;

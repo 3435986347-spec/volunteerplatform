@@ -346,15 +346,16 @@ class OrganizationBizTest {
     // importGroups(MultipartFile) 仅负责解析后委托给本方法，二者同一事务语义。
 
     @Test
-    void importGroups_activeRow_insertsActiveLeaderMember() {
-        // 状态列留空 → 默认 ACTIVE：必须同步插一条 ACTIVE 组长成员行，
-        // 否则该组长不占「一人一组」、成员名单也查不到组长
+    void importGroups_activeRow_writesLeaderMemberAndAuditTrail() {
+        // 状态列留空 → 默认 ACTIVE：必须同步插 ACTIVE 组长成员行（否则不占「一人一组」、名单查不到组长），
+        // 且导入视同审批——须写 approved_by/time + audit_by + 首条组长历史，与 approveCreate 审计链一致
         Long leaderId = insertNormalVolunteer();
+        Long adminId = 9100L;
         GroupImportRow row = new GroupImportRow();
         row.setName("导入小组_active");
         row.setLeaderId(leaderId);
 
-        Integer count = groupService.importGroupRows(List.of(row));
+        Integer count = groupService.importGroupRows(List.of(row), adminId);
         assertEquals(1, count);
 
         VolunteerGroupMember leader = memberMapper.selectOne(Wrappers.<VolunteerGroupMember>lambdaQuery()
@@ -363,6 +364,17 @@ class OrganizationBizTest {
         assertNotNull(leader, "导入 ACTIVE 小组必须落组长成员行");
         assertEquals(1, leader.getRole(), "role=LEADER");
         assertEquals(1, leader.getStatus(), "status=ACTIVE");
+        assertEquals(adminId, leader.getAuditBy(), "组长成员行应记录审批人");
+
+        // 小组审批元数据与 approveCreate 对齐
+        VolunteerGroup g = groupMapper.selectById(leader.getGroupId());
+        assertEquals(adminId, g.getApprovedBy(), "导入视同审批，应写 approved_by");
+        assertNotNull(g.getApprovedTime(), "应写 approved_time");
+
+        // 首条组长历史（OP_TYPE_INITIAL）
+        Long hist = leaderHistoryMapper.selectCount(Wrappers.<VolunteerGroupLeaderHistory>lambdaQuery()
+                .eq(VolunteerGroupLeaderHistory::getGroupId, g.getId()));
+        assertEquals(1L, hist, "导入应补一条首次任命历史，使组长变更轨迹有起点");
     }
 
     @Test
@@ -380,7 +392,7 @@ class OrganizationBizTest {
         bad.setStatus(0); // PENDING
 
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> groupService.importGroupRows(List.of(ok, bad)));
+                () -> groupService.importGroupRows(List.of(ok, bad), 9101L));
         assertTrue(ex.getMessage().contains("批量导入"));
 
         // 整批回滚：合法的第一行也不应落库
@@ -404,7 +416,7 @@ class OrganizationBizTest {
         row.setLeaderId(leaderId);
 
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> groupService.importGroupRows(List.of(row)));
+                () -> groupService.importGroupRows(List.of(row), 9102L));
         assertTrue(ex.getMessage().contains("只能加入一个小组"));
     }
 }
