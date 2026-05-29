@@ -242,6 +242,11 @@ public class GroupService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Integer importGroupRows(List<GroupImportRow> rows, Long adminId) {
+        // 导入要写 approved_by/audit_by/operator_id——operator 缺失会再次造出审计链不完整的数据，
+        // 故在 public 入口先卡死（控制器走 StpAdminUtil 必非空，此处防测试/未来复用误传 null）。
+        if (adminId == null) {
+            throw new BusinessException("导入操作人不能为空");
+        }
         if (rows == null || rows.isEmpty()) {
             return 0;
         }

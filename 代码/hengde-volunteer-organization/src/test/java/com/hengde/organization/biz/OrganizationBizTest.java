@@ -419,4 +419,16 @@ class OrganizationBizTest {
                 () -> groupService.importGroupRows(List.of(row), 9102L));
         assertTrue(ex.getMessage().contains("只能加入一个小组"));
     }
+
+    @Test
+    void importGroups_nullAdmin_rejected() {
+        // public 入口缺操作人会写出 approved_by/audit_by 为 null 的不完整审计链——必须先卡死
+        GroupImportRow row = new GroupImportRow();
+        row.setName("导入小组_noadmin");
+        row.setLeaderId(insertNormalVolunteer());
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> groupService.importGroupRows(List.of(row), null));
+        assertTrue(ex.getMessage().contains("操作人"));
+    }
 }
