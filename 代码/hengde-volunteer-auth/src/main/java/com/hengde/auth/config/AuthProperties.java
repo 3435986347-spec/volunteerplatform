@@ -23,6 +23,12 @@ public class AuthProperties {
     /** 是否启用真实企业微信群成员校验。false 时直接放行 */
     private boolean weworkGroupEnabled = false;
 
+    /**
+     * 是否启用「开发登录」——跳过微信 code 换 openid，直接发 token 供前端联调（无小程序 appid/secret 时用）。
+     * <b>默认 false，且生产 profile 下被 {@code ProductionConfigGuard} 强制要求为 false</b>（开启会绕过微信鉴权）。
+     */
+    private boolean devLoginEnabled = false;
+
     /** 未入群时返回给前端弹出的企业微信群二维码地址 */
     private String weworkGroupQrUrl;
 

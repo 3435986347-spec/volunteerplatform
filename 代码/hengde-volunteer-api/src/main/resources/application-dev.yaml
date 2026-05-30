@@ -1,6 +1,10 @@
 # 本地开发 profile：启动加 --spring.profiles.active=dev
 # 仅承载开发便利项。密钥/短信/OSS 等的弱默认值与开关仍由 application.yaml 的 ${VAR:default} 兜底，
 # 此 profile 下 ProductionConfigGuard 放行（dev/test/local 不强校验真实密钥）。
+hengde:
+  auth:
+    dev-login-enabled: true   # 本地无小程序 appid/secret 时，开放开发登录 POST /v/auth/login/dev 供前端联调
+
 logging:
   level:
     com.hengde: DEBUG

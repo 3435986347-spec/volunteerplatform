@@ -71,6 +71,7 @@ hengde:
   auth:
     realname-enabled: ${AUTH_REALNAME_ENABLED:false}        # 腾讯云身份证二要素，关闭时放行（待密钥接入）
     wework-group-enabled: ${AUTH_WEWORK_ENABLED:false}       # 企业微信群成员校验，关闭时放行
+    dev-login-enabled: ${AUTH_DEV_LOGIN_ENABLED:false}      # 开发登录(跳过微信)，仅本地联调用；生产被 ProductionConfigGuard 强制拒绝
     wework-group-qr-url: ${AUTH_WEWORK_QR_URL:}              # 未入群引导的群二维码地址
     init-super-admin: ${AUTH_INIT_SUPER_ADMIN:true}          # 启动时无超管则预置一个
     super-admin-username: ${AUTH_SUPER_ADMIN_USERNAME:admin} # 初始超管账号

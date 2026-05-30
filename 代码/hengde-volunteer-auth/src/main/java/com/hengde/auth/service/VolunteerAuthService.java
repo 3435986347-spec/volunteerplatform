@@ -5,6 +5,7 @@ import cn.binarywang.wx.miniapp.bean.WxMaJscode2SessionResult;
 import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.core.util.IdcardUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.hengde.auth.config.AuthProperties;
 import com.hengde.auth.dao.VolunteerMapper;
 import com.hengde.auth.dto.RegisterDTO;
 import com.hengde.auth.entity.Volunteer;
@@ -49,10 +50,16 @@ public class VolunteerAuthService {
     private CryptoUtil cryptoUtil;
     private RealNameService realNameService;
     private WeworkGroupService weworkGroupService;
+    private AuthProperties authProperties;
 
     @Autowired
     public void setVolunteerMapper(VolunteerMapper volunteerMapper) {
         this.volunteerMapper = volunteerMapper;
+    }
+
+    @Autowired
+    public void setAuthProperties(AuthProperties authProperties) {
+        this.authProperties = authProperties;
     }
 
     @Autowired
@@ -105,6 +112,45 @@ public class VolunteerAuthService {
             volunteerMapper.insert(volunteer);
         } else if (volunteer.getStatus() != null && volunteer.getStatus().equals(UserStatus.BANNED)) {
             throw new BusinessException("账号已被禁用");
+        }
+
+        StpUtil.login(volunteer.getId());
+        return new LoginVO(StpUtil.getTokenValue(), volunteer.getRegisterTime() != null);
+    }
+
+    /**
+     * 开发登录：跳过微信 code 换 openid，按测试 key 找/建一个志愿者并发 token，供前端在无小程序
+     * appid/secret 时联调。<b>仅 {@code hengde.auth.dev-login-enabled=true} 时可用</b>（生产由
+     * {@code ProductionConfigGuard} 强制为 false）。
+     *
+     * @param key        测试身份标识（openid 落为 {@code dev:{key}}，留空默认 tester）
+     * @param registered true 则直接造成「已实名志愿者」（跳过注册流程，便于测试实名后功能）
+     */
+    public LoginVO devLogin(String key, boolean registered) {
+        if (!authProperties.isDevLoginEnabled()) {
+            throw new BusinessException("开发登录未启用");
+        }
+        String safeKey = StringUtils.hasText(key) ? key.trim() : "tester";
+        String openid = "dev:" + safeKey;
+
+        Volunteer volunteer = volunteerMapper.selectOne(
+                Wrappers.<Volunteer>lambdaQuery().eq(Volunteer::getOpenid, openid));
+        if (volunteer == null) {
+            volunteer = new Volunteer();
+            volunteer.setOpenid(openid);
+            volunteer.setStatus(UserStatus.NORMAL);
+            volunteerMapper.insert(volunteer);
+        } else if (volunteer.getStatus() != null && volunteer.getStatus().equals(UserStatus.BANNED)) {
+            throw new BusinessException("账号已被禁用");
+        }
+
+        // 造一个可用的「已实名」测试身份：填姓名 + 成年生日 + 性别，避免年龄/性别资格校验取到 null
+        if (registered && volunteer.getRegisterTime() == null) {
+            volunteer.setRealName("测试志愿者-" + safeKey);
+            volunteer.setBirthday(LocalDate.of(2000, 1, 1));
+            volunteer.setGender(Gender.MALE);
+            volunteer.setRegisterTime(LocalDateTime.now());
+            volunteerMapper.updateById(volunteer);
         }
 
         StpUtil.login(volunteer.getId());

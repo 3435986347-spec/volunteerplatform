@@ -1,5 +1,6 @@
 package com.hengde.auth.controller;
 
+import com.hengde.auth.dto.DevLoginDTO;
 import com.hengde.auth.dto.RegisterDTO;
 import com.hengde.auth.dto.SmsCodeDTO;
 import com.hengde.auth.dto.WechatLoginDTO;
@@ -53,6 +54,14 @@ public class VolunteerAuthController {
     @PostMapping("/login/wechat")
     public Result<LoginVO> wechatLogin(@RequestBody @Valid WechatLoginDTO dto) {
         return Result.ok(volunteerAuthService.wechatLogin(dto.getCode()));
+    }
+
+    @Operation(summary = "开发登录（跳过微信，仅 dev-login-enabled=true 时可用，生产禁用）")
+    @PostMapping("/login/dev")
+    public Result<LoginVO> devLogin(@RequestBody(required = false) @Valid DevLoginDTO dto) {
+        String key = dto == null ? null : dto.getKey();
+        boolean registered = dto != null && Boolean.TRUE.equals(dto.getRegistered());
+        return Result.ok(volunteerAuthService.devLogin(key, registered));
     }
 
     @Operation(summary = "志愿者实名注册")

@@ -75,6 +75,9 @@ public class ProductionConfigGuard {
         if (authProperties.isInitSuperAdmin() && DEV_ADMIN_PASSWORD.equals(authProperties.getSuperAdminPassword())) {
             problems.add("AUTH_SUPER_ADMIN_PASSWORD 仍为弱默认值 admin123");
         }
+        if (authProperties.isDevLoginEnabled()) {
+            problems.add("hengde.auth.dev-login-enabled 必须为 false（开发登录会绕过微信鉴权，禁止上生产）");
+        }
         if (!problems.isEmpty()) {
             throw new IllegalStateException("生产配置校验未通过（profile=" + Arrays.toString(active) + "）：\n - "
                     + String.join("\n - ", problems)
