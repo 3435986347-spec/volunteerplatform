@@ -43,7 +43,8 @@ class OrganizationRbacTest {
 
     @Test
     void permissionsSeeded() {
-        assertEquals(24L, permissionMapper.selectCount(null), "V2 预置 23 个 + V4 追加 activity:enroll-view = 24 个可分配权限点");
+        assertEquals(33L, permissionMapper.selectCount(null),
+                "可分配权限点：V2 23 + V4 enroll-view + V10 活动 6 + V12 manager-flag + V16 补录 2 = 33");
     }
 
     @Test
