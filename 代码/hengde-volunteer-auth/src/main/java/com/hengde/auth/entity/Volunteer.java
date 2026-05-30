@@ -81,6 +81,9 @@ public class Volunteer extends BaseEntity {
     /** 协议手写签名图片 */
     private String signatureUrl;
 
+    /** 注册时所签志愿者协议版本（V17；合规留痕） */
+    private String signedAgreementVersion;
+
     /** 职位（后台设置，前端名字下展示） */
     private String position;
 

@@ -32,6 +32,12 @@ public class AuthProperties {
     /** 未入群时返回给前端弹出的企业微信群二维码地址 */
     private String weworkGroupQrUrl;
 
+    /** 志愿者协议版本号（注册时记录到 volunteer.signed_agreement_version；协议改版即升此号） */
+    private String agreementVersion = "1.0";
+
+    /** 志愿者协议正文（注册前阅读；默认占位，由协会方提供正式文本后经配置覆盖） */
+    private String agreementText = "志愿者协议（占位文本，正式文本由协会方提供后经 hengde.auth.agreement-text 配置覆盖）。";
+
     /** 是否在启动时初始化超级管理员（不存在任何超管时才创建） */
     private boolean initSuperAdmin = true;
 

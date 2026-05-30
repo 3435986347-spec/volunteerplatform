@@ -31,7 +31,7 @@ public class SaTokenConfigure implements WebMvcConfigurer {
             // 注册和退出需携带（游客）登录态，其余 /v/** 同样要求已登录
             SaRouter.match("/v/**")
                     .notMatch("/v/auth/login/wechat", "/v/auth/login/dev", "/v/auth/sms/codes",
-                            "/v/auth/wechat/group-membership")
+                            "/v/auth/wechat/group-membership", "/v/auth/agreement")
                     .check(r -> StpUtil.checkLogin());
 
             // 管理端：放行登录 + 忘记密码两步（发验证码/重置密码）；其余用独立的管理端登录态校验，

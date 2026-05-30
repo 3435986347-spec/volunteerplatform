@@ -6,6 +6,7 @@ import com.hengde.auth.dto.SmsCodeDTO;
 import com.hengde.auth.dto.WechatLoginDTO;
 import com.hengde.auth.integration.WeworkGroupService;
 import com.hengde.auth.service.VolunteerAuthService;
+import com.hengde.auth.vo.AgreementVO;
 import com.hengde.auth.vo.GroupMembershipVO;
 import com.hengde.auth.vo.LoginVO;
 import com.hengde.common.result.Result;
@@ -48,6 +49,12 @@ public class VolunteerAuthController {
     public Result<Void> sendSmsCode(@RequestBody @Valid SmsCodeDTO dto) {
         volunteerAuthService.sendRegisterSmsCode(dto.getPhone());
         return Result.ok();
+    }
+
+    @Operation(summary = "获取志愿者协议文本（注册前阅读，含版本号）")
+    @GetMapping("/agreement")
+    public Result<AgreementVO> agreement() {
+        return Result.ok(volunteerAuthService.getAgreement());
     }
 
     @Operation(summary = "微信小程序登录")

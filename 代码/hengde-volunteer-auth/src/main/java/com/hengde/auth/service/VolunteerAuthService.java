@@ -11,6 +11,7 @@ import com.hengde.auth.dto.RegisterDTO;
 import com.hengde.auth.entity.Volunteer;
 import com.hengde.auth.integration.RealNameService;
 import com.hengde.auth.integration.WeworkGroupService;
+import com.hengde.auth.vo.AgreementVO;
 import com.hengde.auth.vo.LoginVO;
 import com.hengde.common.constant.Gender;
 import com.hengde.common.constant.Grade;
@@ -158,6 +159,13 @@ public class VolunteerAuthService {
     }
 
     /**
+     * 获取志愿者协议（注册前阅读）：正文 + 版本号，均取自配置。
+     */
+    public AgreementVO getAgreement() {
+        return new AgreementVO(authProperties.getAgreementVersion(), authProperties.getAgreementText());
+    }
+
+    /**
      * 发送注册短信验证码。
      */
     public void sendRegisterSmsCode(String phone) {
@@ -246,6 +254,8 @@ public class VolunteerAuthService {
         volunteer.setEmergencyContactName(dto.getEmergencyContactName());
         volunteer.setEmergencyContactPhone(cryptoUtil.encrypt(dto.getEmergencyContactPhone()));
         volunteer.setSignatureUrl(dto.getSignatureUrl());
+        // 入库标记：记录注册时服务端当前的协议版本（手写签名图本身是签署凭据）
+        volunteer.setSignedAgreementVersion(authProperties.getAgreementVersion());
         volunteer.setRegisterTime(LocalDateTime.now());
         volunteerMapper.updateById(volunteer);
 
