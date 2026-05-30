@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-雷州市恒德爱心公益协会志愿者管理平台，基于微信小程序的多端志愿者服务系统（后端为 Spring Boot 4 / Spring Cloud 微服务）。所有模块 `groupId=com.hengde`，`version=1.0-SNAPSHOT`，Java 17。
+雷州市恒德爱心公益协会志愿者管理平台，基于微信小程序的多端志愿者服务系统（后端为 Spring Boot 4 / Spring Cloud 微服务）。所有模块 `groupId=com.hengde`，`version=1.1-SNAPSHOT`，Java 17。
 
 ## 当前状态（重要）
 

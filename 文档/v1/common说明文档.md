@@ -434,7 +434,7 @@ return Result.ok(PageResult.of(p.convert(this::toVO)));
 <dependency>
   <groupId>com.hengde</groupId>
   <artifactId>hengde-volunteer-common</artifactId>
-  <version>1.0-SNAPSHOT</version>
+  <version>1.1-SNAPSHOT</version>
   <type>test-jar</type>
   <scope>test</scope>
 </dependency>

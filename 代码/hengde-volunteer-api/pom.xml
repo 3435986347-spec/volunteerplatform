@@ -5,12 +5,12 @@
     <parent>
         <groupId>com.hengde</groupId>
         <artifactId>hengde-volunteer-parent</artifactId>
-        <version>1.0-SNAPSHOT</version>
+        <version>1.1-SNAPSHOT</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>com.hengde</groupId>
     <artifactId>hengde-volunteer-api</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <version>1.1-SNAPSHOT</version>
     <name>hengde-volunteer-api</name>
     <description>hengde-volunteer-api</description>
     <packaging>jar</packaging>
@@ -35,35 +35,35 @@
         <dependency>
             <groupId>com.hengde</groupId>
             <artifactId>hengde-volunteer-common</artifactId>
-            <version>1.0-SNAPSHOT</version>
+            <version>1.1-SNAPSHOT</version>
         </dependency>
 
         <!-- 领域模块：认证（注册/登录/实名/找回密码） -->
         <dependency>
             <groupId>com.hengde</groupId>
             <artifactId>hengde-volunteer-auth</artifactId>
-            <version>1.0-SNAPSHOT</version>
+            <version>1.1-SNAPSHOT</version>
         </dependency>
 
         <!-- 领域模块：组织（子账号与权限 RBAC、StpInterface 权限数据源） -->
         <dependency>
             <groupId>com.hengde</groupId>
             <artifactId>hengde-volunteer-organization</artifactId>
-            <version>1.0-SNAPSHOT</version>
+            <version>1.1-SNAPSHOT</version>
         </dependency>
 
         <!-- 领域模块：活动（发布/报名/管理） -->
         <dependency>
             <groupId>com.hengde</groupId>
             <artifactId>hengde-volunteer-activity</artifactId>
-            <version>1.0-SNAPSHOT</version>
+            <version>1.1-SNAPSHOT</version>
         </dependency>
 
         <!-- 领域模块：公示（轮播图/公告/文件下载） -->
         <dependency>
             <groupId>com.hengde</groupId>
             <artifactId>hengde-volunteer-publicity</artifactId>
-            <version>1.0-SNAPSHOT</version>
+            <version>1.1-SNAPSHOT</version>
         </dependency>
 
         <!-- Spring Boot 启动器 -->
