@@ -41,6 +41,7 @@
 |---|---|---|---|
 | POST | /v/auth/sms/codes | 发送短信验证码（注册/换绑手机号均调此接口） | 公开 |
 | POST | /v/auth/login/wechat | 微信小程序登录；未注册返回 `registered:false`，已注册返回 token | 公开 |
+| POST | /v/auth/login/dev | **开发登录**：跳过微信直接发 token 供前端联调（无 appid/secret 时用）。body 可选 `key`（测试身份，默认 tester）/`registered`（true 造已实名身份）。**仅 `hengde.auth.dev-login-enabled=true` 可用，生产被 `ProductionConfigGuard` fail-fast 拒绝** | 公开（dev 限定） |
 | GET | /v/auth/agreement | 获取志愿者协议文本（注册前阅读） | 公开 |
 | POST | /v/auth/register | 志愿者实名注册（身份证二要素 + 短信验证码 + 企业微信群校验 + **协议手写签名图 URL**） | 需登录（先微信登录拿游客 token） |
 | GET | /v/auth/wechat/group-membership | 企业微信群成员资格校验 | 公开 |
