@@ -55,6 +55,9 @@ public class ActivityService {
     /** 已取消 */
     private static final int STATUS_CANCELLED = 3;
 
+    /** 现场运行状态：已结束（历史活动直接置此） */
+    private static final int RUN_ENDED = 2;
+
     private static final BigDecimal DEFAULT_LEADER_MULTIPLIER = new BigDecimal("1.4");
     private static final BigDecimal DEFAULT_MANAGER_MULTIPLIER = new BigDecimal("1.2");
 
@@ -88,7 +91,18 @@ public class ActivityService {
      */
     @Transactional
     public Long publish(ActivityCreateDTO dto, Long adminId) {
-        return publishOne(dto, adminId);
+        return publishOne(dto, adminId, STATUS_PUBLISHED, false);
+    }
+
+    /**
+     * 历史活动发布（第 3 批·PR3）：补录之前未在系统发布过的已发生活动，作为补录载体。
+     *
+     * <p>置 {@code is_historical=1}、{@code status=已结束}、{@code run_status=已结束}——志愿者端不可见
+     * （{@code detailForVolunteer} 仅放已发布），仅管理端列表可见、供补录引用。其上补录只记时长不发积分。</p>
+     */
+    @Transactional
+    public Long publishHistorical(ActivityCreateDTO dto, Long adminId) {
+        return publishOne(dto, adminId, STATUS_FINISHED, true);
     }
 
     /**
@@ -118,20 +132,29 @@ public class ActivityService {
         List<Long> ids = new ArrayList<>(targetDates.size());
         for (LocalDate d : targetDates) {
             long dayShift = ChronoUnit.DAYS.between(anchorDate, d);
-            ids.add(publishOne(shiftTemplate(template, dayShift), adminId));
+            ids.add(publishOne(shiftTemplate(template, dayShift), adminId, STATUS_PUBLISHED, false));
         }
         return ids;
     }
 
-    /** 发布单场活动（创建即发布）：校验 + 默认值 + 插入 + 编号=自增 id + 时间段。供 publish/publishRecurring 共用。 */
-    private Long publishOne(ActivityCreateDTO dto, Long adminId) {
+    /**
+     * 发布单场活动：校验 + 默认值 + 插入 + 编号=自增 id + 时间段。供 publish/publishRecurring/publishHistorical 共用。
+     *
+     * @param status     发布态（普通发布=已发布；历史活动=已结束）
+     * @param historical 是否历史补录活动（true 则置 is_historical=1、run_status=已结束）
+     */
+    private Long publishOne(ActivityCreateDTO dto, Long adminId, int status, boolean historical) {
         validateDto(dto);
 
         Activity activity = new Activity();
         BeanUtils.copyProperties(dto, activity, "slots");
         applyDefaults(activity);
-        activity.setStatus(STATUS_PUBLISHED);
+        activity.setStatus(status);
         activity.setCreateBy(adminId);
+        if (historical) {
+            activity.setIsHistorical(1);
+            activity.setRunStatus(RUN_ENDED);
+        }
         activityMapper.insert(activity);
 
         // 编号 = 自增 id（唯一递增，零竞态）

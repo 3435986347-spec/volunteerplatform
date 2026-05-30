@@ -57,4 +57,10 @@ public final class PermissionCode {
 
     /** 考勤变更二次审核（部长；第2批） */
     public static final String ACTIVITY_ATTENDANCE_AUDIT = "activity:attendance-audit";
+
+    /** 活动补录申请（组织部；第3批） */
+    public static final String ACTIVITY_BACKFILL = "activity:backfill";
+
+    /** 活动补录审核（部长；第3批） */
+    public static final String ACTIVITY_BACKFILL_AUDIT = "activity:backfill-audit";
 }

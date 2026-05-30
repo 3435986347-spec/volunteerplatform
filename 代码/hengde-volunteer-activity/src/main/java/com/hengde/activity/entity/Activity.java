@@ -163,4 +163,7 @@ public class Activity extends BaseEntity {
 
     /** 已参加活动时长门槛（分钟，默认0=不限；第2批 eligibility 用） */
     private Integer requireMinJoinMinutes;
+
+    /** 0普通活动/1历史补录活动（V16；历史活动补录只记时长不发积分） */
+    private Integer isHistorical;
 }

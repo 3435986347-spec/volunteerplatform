@@ -3,10 +3,12 @@ package com.hengde.auth.service;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.hengde.auth.dao.VolunteerMapper;
 import com.hengde.auth.entity.Volunteer;
+import com.hengde.auth.vo.VolunteerBackfillView;
 import com.hengde.auth.vo.VolunteerDisplayView;
 import com.hengde.auth.vo.VolunteerProfileView;
 import com.hengde.common.constant.Gender;
 import com.hengde.common.crypto.CryptoUtil;
+import com.hengde.common.exception.BusinessException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -104,6 +106,53 @@ public class VolunteerQueryService {
     public boolean isManager(Long volunteerId) {
         Volunteer v = volunteerMapper.selectById(volunteerId);
         return v != null && Integer.valueOf(1).equals(v.getManagerFlag());
+    }
+
+    /**
+     * 活动补录定位志愿者：按身份证或手机号<b>精确匹配</b>唯一志愿者（身份证优先），姓名仅作交叉校验。
+     *
+     * <p>身份证/手机号经 {@link CryptoUtil#hashIdCard}/{@link CryptoUtil#hashPhone} 算哈希查询，不解密。
+     * 必须提供身份证或手机号之一（避免重名歧义）；命中多人或姓名不符直接拒；无匹配返回 null。</p>
+     *
+     * @param idCard 身份证号（明文，可空）
+     * @param phone  手机号（明文，可空）
+     * @param name   姓名（可空，提供则须与命中人一致）
+     * @return 匹配到的志愿者定位视图；无匹配返回 null
+     */
+    public VolunteerBackfillView findForBackfill(String idCard, String phone, String name) {
+        Volunteer v;
+        if (StringUtils.hasText(idCard)) {
+            v = selectSingleByHash(true, cryptoUtil.hashIdCard(idCard));
+        } else if (StringUtils.hasText(phone)) {
+            v = selectSingleByHash(false, cryptoUtil.hashPhone(phone));
+        } else {
+            throw new BusinessException("请提供手机号或身份证以精确匹配志愿者");
+        }
+        if (v == null) {
+            return null;
+        }
+        if (StringUtils.hasText(name) && !name.trim().equals(v.getRealName())) {
+            throw new BusinessException("姓名与手机号/身份证不匹配");
+        }
+        return new VolunteerBackfillView(v.getId(), v.getRealName(), v.getSchool());
+    }
+
+    /** 按身份证/手机号哈希取唯一志愿者；命中多人抛异常，无命中返回 null。 */
+    private Volunteer selectSingleByHash(boolean byIdCard, String hash) {
+        var wrapper = Wrappers.<Volunteer>lambdaQuery();
+        if (byIdCard) {
+            wrapper.eq(Volunteer::getIdCardHash, hash);
+        } else {
+            wrapper.eq(Volunteer::getPhoneHash, hash);
+        }
+        List<Volunteer> list = volunteerMapper.selectList(wrapper);
+        if (list.isEmpty()) {
+            return null;
+        }
+        if (list.size() > 1) {
+            throw new BusinessException("命中多名志愿者，请用更精确的条件");
+        }
+        return list.get(0);
     }
 
     private VolunteerDisplayView toDisplay(Volunteer v) {

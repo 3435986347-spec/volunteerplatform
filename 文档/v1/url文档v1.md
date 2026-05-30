@@ -171,11 +171,11 @@
 | POST | /v/activity/activities/{id}/messages | 发表活动留言 | 需登录 |
 | DELETE | /a/activity/messages/{id} | 删除活动留言 | 需登录（activity:manage） |
 | POST | /a/activity/activities/recurring | 固定日期周期批量发布多场活动（body: `template` 活动模板 + `dates` 显式日期列表 ∪ `recurStart`/`recurEnd`/`weekdays`(1周一…7周日)周期规则；模板时刻按目标日整体平移，并集去重、上限 60 场、整批单事务） | 需登录（activity:publish） |
-| POST | /a/activity/activities/historical | 发布历史活动（之前未发布过，专用补录入口） | 需登录（activity:publish） |
-| POST | /a/activity/activities/{id}/backfills | 活动补录（搜手机号/姓名/身份证加指定时间段→得时长；已发布活动亦得积分、历史活动不得积分；待部长审核） | 需登录（activity:backfill） |
-| GET | /a/activity/backfills | 补录申请列表（待部长审核） | 需登录 |
-| POST | /a/activity/backfills/{id}/approve | 部长审核通过（生效） | 需登录（activity:backfill-audit） |
-| POST | /a/activity/backfills/{id}/reject | 部长审核拒绝 | 需登录（activity:backfill-audit） |
+| POST | /a/activity/activities/historical | 发布历史活动（之前未发布过的已发生活动；置 `is_historical=1`、已结束态，志愿者端不可见，仅作补录载体） | 需登录（activity:publish） |
+| POST | /a/activity/activities/{id}/backfills | 活动补录（body: `idCard`/`phone` 至少一项精确匹配志愿者 + `name` 可选交叉校验 + `slotId` 指定时间段算时长 + `reason`；普通活动得积分、历史活动只记时长；待部长审核，不立即生效） | 需登录（activity:backfill） |
+| GET | /a/activity/backfills | 补录申请列表（`status` 0待审/1通过/2拒绝筛选；带活动/志愿者上下文） | 需登录 |
+| POST | /a/activity/backfills/{id}/approve | 部长审核通过——**通过即终态**：同事务落一条已确认（跳秘书部确认）考勤行，普通活动按倍率发积分、历史活动只记时长 | 需登录（activity:backfill-audit） |
+| POST | /a/activity/backfills/{id}/reject | 部长审核拒绝（不落账） | 需登录（activity:backfill-audit） |
 
 ---
 

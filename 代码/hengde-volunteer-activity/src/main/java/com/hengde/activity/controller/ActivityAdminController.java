@@ -74,6 +74,13 @@ public class ActivityAdminController {
         return Result.ok(activityService.publishRecurring(dto, StpAdminUtil.getLoginIdAsLong()));
     }
 
+    @Operation(summary = "历史活动发布（补录之前未发布过的已发生活动；志愿者端不可见，仅作补录载体）")
+    @SaCheckPermission(value = PermissionCode.ACTIVITY_PUBLISH, type = "admin")
+    @PostMapping("/historical")
+    public Result<Long> publishHistorical(@RequestBody @Valid ActivityCreateDTO dto) {
+        return Result.ok(activityService.publishHistorical(dto, StpAdminUtil.getLoginIdAsLong()));
+    }
+
     @Operation(summary = "修改活动")
     @SaCheckPermission(value = PermissionCode.ACTIVITY_EDIT, type = "admin")
     @PutMapping("/{id}")

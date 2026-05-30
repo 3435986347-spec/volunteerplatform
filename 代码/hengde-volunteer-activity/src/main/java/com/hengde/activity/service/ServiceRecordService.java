@@ -176,8 +176,16 @@ public class ServiceRecordService {
 
     // ---------- 内部 ----------
 
-    /** 积分 = 基数 × 角色倍率 × 违规系数；请假/缺席记 0。 */
-    private int computePoints(Activity activity, ActivityAttendance att, int factor) {
+    /**
+     * 积分 = 基数 × 角色倍率 × 违规系数；请假/缺席记 0。
+     *
+     * <p>纯计算（角色倍率经 {@code activityLeaderService.isVolunteerLeader} / {@code volunteerQueryService.isManager}
+     * 判定），无副作用，供积分发放与<b>活动补录</b>（{@code ActivityBackfillService}）共用同一倍率口径。
+     * 调用方须先在 {@code att} 上置 {@code activityId}/{@code volunteerId}/{@code attendStatus}。</p>
+     *
+     * @param factor 违规系数 0正常/1减半/2不发
+     */
+    public int computePoints(Activity activity, ActivityAttendance att, int factor) {
         Integer st = att.getAttendStatus();
         if (Integer.valueOf(ATTEND_LEAVE).equals(st) || Integer.valueOf(ATTEND_ABSENT).equals(st)) {
             return 0;
