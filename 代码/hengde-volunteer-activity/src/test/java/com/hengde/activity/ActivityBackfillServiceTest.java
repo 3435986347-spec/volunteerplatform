@@ -13,6 +13,7 @@ import com.hengde.activity.entity.ActivityAttendance;
 import com.hengde.activity.entity.ActivitySlot;
 import com.hengde.activity.service.ActivityBackfillService;
 import com.hengde.activity.service.ActivityService;
+import com.hengde.activity.service.ServiceRecordService;
 import com.hengde.auth.dao.VolunteerMapper;
 import com.hengde.auth.entity.Volunteer;
 import com.hengde.common.crypto.CryptoUtil;
@@ -53,6 +54,8 @@ class ActivityBackfillServiceTest {
     private ActivityService activityService;
     @Autowired
     private ActivityBackfillService backfillService;
+    @Autowired
+    private ServiceRecordService serviceRecordService;
     @Autowired
     private ActivityMapper activityMapper;
     @Autowired
@@ -164,8 +167,44 @@ class ActivityBackfillServiceTest {
         ActivityAttendance att = loadAttendance(aid, vid);
         assertEquals(120, att.getServiceMinutes());
         assertEquals(1, att.getSecretaryStatus());
-        assertEquals(0, att.getPointsStatus(), "历史活动只记时长不发积分");
-        assertEquals(0, att.getPointsAward());
+        assertEquals(1, att.getPointsStatus(), "积分流程终结(已发0分)，杜绝后续正常发放二次发分");
+        assertEquals(0, att.getPointsAward(), "历史活动只记时长，积分为0");
+    }
+
+    @Test
+    void requestBackfill_idCardAndPhoneMismatch_rejected() {
+        Long aid = insertActivity(1, 0, 10);
+        Long slot = insertSlot(aid, at(9), at(10));
+        String idCardA = uniqueIdCard();
+        insertVolunteer("匹配甲", null, idCardA);
+        String phoneB = uniquePhone();
+        insertVolunteer("匹配乙", phoneB, null);
+
+        // 身份证属甲、手机号属乙 → 命中不同志愿者，应拒
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> backfillService.requestBackfill(aid, req(phoneB, idCardA, null, slot), REQUESTER));
+        assertTrue(ex.getMessage().contains("未匹配到同一志愿者"));
+    }
+
+    @Test
+    void grantPoints_onHistoricalActivity_rejected() {
+        Long aid = insertActivity(2, 1, 10);   // 历史活动
+        Long vid = insertVolunteer("补录癸", uniquePhone(), null);
+        // 手工造一条已签退+秘书已确认+未发放的考勤行（绕过补录直接试发积分）
+        ActivityAttendance att = new ActivityAttendance();
+        att.setActivityId(aid);
+        att.setVolunteerId(vid);
+        att.setCheckOutTime(at(10));
+        att.setServiceMinutes(60);
+        att.setAttendStatus(1);
+        att.setSecretaryStatus(1);
+        att.setPointsStatus(0);
+        att.setPointsFactor(0);
+        attendanceMapper.insert(att);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> serviceRecordService.grantPoints(att.getId(), 0, AUDITOR));
+        assertTrue(ex.getMessage().contains("历史活动不发放积分"));
     }
 
     @Test

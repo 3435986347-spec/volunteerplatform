@@ -157,6 +157,10 @@ public class ServiceRecordService {
         if (activity == null) {
             throw new BusinessException("活动不存在");
         }
+        // 历史活动只记时长不发积分：其补录已把 points_status 置为已发放(0分)终结流程，此处再兜一道防绕过
+        if (Integer.valueOf(1).equals(activity.getIsHistorical())) {
+            throw new BusinessException("历史活动不发放积分");
+        }
         int award = computePoints(activity, att, factor);
 
         LocalDateTime now = LocalDateTime.now();

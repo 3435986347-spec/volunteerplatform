@@ -120,16 +120,29 @@ public class VolunteerQueryService {
      * @return 匹配到的志愿者定位视图；无匹配返回 null
      */
     public VolunteerBackfillView findForBackfill(String idCard, String phone, String name) {
-        Volunteer v;
-        if (StringUtils.hasText(idCard)) {
-            v = selectSingleByHash(true, cryptoUtil.hashIdCard(idCard));
-        } else if (StringUtils.hasText(phone)) {
-            v = selectSingleByHash(false, cryptoUtil.hashPhone(phone));
-        } else {
+        boolean hasIdCard = StringUtils.hasText(idCard);
+        boolean hasPhone = StringUtils.hasText(phone);
+        if (!hasIdCard && !hasPhone) {
             throw new BusinessException("请提供手机号或身份证以精确匹配志愿者");
         }
-        if (v == null) {
-            return null;
+        Volunteer byIdCard = hasIdCard ? selectSingleByHash(true, cryptoUtil.hashIdCard(idCard)) : null;
+        Volunteer byPhone = hasPhone ? selectSingleByHash(false, cryptoUtil.hashPhone(phone)) : null;
+
+        Volunteer v;
+        if (hasIdCard && hasPhone) {
+            // 两者都传：须命中同一志愿者，否则说明录入冲突（身份证属 A、手机号属 B）——直接拒，避免误补
+            if (byIdCard == null && byPhone == null) {
+                return null;
+            }
+            if (byIdCard == null || byPhone == null || !byIdCard.getId().equals(byPhone.getId())) {
+                throw new BusinessException("身份证与手机号未匹配到同一志愿者，请核对");
+            }
+            v = byIdCard;
+        } else {
+            v = hasIdCard ? byIdCard : byPhone;
+            if (v == null) {
+                return null;
+            }
         }
         if (StringUtils.hasText(name) && !name.trim().equals(v.getRealName())) {
             throw new BusinessException("姓名与手机号/身份证不匹配");

@@ -18,6 +18,7 @@ import com.hengde.common.exception.BusinessException;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -57,7 +58,6 @@ public class ActivityBackfillService {
     private static final int CHECKIN_METHOD_BACKEND = 3;
     private static final int SECRETARY_CONFIRMED = 1;
     private static final int POINTS_GRANTED = 1;
-    private static final int POINTS_NOT_GRANTED = 0;
     private static final int FACTOR_NORMAL = 0;
 
     private ActivityBackfillMapper backfillMapper;
@@ -235,15 +235,19 @@ public class ActivityBackfillService {
         att.setSecretaryStatus(SECRETARY_CONFIRMED);
         att.setSecretaryBy(auditorId);
         att.setSecretaryTime(now);
-        if (Integer.valueOf(GRANT_POINTS).equals(bf.getGrantPoints())) {
-            att.setPointsAward(serviceRecordService.computePoints(activity, att, FACTOR_NORMAL));
-            att.setPointsStatus(POINTS_GRANTED);
-        } else {
-            att.setPointsAward(0);
-            att.setPointsStatus(POINTS_NOT_GRANTED);
-        }
+        // 补录通过即终结积分流程：普通活动发实算分、历史活动记 0 分，二者都置 points_status=已发放，
+        // 杜绝后续正常 grantPoints（CAS 要求 points_status=未发放）把历史补录二次发成积分。
+        int award = Integer.valueOf(GRANT_POINTS).equals(bf.getGrantPoints())
+                ? serviceRecordService.computePoints(activity, att, FACTOR_NORMAL) : 0;
+        att.setPointsAward(award);
+        att.setPointsStatus(POINTS_GRANTED);
         att.setPointsFactor(FACTOR_NORMAL);
-        attendanceMapper.insert(att);
+        try {
+            attendanceMapper.insert(att);
+        } catch (DuplicateKeyException e) {
+            // uk_activity_volunteer 兜底并发：另一笔补录/签到已先落同一(活动,志愿者)考勤行
+            throw new BusinessException("该志愿者已有该活动的考勤记录，补录冲突");
+        }
     }
 
     private boolean hasAttendance(Long activityId, Long volunteerId) {
