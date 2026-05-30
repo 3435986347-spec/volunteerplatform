@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * 考勤/积分变更二次审核（PR2）验证：申请不立即生效、通过才应用（改签退重算时长/改积分）、
- * 拒绝不应用、CAS 防重复审核、非待审不可再审、新值格式校验。
+ * 拒绝不应用、CAS 防重复审核、非待审不可再审、新值格式校验、改积分须已发放、审核人非空。
  * MySQL + Redis 由 Testcontainers 起。<b>需本机有 Docker。</b>
  *
  * @author hengde
@@ -115,6 +115,36 @@ class AttendanceChangeServiceTest {
     }
 
     @Test
+    void requestChange_pointsNotGranted_rejected() {
+        // 积分未发放（points_status=0）时申请改积分应被拒，否则后续 grantPoints() 会覆盖修正
+        Long attId = insertAttendance(BASE, BASE.plusHours(1), 60, 100, 0);
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> changeService.requestChange(attId, 3, "150", "补发", REQUESTER));
+        assertTrue(ex.getMessage().contains("积分尚未发放"));
+    }
+
+    @Test
+    void approve_nullAuditor_rejected() {
+        Long attId = insertAttendance(BASE, BASE.plusHours(1), 60, 100);
+        Long changeId = changeService.requestChange(attId, 3, "150", "补发", REQUESTER);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> changeService.approve(changeId, "x", null));
+        assertTrue(ex.getMessage().contains("审核人"));
+        assertEquals(100, attendanceMapper.selectById(attId).getPointsAward(), "审核人为空被拒，不应应用变更");
+    }
+
+    @Test
+    void reject_nullAuditor_rejected() {
+        Long attId = insertAttendance(BASE, BASE.plusHours(1), 60, 100);
+        Long changeId = changeService.requestChange(attId, 3, "150", "补发", REQUESTER);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> changeService.reject(changeId, "x", null));
+        assertTrue(ex.getMessage().contains("审核人"));
+    }
+
+    @Test
     void list_byStatus_returnsPending() {
         Long attId = insertAttendance(BASE, BASE.plusHours(1), 60, 100);
         changeService.requestChange(attId, 3, "150", "补发", REQUESTER);
@@ -129,6 +159,10 @@ class AttendanceChangeServiceTest {
     // ---------- helpers ----------
 
     private Long insertAttendance(LocalDateTime checkIn, LocalDateTime checkOut, int minutes, int points) {
+        return insertAttendance(checkIn, checkOut, minutes, points, 1);   // 默认积分已发放
+    }
+
+    private Long insertAttendance(LocalDateTime checkIn, LocalDateTime checkOut, int minutes, int points, int pointsStatus) {
         ActivityAttendance att = new ActivityAttendance();
         att.setActivityId(7001L);
         att.setVolunteerId(8001L + System.nanoTime() % 100000);
@@ -138,7 +172,7 @@ class AttendanceChangeServiceTest {
         att.setAttendStatus(1);   // 正常到位 → 改时间会重算
         att.setPointsAward(points);
         att.setSecretaryStatus(1);
-        att.setPointsStatus(1);
+        att.setPointsStatus(pointsStatus);
         att.setPointsFactor(0);
         attendanceMapper.insert(att);
         return att.getId();

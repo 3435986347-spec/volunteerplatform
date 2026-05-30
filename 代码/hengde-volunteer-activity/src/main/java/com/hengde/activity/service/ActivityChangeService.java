@@ -13,6 +13,7 @@ import com.hengde.common.page.PageResult;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -31,6 +32,10 @@ import java.util.stream.Collectors;
  * 应用失败则整体回滚（连审核状态一并回滚）。改签到/签退会按 签退−签到 重算 {@code service_minutes}
  * （请假/缺席记 0，缺一边时长保持原值）；改积分直接覆盖 {@code points_award}。</p>
  *
+ * <p><b>改积分前置：</b>仅当该考勤 {@code points_status=已发放} 才允许申请改积分——否则随后的
+ * {@code ServiceRecordService.grantPoints()} 仍会按公式重算并覆盖本次修正（其 CAS 条件是 {@code points_status=未发放}），
+ * 已审核通过的修正会被静默冲掉。改签到/签退不受此限：积分基于 {@code points_base} 计算，与时长解耦。</p>
+ *
  * @author hengde
  */
 @Service
@@ -46,6 +51,9 @@ public class ActivityChangeService {
 
     private static final int ATTEND_LEAVE = 2;
     private static final int ATTEND_ABSENT = 4;
+
+    /** 积分发放状态：已发放（与 {@code ServiceRecordService.POINTS_GRANTED} 对齐）。 */
+    private static final int POINTS_GRANTED = 1;
 
     private ActivityAttendanceChangeMapper changeMapper;
     private ActivityAttendanceMapper attendanceMapper;
@@ -70,12 +78,20 @@ public class ActivityChangeService {
         if (requesterId == null) {
             throw new BusinessException("操作人不能为空");
         }
+        if (!StringUtils.hasText(newValue)) {
+            throw new BusinessException("新值不能为空");
+        }
         ActivityAttendance att = attendanceMapper.selectById(attendanceId);
         if (att == null) {
             throw new BusinessException("考勤记录不存在");
         }
         String oldValue = snapshotOldValue(att, changeType);   // 同时校验 changeType 合法
         validateNewValue(changeType, newValue);
+        // 改积分只允许在积分「已发放」后申请：否则后续 grantPoints() 仍会按公式重算并覆盖掉本次修正（CAS 要求 points_status=未发放）。
+        if (Integer.valueOf(CHANGE_POINTS).equals(changeType)
+                && !Integer.valueOf(POINTS_GRANTED).equals(att.getPointsStatus())) {
+            throw new BusinessException("积分尚未发放，无法申请修改积分");
+        }
 
         ActivityAttendanceChange ch = new ActivityAttendanceChange();
         ch.setAttendanceId(attendanceId);
@@ -115,6 +131,9 @@ public class ActivityChangeService {
      */
     @Transactional(rollbackFor = Exception.class)
     public void approve(Long changeId, String auditReason, Long auditorId) {
+        if (auditorId == null) {
+            throw new BusinessException("审核人不能为空");
+        }
         ActivityAttendanceChange ch = changeMapper.selectById(changeId);
         if (ch == null || !Integer.valueOf(STATUS_PENDING).equals(ch.getStatus())) {
             throw new BusinessException("变更申请不存在或已审核");
@@ -137,6 +156,9 @@ public class ActivityChangeService {
     /** 部长二次审核拒绝：CAS 待审→拒绝，不应用变更。 */
     @Transactional(rollbackFor = Exception.class)
     public void reject(Long changeId, String auditReason, Long auditorId) {
+        if (auditorId == null) {
+            throw new BusinessException("审核人不能为空");
+        }
         LocalDateTime now = LocalDateTime.now();
         int rows = changeMapper.update(null, Wrappers.<ActivityAttendanceChange>lambdaUpdate()
                 .set(ActivityAttendanceChange::getStatus, STATUS_REJECTED)

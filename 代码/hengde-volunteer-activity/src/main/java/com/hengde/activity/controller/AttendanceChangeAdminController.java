@@ -58,7 +58,7 @@ public class AttendanceChangeAdminController {
     @Operation(summary = "部长二次审核通过（应用变更）")
     @SaCheckPermission(value = PermissionCode.ACTIVITY_ATTENDANCE_AUDIT, type = "admin")
     @PostMapping("/attendance-changes/{id}/approve")
-    public Result<Void> approve(@PathVariable Long id, @RequestBody(required = false) AttendanceChangeAuditDTO dto) {
+    public Result<Void> approve(@PathVariable Long id, @RequestBody(required = false) @Valid AttendanceChangeAuditDTO dto) {
         String reason = dto == null ? null : dto.getReason();
         activityChangeService.approve(id, reason, StpAdminUtil.getLoginIdAsLong());
         return Result.ok();
@@ -67,7 +67,7 @@ public class AttendanceChangeAdminController {
     @Operation(summary = "部长二次审核拒绝")
     @SaCheckPermission(value = PermissionCode.ACTIVITY_ATTENDANCE_AUDIT, type = "admin")
     @PostMapping("/attendance-changes/{id}/reject")
-    public Result<Void> reject(@PathVariable Long id, @RequestBody(required = false) AttendanceChangeAuditDTO dto) {
+    public Result<Void> reject(@PathVariable Long id, @RequestBody(required = false) @Valid AttendanceChangeAuditDTO dto) {
         String reason = dto == null ? null : dto.getReason();
         activityChangeService.reject(id, reason, StpAdminUtil.getLoginIdAsLong());
         return Result.ok();
