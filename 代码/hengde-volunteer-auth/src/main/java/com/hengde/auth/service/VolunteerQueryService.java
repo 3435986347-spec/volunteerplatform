@@ -75,6 +75,27 @@ public class VolunteerQueryService {
     }
 
     /**
+     * 批量取志愿者姓名（id → realName），仅 {@code select} 姓名列、<b>不解密手机号</b>。
+     *
+     * <p>供公开展示场景（如活动留言列表）只取姓名用，避免 {@link #listDisplayByIds} 把明文手机号
+     * 解密带到调用方内存。无姓名（游客未实名）的不入 Map。</p>
+     *
+     * @param volunteerIds 志愿者 id 集合
+     * @return id -> 姓名；空集合返回空 Map
+     */
+    public Map<Long, String> listNamesByIds(Collection<Long> volunteerIds) {
+        if (volunteerIds == null || volunteerIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Volunteer> list = volunteerMapper.selectList(Wrappers.<Volunteer>lambdaQuery()
+                .select(Volunteer::getId, Volunteer::getRealName)
+                .in(Volunteer::getId, volunteerIds));
+        return list.stream()
+                .filter(v -> v.getRealName() != null)
+                .collect(Collectors.toMap(Volunteer::getId, Volunteer::getRealName));
+    }
+
+    /**
      * 该志愿者是否被标记为「管理团队」（V11 manager_flag）。供 activity 积分发放判定 ×1.2 倍率。
      *
      * @param volunteerId 志愿者 id

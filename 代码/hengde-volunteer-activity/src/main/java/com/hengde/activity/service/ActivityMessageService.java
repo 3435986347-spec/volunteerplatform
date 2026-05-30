@@ -4,10 +4,10 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hengde.activity.dao.ActivityMapper;
 import com.hengde.activity.dao.ActivityMessageMapper;
+import com.hengde.activity.entity.Activity;
 import com.hengde.activity.entity.ActivityMessage;
 import com.hengde.activity.vo.ActivityMessageVO;
 import com.hengde.auth.service.VolunteerQueryService;
-import com.hengde.auth.vo.VolunteerDisplayView;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
@@ -21,8 +21,10 @@ import java.util.Map;
 /**
  * 活动留言（V15，第 3 批·PR1）：志愿者发表/查看活动留言，管理端下架。
  *
- * <p>列表对所有已登录用户可见（仅 {@code status=1} 正常项，逻辑删除由 MyBatis-Plus 自动排除）；
- * 发表人姓名经 {@link VolunteerQueryService#listDisplayByIds} 批量取，仅取姓名、不外泄手机号。
+ * <p>发表/查看都收敛到「仅已发布活动」（与 {@code ActivityService.detailForVolunteer} 同口径，
+ * 草稿/已取消/历史活动等志愿者端不可见的一律报「活动不存在」）。列表对所有已登录用户可见（仅
+ * {@code status=1} 正常项，逻辑删除由 MyBatis-Plus 自动排除）；发表人姓名经
+ * {@link VolunteerQueryService#listNamesByIds} 批量取（只 select 姓名列、不解密手机号）。
  * 管理端 {@code activity:manage} 删除走逻辑删除（下架）。</p>
  *
  * @author hengde
@@ -30,7 +32,12 @@ import java.util.Map;
 @Service
 public class ActivityMessageService {
 
+    /** 留言正常态 */
     private static final int STATUS_NORMAL = 1;
+    /** 活动已发布（仅此态可发/看留言，与志愿者端详情口径一致） */
+    private static final int ACTIVITY_PUBLISHED = 1;
+    /** 留言内容长度上限（与 DB VARCHAR(500) 一致） */
+    private static final int MAX_CONTENT_LEN = 500;
 
     private ActivityMessageMapper messageMapper;
     private ActivityMapper activityMapper;
@@ -51,14 +58,15 @@ public class ActivityMessageService {
         this.volunteerQueryService = volunteerQueryService;
     }
 
-    /** 发表留言：校验活动存在 + 内容非空，落 status=1 正常。 */
+    /** 发表留言：校验活动已发布 + 内容非空且不超长，落 status=1 正常。 */
     public Long post(Long activityId, Long volunteerId, String content) {
         if (!StringUtils.hasText(content)) {
             throw new BusinessException("留言内容不能为空");
         }
-        if (activityMapper.selectById(activityId) == null) {
-            throw new BusinessException("活动不存在");
+        if (content.length() > MAX_CONTENT_LEN) {
+            throw new BusinessException("留言内容不超过 500 字");
         }
+        requirePublishedActivity(activityId);
         ActivityMessage msg = new ActivityMessage();
         msg.setActivityId(activityId);
         msg.setVolunteerId(volunteerId);
@@ -68,8 +76,9 @@ public class ActivityMessageService {
         return msg.getId();
     }
 
-    /** 活动留言列表：仅正常项，按 id 倒序，带发表人姓名。 */
+    /** 活动留言列表：仅已发布活动、仅正常项，按 id 倒序，带发表人姓名。 */
     public PageResult<ActivityMessageVO> list(Long activityId, PageQuery query) {
+        requirePublishedActivity(activityId);
         Page<ActivityMessage> page = query.toPage();
         messageMapper.selectPage(page, Wrappers.<ActivityMessage>lambdaQuery()
                 .eq(ActivityMessage::getActivityId, activityId)
@@ -78,7 +87,7 @@ public class ActivityMessageService {
 
         List<Long> volunteerIds = page.getRecords().stream()
                 .map(ActivityMessage::getVolunteerId).distinct().toList();
-        Map<Long, VolunteerDisplayView> displayById = volunteerQueryService.listDisplayByIds(volunteerIds);
+        Map<Long, String> nameById = volunteerQueryService.listNamesByIds(volunteerIds);
 
         List<ActivityMessageVO> vos = page.getRecords().stream().map(m -> {
             ActivityMessageVO vo = new ActivityMessageVO();
@@ -87,10 +96,7 @@ public class ActivityMessageService {
             vo.setVolunteerId(m.getVolunteerId());
             vo.setContent(m.getContent());
             vo.setCreateTime(m.getCreateTime());
-            VolunteerDisplayView d = displayById.get(m.getVolunteerId());
-            if (d != null) {
-                vo.setVolunteerName(d.realName());
-            }
+            vo.setVolunteerName(nameById.get(m.getVolunteerId()));
             return vo;
         }).toList();
         return PageResult.of(vos, page.getTotal(), page.getCurrent(), page.getSize());
@@ -100,6 +106,14 @@ public class ActivityMessageService {
     public void delete(Long messageId) {
         if (messageMapper.deleteById(messageId) != 1) {
             throw new BusinessException("留言不存在或已删除");
+        }
+    }
+
+    /** 活动须存在且已发布（草稿/已取消/历史活动等志愿者端不可见的统一报「活动不存在」）。 */
+    private void requirePublishedActivity(Long activityId) {
+        Activity a = activityMapper.selectById(activityId);
+        if (a == null || !Integer.valueOf(ACTIVITY_PUBLISHED).equals(a.getStatus())) {
+            throw new BusinessException("活动不存在");
         }
     }
 }

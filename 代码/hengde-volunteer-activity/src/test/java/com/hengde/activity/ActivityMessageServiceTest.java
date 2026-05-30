@@ -79,14 +79,45 @@ class ActivityMessageServiceTest {
         assertTrue(ex.getMessage().contains("留言内容不能为空"));
     }
 
+    @Test
+    void post_tooLongContent_rejected() {
+        Long aid = insertActivity();
+        Long vid = insertVolunteer("留言人戊");
+        String tooLong = "字".repeat(501);
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> messageService.post(aid, vid, tooLong));
+        assertTrue(ex.getMessage().contains("不超过 500"));
+    }
+
+    @Test
+    void post_notPublishedActivity_rejected() {
+        Long aid = insertActivity(2);   // 已结束/历史态：志愿者端不可见
+        Long vid = insertVolunteer("留言人己");
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> messageService.post(aid, vid, "对不可见活动留言"));
+        assertTrue(ex.getMessage().contains("活动不存在"));
+    }
+
+    @Test
+    void list_notPublishedActivity_rejected() {
+        Long aid = insertActivity(0);   // 草稿态
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> messageService.list(aid, new PageQuery()));
+        assertTrue(ex.getMessage().contains("活动不存在"));
+    }
+
     // ---------- helpers ----------
 
     private Long insertActivity() {
+        return insertActivity(1);   // 默认已发布
+    }
+
+    private Long insertActivity(int status) {
         Activity a = new Activity();
         a.setTitle("留言活动_" + System.nanoTime());
         a.setStartTime(LocalDateTime.now().minusHours(1));
         a.setEndTime(LocalDateTime.now().plusHours(1));
-        a.setStatus(1);
+        a.setStatus(status);
         activityMapper.insert(a);
         a.setSerialNo(a.getId());
         activityMapper.updateById(a);
