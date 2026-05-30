@@ -158,7 +158,7 @@
 
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
-| POST | /a/activity/attendances/{id}/changes | 组织部申请改签到/签退/积分（body: `changeType` 1签到时间/2签退时间/3积分、`newValue` 时间ISO或整数、`reason`；待审，不立即生效） | 需登录（activity:attendance-edit，组织部） |
+| POST | /a/activity/attendances/{id}/changes | 组织部申请改签到/签退/积分（body: `changeType` 1签到时间/2签退时间/3积分、`newValue` 时间ISO或整数、`reason`；待审，不立即生效。**`changeType=3` 仅允许积分已发放（`points_status=1`）的记录**——未发放前改积分会被随后的发放重算覆盖，故组织部端在未发放时不应展示「改积分」入口） | 需登录（activity:attendance-edit，组织部） |
 | GET | /a/activity/attendance-changes | 变更申请列表（`status` 0待审/1通过/2拒绝筛选；带活动/志愿者上下文） | 需登录 |
 | POST | /a/activity/attendance-changes/{id}/approve | 部长二次审核通过（应用变更；改签到/签退按 签退−签到 重算时长，改积分覆盖） | 需登录（activity:attendance-audit，部长） |
 | POST | /a/activity/attendance-changes/{id}/reject | 部长二次审核拒绝 | 需登录（activity:attendance-audit） |
