@@ -170,7 +170,7 @@
 | GET | /v/activity/activities/{id}/messages | 活动留言列表 | 需登录 |
 | POST | /v/activity/activities/{id}/messages | 发表活动留言 | 需登录 |
 | DELETE | /a/activity/messages/{id} | 删除活动留言 | 需登录（activity:manage） |
-| POST | /a/activity/activities/recurring | 固定日期/人数/时间段批量发布多场活动 | 需登录（activity:publish） |
+| POST | /a/activity/activities/recurring | 固定日期周期批量发布多场活动（body: `template` 活动模板 + `dates` 显式日期列表 ∪ `recurStart`/`recurEnd`/`weekdays`(1周一…7周日)周期规则；模板时刻按目标日整体平移，并集去重、上限 60 场、整批单事务） | 需登录（activity:publish） |
 | POST | /a/activity/activities/historical | 发布历史活动（之前未发布过，专用补录入口） | 需登录（activity:publish） |
 | POST | /a/activity/activities/{id}/backfills | 活动补录（搜手机号/姓名/身份证加指定时间段→得时长；已发布活动亦得积分、历史活动不得积分；待部长审核） | 需登录（activity:backfill） |
 | GET | /a/activity/backfills | 补录申请列表（待部长审核） | 需登录 |

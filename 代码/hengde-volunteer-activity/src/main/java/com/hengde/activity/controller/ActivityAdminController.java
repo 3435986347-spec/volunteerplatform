@@ -4,6 +4,7 @@ import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.hengde.activity.constant.PermissionCode;
 import com.hengde.activity.dto.ActivityCreateDTO;
 import com.hengde.activity.dto.ActivityUpdateDTO;
+import com.hengde.activity.dto.RecurringActivityDTO;
 import com.hengde.activity.service.ActivityService;
 import com.hengde.activity.vo.ActivityAdminDetailVO;
 import com.hengde.activity.vo.ActivityListVO;
@@ -14,6 +15,7 @@ import com.hengde.common.result.Result;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -63,6 +65,13 @@ public class ActivityAdminController {
     @PostMapping
     public Result<Long> publish(@RequestBody @Valid ActivityCreateDTO dto) {
         return Result.ok(activityService.publish(dto, StpAdminUtil.getLoginIdAsLong()));
+    }
+
+    @Operation(summary = "固定日期周期发布（按显式日期/星期几规则批量发布多场）")
+    @SaCheckPermission(value = PermissionCode.ACTIVITY_PUBLISH, type = "admin")
+    @PostMapping("/recurring")
+    public Result<List<Long>> publishRecurring(@RequestBody @Valid RecurringActivityDTO dto) {
+        return Result.ok(activityService.publishRecurring(dto, StpAdminUtil.getLoginIdAsLong()));
     }
 
     @Operation(summary = "修改活动")

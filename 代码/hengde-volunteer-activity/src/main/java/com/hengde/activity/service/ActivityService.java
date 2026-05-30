@@ -8,6 +8,7 @@ import com.hengde.activity.dao.ActivitySlotMapper;
 import com.hengde.activity.dto.ActivityCreateDTO;
 import com.hengde.activity.dto.ActivitySlotDTO;
 import com.hengde.activity.dto.ActivityUpdateDTO;
+import com.hengde.activity.dto.RecurringActivityDTO;
 import com.hengde.activity.entity.Activity;
 import com.hengde.activity.entity.ActivityEnrollment;
 import com.hengde.activity.entity.ActivitySlot;
@@ -27,8 +28,14 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * 活动发布/管理（管理端）。
@@ -50,6 +57,9 @@ public class ActivityService {
 
     private static final BigDecimal DEFAULT_LEADER_MULTIPLIER = new BigDecimal("1.4");
     private static final BigDecimal DEFAULT_MANAGER_MULTIPLIER = new BigDecimal("1.2");
+
+    /** 周期发布单次批量上限（防失控） */
+    private static final int MAX_RECURRING = 60;
 
     private ActivityMapper activityMapper;
     private ActivitySlotMapper activitySlotMapper;
@@ -75,6 +85,34 @@ public class ActivityService {
      */
     @Transactional
     public Long publish(ActivityCreateDTO dto, Long adminId) {
+        return publishOne(dto, adminId);
+    }
+
+    /**
+     * 固定日期周期发布：以一份模板按多个目标日批量发布多场活动（第 3 批·PR2）。
+     *
+     * <p>目标日 = 显式日期 ∪ 周期规则展开，去重排序；空集合或超 {@value #MAX_RECURRING} 场拒绝。
+     * 每个目标日按相对锚点日（模板 startTime 的日期）的天数差整体平移模板的全部日期型字段后走
+     * {@link #publishOne}（逐场过 {@link #validateDto}、各自分配编号）。整批单事务，全成或全败。</p>
+     *
+     * @return 新建活动 id（按目标日升序）
+     */
+    @Transactional
+    public List<Long> publishRecurring(RecurringActivityDTO dto, Long adminId) {
+        ActivityCreateDTO template = dto.getTemplate();
+        List<LocalDate> targetDates = resolveTargetDates(dto);
+        LocalDate anchorDate = template.getStartTime().toLocalDate();
+
+        List<Long> ids = new ArrayList<>(targetDates.size());
+        for (LocalDate d : targetDates) {
+            long dayShift = ChronoUnit.DAYS.between(anchorDate, d);
+            ids.add(publishOne(shiftTemplate(template, dayShift), adminId));
+        }
+        return ids;
+    }
+
+    /** 发布单场活动（创建即发布）：校验 + 默认值 + 插入 + 编号=自增 id + 时间段。供 publish/publishRecurring 共用。 */
+    private Long publishOne(ActivityCreateDTO dto, Long adminId) {
         validateDto(dto);
 
         Activity activity = new Activity();
@@ -90,6 +128,71 @@ public class ActivityService {
 
         insertSlots(activity.getId(), dto.getSlots());
         return activity.getId();
+    }
+
+    /** 解析周期发布目标日集合：显式日期 ∪ 规则展开，去重排序 + 非空/上限校验。 */
+    private List<LocalDate> resolveTargetDates(RecurringActivityDTO dto) {
+        TreeSet<LocalDate> set = new TreeSet<>();
+        if (dto.getDates() != null) {
+            set.addAll(dto.getDates());
+        }
+        boolean hasRule = dto.getRecurStart() != null || dto.getRecurEnd() != null
+                || (dto.getWeekdays() != null && !dto.getWeekdays().isEmpty());
+        if (hasRule) {
+            if (dto.getRecurStart() == null || dto.getRecurEnd() == null
+                    || dto.getWeekdays() == null || dto.getWeekdays().isEmpty()) {
+                throw new BusinessException("周期规则需同时提供起始日期、结束日期与星期几");
+            }
+            if (dto.getRecurEnd().isBefore(dto.getRecurStart())) {
+                throw new BusinessException("周期结束日期不能早于起始日期");
+            }
+            for (Integer w : dto.getWeekdays()) {
+                if (w == null || w < 1 || w > 7) {
+                    throw new BusinessException("星期几取值 1~7（1周一…7周日）");
+                }
+            }
+            Set<Integer> wd = new HashSet<>(dto.getWeekdays());
+            for (LocalDate d = dto.getRecurStart(); !d.isAfter(dto.getRecurEnd()); d = d.plusDays(1)) {
+                if (wd.contains(d.getDayOfWeek().getValue())) {
+                    set.add(d);
+                }
+            }
+        }
+        if (set.isEmpty()) {
+            throw new BusinessException("未解析到任何发布日期（请提供显式日期或完整周期规则）");
+        }
+        if (set.size() > MAX_RECURRING) {
+            throw new BusinessException("批量发布场次过多（上限 " + MAX_RECURRING + " 场）");
+        }
+        return new ArrayList<>(set);
+    }
+
+    /** 克隆模板并把全部日期型字段（含各时间段）平移 dayShift 天，时刻不变（中国无 DST）。 */
+    private ActivityCreateDTO shiftTemplate(ActivityCreateDTO template, long dayShift) {
+        ActivityCreateDTO c = new ActivityCreateDTO();
+        BeanUtils.copyProperties(template, c);   // LocalDateTime 不可变；slots 为共享引用，下方整体覆盖
+        c.setStartTime(shiftDays(template.getStartTime(), dayShift));
+        c.setEndTime(shiftDays(template.getEndTime(), dayShift));
+        c.setEnrollDeadline(shiftDays(template.getEnrollDeadline(), dayShift));
+        c.setCancelDeadline(shiftDays(template.getCancelDeadline(), dayShift));
+        c.setEnrollOpenManager(shiftDays(template.getEnrollOpenManager(), dayShift));
+        c.setEnrollOpenLeader(shiftDays(template.getEnrollOpenLeader(), dayShift));
+        c.setEnrollOpenVolunteer(shiftDays(template.getEnrollOpenVolunteer(), dayShift));
+
+        List<ActivitySlotDTO> slots = new ArrayList<>();
+        for (ActivitySlotDTO s : template.getSlots()) {
+            ActivitySlotDTO ns = new ActivitySlotDTO();
+            BeanUtils.copyProperties(s, ns);
+            ns.setStartTime(shiftDays(s.getStartTime(), dayShift));
+            ns.setEndTime(shiftDays(s.getEndTime(), dayShift));
+            slots.add(ns);
+        }
+        c.setSlots(slots);
+        return c;
+    }
+
+    private LocalDateTime shiftDays(LocalDateTime t, long dayShift) {
+        return t == null ? null : t.plusDays(dayShift);
     }
 
     /**
