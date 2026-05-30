@@ -341,15 +341,17 @@ class ActivityAttendanceServiceTest {
     @Test
     void publishWithMinJoinMinutes_echoedInAdminDetail() {
         // 回归 High：发布入参可配「已参加时长门槛」，落库并在管理端详情回显
+        LocalDateTime start = LocalDateTime.now().minusMinutes(10);
+        LocalDateTime end = start.plusHours(3);
         ActivitySlotDTO slot = new ActivitySlotDTO();
         slot.setProjectName("项目A");
-        slot.setStartTime(LocalDateTime.now());
-        slot.setEndTime(LocalDateTime.now().plusHours(2));
+        slot.setStartTime(start);                 // 与活动同起点，避免落在活动范围之外
+        slot.setEndTime(start.plusHours(2));
         slot.setNeedCount(10);
         ActivityCreateDTO dto = new ActivityCreateDTO();
         dto.setTitle("时长门槛活动_" + System.nanoTime());
-        dto.setStartTime(LocalDateTime.now());
-        dto.setEndTime(LocalDateTime.now().plusHours(3));
+        dto.setStartTime(start);
+        dto.setEndTime(end);
         dto.setRequireMinJoinMinutes(120);
         dto.setSlots(List.of(slot));
 

@@ -158,9 +158,9 @@
 
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
-| POST | /a/activity/attendances/{id}/changes | 组织部申请改签到/签退/积分（待审，不立即生效） | 需登录（activity:attendance-edit，组织部） |
-| GET | /a/activity/attendance-changes | 变更申请列表（按状态筛选） | 需登录 |
-| POST | /a/activity/attendance-changes/{id}/approve | 部长二次审核通过（应用变更） | 需登录（activity:attendance-audit，部长） |
+| POST | /a/activity/attendances/{id}/changes | 组织部申请改签到/签退/积分（body: `changeType` 1签到时间/2签退时间/3积分、`newValue` 时间ISO或整数、`reason`；待审，不立即生效） | 需登录（activity:attendance-edit，组织部） |
+| GET | /a/activity/attendance-changes | 变更申请列表（`status` 0待审/1通过/2拒绝筛选；带活动/志愿者上下文） | 需登录 |
+| POST | /a/activity/attendance-changes/{id}/approve | 部长二次审核通过（应用变更；改签到/签退按 签退−签到 重算时长，改积分覆盖） | 需登录（activity:attendance-audit，部长） |
 | POST | /a/activity/attendance-changes/{id}/reject | 部长二次审核拒绝 | 需登录（activity:attendance-audit） |
 
 ### 活动发布增强 / 留言 / 补录（V1.1 第 3 批）
