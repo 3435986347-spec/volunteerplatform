@@ -20,6 +20,7 @@ import org.springframework.context.annotation.Import;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -115,6 +116,42 @@ class RecurringPublishTest {
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> activityService.publishRecurring(dto, ADMIN));
         assertTrue(ex.getMessage().contains("活动整体时间范围"));
+    }
+
+    @Test
+    void nullDateElement_rejected() {
+        RecurringActivityDTO dto = base();
+        List<LocalDate> dates = new ArrayList<>();
+        dates.add(MON_JUN_1);
+        dates.add(null);   // service 层兜底（DTO @NotNull 仅在经 HTTP @Valid 时触发）
+        dto.setDates(dates);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> activityService.publishRecurring(dto, ADMIN));
+        assertTrue(ex.getMessage().contains("发布日期不能为空"));
+    }
+
+    @Test
+    void tooLongSpan_rejected() {
+        RecurringActivityDTO dto = base();
+        dto.setRecurStart(MON_JUN_1);
+        dto.setRecurEnd(MON_JUN_1.plusYears(2));   // 跨度 > 366 天 → 早拒，不遍历
+        dto.setWeekdays(List.of(1));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> activityService.publishRecurring(dto, ADMIN));
+        assertTrue(ex.getMessage().contains("周期跨度过大"));
+    }
+
+    @Test
+    void templateMissingStartTime_rejected() {
+        RecurringActivityDTO dto = base();
+        dto.getTemplate().setStartTime(null);   // 内部边界兜底（不经 controller @Valid）
+        dto.setDates(List.of(MON_JUN_1));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> activityService.publishRecurring(dto, ADMIN));
+        assertTrue(ex.getMessage().contains("开始/结束时间不能为空"));
     }
 
     @Test

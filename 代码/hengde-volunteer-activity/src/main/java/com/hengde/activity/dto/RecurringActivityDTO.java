@@ -25,8 +25,8 @@ public class RecurringActivityDTO {
     @Valid
     private ActivityCreateDTO template;
 
-    /** 显式日期列表（可空） */
-    private List<LocalDate> dates;
+    /** 显式日期列表（可空；元素不能为 null） */
+    private List<@NotNull(message = "发布日期不能为空") LocalDate> dates;
 
     /** 周期规则：起始日期（含；与 recurEnd/weekdays 须同时提供） */
     private LocalDate recurStart;

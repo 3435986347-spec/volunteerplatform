@@ -61,6 +61,9 @@ public class ActivityService {
     /** 周期发布单次批量上限（防失控） */
     private static final int MAX_RECURRING = 60;
 
+    /** 周期规则展开的最大跨度天数（防误填年份导致长循环占线程） */
+    private static final long MAX_RECURRING_SPAN_DAYS = 366;
+
     private ActivityMapper activityMapper;
     private ActivitySlotMapper activitySlotMapper;
     private ActivityEnrollmentMapper activityEnrollmentMapper;
@@ -99,7 +102,16 @@ public class ActivityService {
      */
     @Transactional
     public List<Long> publishRecurring(RecurringActivityDTO dto, Long adminId) {
+        if (dto == null || dto.getTemplate() == null) {
+            throw new BusinessException("活动模板不能为空");
+        }
         ActivityCreateDTO template = dto.getTemplate();
+        if (template.getStartTime() == null || template.getEndTime() == null) {
+            throw new BusinessException("活动模板开始/结束时间不能为空");
+        }
+        if (template.getSlots() == null || template.getSlots().isEmpty()) {
+            throw new BusinessException("活动模板至少需要一个时间段");
+        }
         List<LocalDate> targetDates = resolveTargetDates(dto);
         LocalDate anchorDate = template.getStartTime().toLocalDate();
 
@@ -130,11 +142,19 @@ public class ActivityService {
         return activity.getId();
     }
 
-    /** 解析周期发布目标日集合：显式日期 ∪ 规则展开，去重排序 + 非空/上限校验。 */
+    /** 解析周期发布目标日集合：显式日期 ∪ 规则展开，去重排序 + 非空/跨度/上限校验。 */
     private List<LocalDate> resolveTargetDates(RecurringActivityDTO dto) {
         TreeSet<LocalDate> set = new TreeSet<>();
         if (dto.getDates() != null) {
-            set.addAll(dto.getDates());
+            for (LocalDate d : dto.getDates()) {
+                if (d == null) {
+                    throw new BusinessException("发布日期不能为空");
+                }
+                set.add(d);
+            }
+            if (set.size() > MAX_RECURRING) {
+                throw new BusinessException("批量发布场次过多（上限 " + MAX_RECURRING + " 场）");
+            }
         }
         boolean hasRule = dto.getRecurStart() != null || dto.getRecurEnd() != null
                 || (dto.getWeekdays() != null && !dto.getWeekdays().isEmpty());
@@ -146,6 +166,9 @@ public class ActivityService {
             if (dto.getRecurEnd().isBefore(dto.getRecurStart())) {
                 throw new BusinessException("周期结束日期不能早于起始日期");
             }
+            if (ChronoUnit.DAYS.between(dto.getRecurStart(), dto.getRecurEnd()) > MAX_RECURRING_SPAN_DAYS) {
+                throw new BusinessException("周期跨度过大（上限 " + MAX_RECURRING_SPAN_DAYS + " 天）");
+            }
             for (Integer w : dto.getWeekdays()) {
                 if (w == null || w < 1 || w > 7) {
                     throw new BusinessException("星期几取值 1~7（1周一…7周日）");
@@ -155,14 +178,14 @@ public class ActivityService {
             for (LocalDate d = dto.getRecurStart(); !d.isAfter(dto.getRecurEnd()); d = d.plusDays(1)) {
                 if (wd.contains(d.getDayOfWeek().getValue())) {
                     set.add(d);
+                    if (set.size() > MAX_RECURRING) {
+                        throw new BusinessException("批量发布场次过多（上限 " + MAX_RECURRING + " 场）");
+                    }
                 }
             }
         }
         if (set.isEmpty()) {
             throw new BusinessException("未解析到任何发布日期（请提供显式日期或完整周期规则）");
-        }
-        if (set.size() > MAX_RECURRING) {
-            throw new BusinessException("批量发布场次过多（上限 " + MAX_RECURRING + " 场）");
         }
         return new ArrayList<>(set);
     }
