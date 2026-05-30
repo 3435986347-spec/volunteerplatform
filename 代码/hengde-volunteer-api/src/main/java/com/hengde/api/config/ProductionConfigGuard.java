@@ -78,6 +78,12 @@ public class ProductionConfigGuard {
         if (authProperties.isDevLoginEnabled()) {
             problems.add("hengde.auth.dev-login-enabled 必须为 false（开发登录会绕过微信鉴权，禁止上生产）");
         }
+        if (authProperties.getAgreementVersion() == null || authProperties.getAgreementVersion().isBlank()) {
+            problems.add("hengde.auth.agreement-version 不能为空");
+        }
+        if (isBlankOrDev(authProperties.getAgreementText(), AuthProperties.DEFAULT_AGREEMENT_TEXT)) {
+            problems.add("hengde.auth.agreement-text 仍为占位/空文本（须配置正式协议正文，否则志愿者签的是占位协议）");
+        }
         if (!problems.isEmpty()) {
             throw new IllegalStateException("生产配置校验未通过（profile=" + Arrays.toString(active) + "）：\n - "
                     + String.join("\n - ", problems)

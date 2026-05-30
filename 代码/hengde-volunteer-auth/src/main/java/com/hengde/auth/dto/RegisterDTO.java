@@ -3,6 +3,7 @@ package com.hengde.auth.dto;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 /**
@@ -57,5 +58,6 @@ public class RegisterDTO {
 
     /** 协议手写签名图片 URL */
     @NotBlank(message = "请签署志愿者协议")
+    @Size(max = 512, message = "签名图地址过长")
     private String signatureUrl;
 }

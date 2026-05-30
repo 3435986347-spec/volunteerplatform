@@ -17,6 +17,10 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "hengde.auth")
 public class AuthProperties {
 
+    /** 协议正文的开发占位默认值；生产 profile 下不得仍用此值（{@code ProductionConfigGuard} 强校验） */
+    public static final String DEFAULT_AGREEMENT_TEXT =
+            "志愿者协议（占位文本，正式文本由协会方提供后经 hengde.auth.agreement-text 配置覆盖）。";
+
     /** 是否启用真实身份证二要素实名校验（腾讯云）。false 时直接放行 */
     private boolean realnameEnabled = false;
 
@@ -36,7 +40,7 @@ public class AuthProperties {
     private String agreementVersion = "1.0";
 
     /** 志愿者协议正文（注册前阅读；默认占位，由协会方提供正式文本后经配置覆盖） */
-    private String agreementText = "志愿者协议（占位文本，正式文本由协会方提供后经 hengde.auth.agreement-text 配置覆盖）。";
+    private String agreementText = DEFAULT_AGREEMENT_TEXT;
 
     /** 是否在启动时初始化超级管理员（不存在任何超管时才创建） */
     private boolean initSuperAdmin = true;

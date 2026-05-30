@@ -194,6 +194,10 @@ public class VolunteerAuthService {
         if (volunteer.getRegisterTime() != null) {
             throw new BusinessException("您已完成实名注册，请勿重复提交");
         }
+        // 签名图地址长度兜底（DB 列 VARCHAR(512)；防绕过 DTO 校验的内部调用落库截断）
+        if (StringUtils.hasText(dto.getSignatureUrl()) && dto.getSignatureUrl().length() > 512) {
+            throw new BusinessException("签名图地址过长");
+        }
 
         // 1. 短信验证码
         verifyCodeService.verify(dto.getPhone(), SmsScene.REGISTER, dto.getSmsCode());
