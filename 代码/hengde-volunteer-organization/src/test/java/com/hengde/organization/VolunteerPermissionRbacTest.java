@@ -107,7 +107,7 @@ class VolunteerPermissionRbacTest {
     @Test
     void superAdminAssignsGrantablePermission() {
         Long saId = insertAdmin(1);
-        Long vid = insertVolunteer(0);
+        Long vid = insertManager();
 
         volunteerPermissionService.assignPermissionsBy(vid, List.of(permId("activity:publish")), saId);
 
@@ -117,7 +117,7 @@ class VolunteerPermissionRbacTest {
     @Test
     void assignRejectsNonGrantablePermission() {
         Long saId = insertAdmin(1);
-        Long vid = insertVolunteer(0);
+        Long vid = insertManager();
 
         BusinessException ex = assertThrows(BusinessException.class, () ->
                 volunteerPermissionService.assignPermissionsBy(vid, List.of(permId("user:delete")), saId));
@@ -134,6 +134,17 @@ class VolunteerPermissionRbacTest {
         assertTrue(ex.getMessage().contains("超级管理员"));
     }
 
+    @Test
+    void assignRejectsNonManagerVolunteer() {
+        Long saId = insertAdmin(1);
+        Long vid = insertVolunteer(0); // 活跃但未标记「管理团队」
+
+        BusinessException ex = assertThrows(BusinessException.class, () ->
+                volunteerPermissionService.assignPermissionsBy(vid, List.of(permId("activity:publish")), saId));
+        assertTrue(ex.getMessage().contains("管理团队"),
+                "未标记管理团队的志愿者不可被授权（防误授普通/游客态志愿者发活动）");
+    }
+
     // ---------- helpers ----------
 
     private Long permId(String code) {
@@ -147,6 +158,17 @@ class VolunteerPermissionRbacTest {
         v.setOpenid("test:perm:" + System.nanoTime() + ":" + SEQ.incrementAndGet());
         v.setRealName("测试志愿者");
         v.setStatus(status);
+        volunteerMapper.insert(v);
+        return v.getId();
+    }
+
+    /** 活跃 + 已标记「管理团队」(manager_flag=1) 的志愿者——授权门槛要求此身份。 */
+    private Long insertManager() {
+        Volunteer v = new Volunteer();
+        v.setOpenid("test:perm:" + System.nanoTime() + ":" + SEQ.incrementAndGet());
+        v.setRealName("管理团队志愿者");
+        v.setStatus(0);
+        v.setManagerFlag(1);
         volunteerMapper.insert(v);
         return v.getId();
     }

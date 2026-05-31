@@ -267,7 +267,7 @@
 |---|---|---|---|
 | PUT | /a/organization/volunteers/{id}/manager-flag | 设置/取消志愿者「管理团队」标记（body `flag` 0取消/1设为；设为 1 仅限已实名、取消 0 不限；积分 ×1.2 倍率通道；记录操作人/时间） | 需登录（org:manager-flag） |
 | GET | /a/organization/volunteers/{id}/permissions | 志愿者已分配的权限点 | 需登录（org:manager-flag） |
-| PUT | /a/organization/volunteers/{id}/permissions | 全量替换志愿者权限（body `permissionIds`；**仅超管**，只接受活动域子集白名单，非白名单点拒） | 需登录（仅超管） |
+| PUT | /a/organization/volunteers/{id}/permissions | 全量替换志愿者权限（body `permissionIds`；**仅超管**；**目标须已标记管理团队 `manager_flag=1`**[防误授普通/游客态志愿者]；只接受活动域子集白名单，非白名单点拒） | 需登录（仅超管） |
 
 ---
 

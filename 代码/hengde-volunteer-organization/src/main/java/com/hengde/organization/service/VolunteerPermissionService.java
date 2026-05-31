@@ -19,12 +19,13 @@ import org.springframework.util.CollectionUtils;
 import java.util.List;
 
 /**
- * 志愿者端权限分配（RBAC 基建）：给「管理团队」志愿者授权，供后续 {@code /v} 活动动作消费；当前仅
- * {@code /v/organization/my-permissions} 返回码，消费这些码的 {@code /v} 发布/现场管理动作属 PR2、尚未落地。
+ * 志愿者端权限分配（RBAC）：给「管理团队」志愿者授权，供 {@code /v} 活动动作消费
+ * （如发布活动 {@code POST /v/activity/activities}）。
  *
  * <p>口径对齐 {@link SubAccountService#assignPermissions}：<b>仅超管</b>可分配（手写校验、不挂注解，防自助提权），
- * 全量替换式维护。额外做<b>白名单校验</b>：只接受 {@code permission.volunteer_grantable=1} 的点（本期=活动域子集），
- * 杜绝把「删志愿者 / 子账号 / 分队」等纯后台权限授给 C 端志愿者。</p>
+ * 全量替换式维护。两道校验：<b>目标须已标记「管理团队」</b>（{@code manager_flag=1}；避免把发活动等权限误授给普通 /
+ * 游客态志愿者，该标记本身只能给已实名者设，故已实名亦被覆盖）+ <b>白名单</b>（只接受
+ * {@code permission.volunteer_grantable=1} 的点，本期=活动域子集，杜绝把删志愿者 / 子账号 / 分队等纯后台权限授给 C 端志愿者）。</p>
  *
  * <p>仿 {@code GroupService.joinApplicationsBy} 的可测性约定：对外提供读 {@code StpAdminUtil} 的便捷入口，
  * 另留显式操作人 {@link #assignPermissionsBy} 入口供测试 / 需绕过 Sa-Token 上下文的场景。</p>
@@ -100,6 +101,11 @@ public class VolunteerPermissionService {
         requireSuperAdmin(operatorAdminId);
         if (!volunteerQueryService.isActive(volunteerId)) {
             throw new BusinessException("志愿者不存在或已停用");
+        }
+        // 仅可给已标记「管理团队」的志愿者授权——否则误授后，普通/游客态志愿者就能凭权限发全平台活动。
+        // manager_flag 本身只能给已实名者设（setManagerFlag 硬校验），故此处一并覆盖「须已实名」。
+        if (!volunteerQueryService.isManager(volunteerId)) {
+            throw new BusinessException("仅可给已标记「管理团队」的志愿者授权（请先设置 manager_flag）");
         }
         List<Long> distinctIds = CollectionUtils.isEmpty(permissionIds)
                 ? List.of() : permissionIds.stream().distinct().toList();
