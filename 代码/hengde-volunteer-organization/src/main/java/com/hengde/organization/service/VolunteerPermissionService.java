@@ -58,8 +58,16 @@ public class VolunteerPermissionService {
         this.volunteerQueryService = volunteerQueryService;
     }
 
-    /** 当前志愿者的权限码集合（供 /v my-permissions；前端据此显示/隐藏管理团队入口）。 */
+    /**
+     * 当前志愿者的权限码集合（供 /v my-permissions；前端据此显示/隐藏管理团队入口）。
+     *
+     * <p>与 {@code AdminStpInterface} 的志愿者分支同口径：停用/注销/不存在的志愿者返回空——否则停用 token
+     * 虽然后续动作会被 {@code @SaCheckPermission} 拒（403），却仍能从本接口拿到权限码让前端误显入口。</p>
+     */
     public List<String> myCodes(Long volunteerId) {
+        if (!volunteerQueryService.isActive(volunteerId)) {
+            return List.of();
+        }
         return volunteerPermissionMapper.selectCodesByVolunteerId(volunteerId);
     }
 

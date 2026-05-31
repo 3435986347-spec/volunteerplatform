@@ -85,6 +85,16 @@ class VolunteerPermissionRbacTest {
     }
 
     @Test
+    void suspendedVolunteerMyCodesEmpty() {
+        // my-permissions 须与 StpInterface「停用返空」同口径，避免停用 token 仍拿到码让前端误显入口
+        Long vid = insertVolunteer(1); // 1=禁用
+        insertVolunteerPermission(vid, permId("activity:publish"));
+
+        assertTrue(volunteerPermissionService.myCodes(vid).isEmpty(),
+                "停用志愿者 myCodes 也应返回空（与 StpInterface 口径一致）");
+    }
+
+    @Test
     void mapperFiltersNonGrantablePermission() {
         // 即便脏行授了非白名单权限（如删志愿者），也不应经志愿者 token 外泄
         Long vid = insertVolunteer(0);

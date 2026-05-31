@@ -215,7 +215,7 @@
 
 ### 我的权限 — 志愿者端
 
-> 「管理团队」志愿者凭后台授予的权限点（V18）在 `/v` 端管理/发布活动。前端进页面调本接口，据此显示/隐藏入口；**仅 UX**，各动作接口仍由 `@SaCheckPermission` 后端兜底。
+> **V18 是 RBAC 基建**：打通「后台给志愿者授权 → 志愿者 token 携带权限码 → `@SaCheckPermission` 可在 `/v` 端按默认 `login` 域生效」的链路。**消费这些权限码的 `/v` 活动动作（发布 / 现场管理）属 PR2，尚未落地**——当前活动发布仍在 `POST /a/activity/activities`（`activity:publish`，admin token），现场负责人仍走 `/v/activity/managed-activities` 的逐活动 `requireVolunteerLeader` 校验。前端进页面调本接口拿权限码、据此显示/隐藏入口；**仅 UX**，动作接口由 `@SaCheckPermission` 后端兜底。
 
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
