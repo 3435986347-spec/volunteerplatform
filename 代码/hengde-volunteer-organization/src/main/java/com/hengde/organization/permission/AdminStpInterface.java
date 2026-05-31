@@ -23,7 +23,8 @@ import java.util.List;
  *   <li>普通子账号 → 返回其 {@code admin_permission} 关联的权限点编码集合。</li>
  * </ul>
  * 志愿者端（loginType={@code login}，默认 {@code StpUtil}，V18 起）：返回其 {@code volunteer_permission} 关联的
- * 权限点编码集合（无 {@code *} 通配）——「管理团队」志愿者凭此在 {@code /v} 端管理/发布活动。</p>
+ * 权限点编码集合（无 {@code *} 通配）——RBAC 基建，供后续 {@code /v} 活动动作消费；当前仅 {@code my-permissions}
+ * 返回码，消费这些码的 {@code /v} 发布/现场管理动作属 PR2、尚未落地。</p>
  *
  * <p>两端口径一致：账号被禁用/注销/不存在一律返回空集——即便 token 未过期也拿不到任何权限点，
  * 使所有 {@code @SaCheckPermission} 拒绝，避免「停用但 token 仍在」的越权窗口。

@@ -19,7 +19,8 @@ import org.springframework.util.CollectionUtils;
 import java.util.List;
 
 /**
- * 志愿者端权限分配（小程序里的「管理团队」志愿者凭权限管理/发布活动）。
+ * 志愿者端权限分配（RBAC 基建）：给「管理团队」志愿者授权，供后续 {@code /v} 活动动作消费；当前仅
+ * {@code /v/organization/my-permissions} 返回码，消费这些码的 {@code /v} 发布/现场管理动作属 PR2、尚未落地。
  *
  * <p>口径对齐 {@link SubAccountService#assignPermissions}：<b>仅超管</b>可分配（手写校验、不挂注解，防自助提权），
  * 全量替换式维护。额外做<b>白名单校验</b>：只接受 {@code permission.volunteer_grantable=1} 的点（本期=活动域子集），
