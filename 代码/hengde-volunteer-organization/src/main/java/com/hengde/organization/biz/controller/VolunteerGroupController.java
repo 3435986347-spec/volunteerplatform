@@ -72,6 +72,12 @@ public class VolunteerGroupController {
         return Result.ok(groupService.members(id));
     }
 
+    @Operation(summary = "待审核加入申请列表（仅组长/管理员可见，含申请人 memberId 供审批）")
+    @GetMapping("/{id}/join-applications")
+    public Result<List<GroupMemberVO>> joinApplications(@PathVariable Long id) {
+        return Result.ok(groupService.joinApplications(id));
+    }
+
     @Operation(summary = "负责人批准加入申请")
     @PostMapping("/{id}/members/{memberId}/approve")
     public Result<Void> approveMember(@PathVariable Long id, @PathVariable Long memberId) {

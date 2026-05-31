@@ -19,6 +19,7 @@ import com.hengde.organization.biz.entity.VolunteerGroupLeaderHistory;
 import com.hengde.organization.biz.entity.VolunteerGroupMember;
 import com.hengde.organization.biz.service.GroupService;
 import com.hengde.organization.biz.service.SquadService;
+import com.hengde.organization.biz.vo.GroupMemberVO;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -339,6 +340,62 @@ class OrganizationBizTest {
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> groupService.rejectMemberBy(g.getId(), app.getId(), leaderId));
         assertTrue(ex.getMessage().contains("待审核"));
+    }
+
+    // ---------- 待审核加入申请列表（补 API 层缺口：组长拿不到待审 memberId）----------
+
+    @Test
+    void joinApplications_listsOnlyPendingApplicantsWithMemberId() {
+        // 缺口回归：批准/拒绝加入需要 memberId，本接口须能列出待审「加入」申请及其 memberId。
+        // 必须排除 ACTIVE 在册成员（members() 的范畴）。
+        Long leaderId = insertNormalVolunteer();
+        Long applicantId = insertNormalVolunteer();
+        Long activeMemberId = insertNormalVolunteer();
+        VolunteerGroup g = insertGroup(leaderId, 1);     // ACTIVE 小组
+        insertMember(g.getId(), leaderId, 1, 1);          // ACTIVE 组长
+        insertMember(g.getId(), activeMemberId, 0, 1);    // ACTIVE 普通成员（不应出现在待审列表）
+        insertMember(g.getId(), applicantId, 0, 0);       // PENDING 申请者
+
+        List<GroupMemberVO> apps = groupService.joinApplicationsBy(g.getId(), leaderId);
+
+        assertEquals(1, apps.size(), "只应列出 PENDING 加入申请，排除 ACTIVE 成员");
+        GroupMemberVO vo = apps.get(0);
+        assertEquals(applicantId, vo.getVolunteerId());
+        assertNotNull(vo.getId(), "必须回 memberId 供 approve/reject 调用");
+        assertEquals(0, vo.getStatus(), "状态应为 PENDING");
+        assertNotNull(vo.getApplyTime(), "应回显申请时间");
+
+        // 用列表回的 memberId 即可直接审批通过——验证审批链在 API 层闭合
+        groupService.approveMemberBy(g.getId(), vo.getId(), leaderId);
+        assertTrue(groupService.joinApplicationsBy(g.getId(), leaderId).isEmpty(),
+                "批准后待审列表应清空");
+    }
+
+    @Test
+    void joinApplications_nonMemberRejected() {
+        // 非本组成员凭 id 窥探待审名单应被拒（currentActiveMember 守卫）
+        Long leaderId = insertNormalVolunteer();
+        Long strangerId = insertNormalVolunteer();
+        VolunteerGroup g = insertGroup(leaderId, 1);
+        insertMember(g.getId(), leaderId, 1, 1);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> groupService.joinApplicationsBy(g.getId(), strangerId));
+        assertTrue(ex.getMessage().contains("不是该小组成员"));
+    }
+
+    @Test
+    void joinApplications_plainMemberRejected() {
+        // 普通成员（非组长/管理员）不能查看待审名单
+        Long leaderId = insertNormalVolunteer();
+        Long memberId = insertNormalVolunteer();
+        VolunteerGroup g = insertGroup(leaderId, 1);
+        insertMember(g.getId(), leaderId, 1, 1);
+        insertMember(g.getId(), memberId, 0, 1);          // ACTIVE 普通成员
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> groupService.joinApplicationsBy(g.getId(), memberId));
+        assertTrue(ex.getMessage().contains("负责人或管理员"));
     }
 
     // ---------- 批量导入：仅建 ACTIVE 小组 + 必插组长成员行 ----------

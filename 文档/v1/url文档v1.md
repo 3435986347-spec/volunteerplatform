@@ -192,6 +192,7 @@
 | POST | /v/organization/groups/{id}/join | 申请加入小组 | 需登录 |
 | POST | /v/organization/groups/{id}/leave | 退出小组 | 需登录 |
 | GET | /v/organization/groups/{id}/members | 小组成员列表（同组内仅显示姓名/学校/电话） | 需登录 |
+| GET | /v/organization/groups/{id}/join-applications | 待审核加入申请列表（仅组长/管理员可见，回 memberId 供审批） | 需登录 |
 | POST | /v/organization/groups/{id}/members/{memberId}/approve | 负责人批准加入申请 | 需登录 |
 | POST | /v/organization/groups/{id}/members/{memberId}/reject | 负责人拒绝加入申请 | 需登录 |
 | DELETE | /v/organization/groups/{id}/members/{memberId} | 组长/管理员移除成员 | 需登录 |

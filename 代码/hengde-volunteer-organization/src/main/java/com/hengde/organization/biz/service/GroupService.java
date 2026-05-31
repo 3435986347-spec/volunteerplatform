@@ -370,6 +370,35 @@ public class GroupService {
         return rows.stream().map(m -> toMemberVO(m, displayById)).toList();
     }
 
+    /**
+     * 待审核加入申请列表。仅本组组长/管理员可见（与 approveMember/rejectMember 同一鉴权口径）。
+     *
+     * <p>缺口背景：批准/拒绝加入走 {@code .../members/{memberId}/approve|reject} 需要 memberId，
+     * 但 {@link #members} 只查 ACTIVE 成员、{@code /a/.../applications} 只列「建组」申请——
+     * 既有接口都列不出某组的待审「加入」申请及其 memberId，前端因此拿不到 memberId、审批链在 API 层断裂。
+     * 本方法补齐：返回 status=PENDING 且 role=普通成员 的行（排除建组时插的 PENDING 组长行）。</p>
+     */
+    public List<GroupMemberVO> joinApplications(Long groupId) {
+        return joinApplicationsBy(groupId, currentVolunteerId());
+    }
+
+    /** 带显式 viewerId 的待审申请列表入口，供测试及需绕过 Sa-Token 上下文的场景调用。 */
+    public List<GroupMemberVO> joinApplicationsBy(Long groupId, Long viewerId) {
+        requireGroup(groupId);
+        ensureLeaderOrAdminById(groupId, viewerId);
+        List<VolunteerGroupMember> rows = memberMapper.selectList(Wrappers.<VolunteerGroupMember>lambdaQuery()
+                .eq(VolunteerGroupMember::getGroupId, groupId)
+                .eq(VolunteerGroupMember::getStatus, MEMBER_PENDING)
+                .eq(VolunteerGroupMember::getRole, ROLE_MEMBER)
+                .orderByAsc(VolunteerGroupMember::getId));
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+        List<Long> ids = rows.stream().map(VolunteerGroupMember::getVolunteerId).distinct().toList();
+        Map<Long, VolunteerDisplayView> displayById = volunteerQueryService.listDisplayByIds(ids);
+        return rows.stream().map(m -> toMemberVO(m, displayById)).toList();
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public void approveCreate(Long groupId, Long adminId) {
         VolunteerGroup group = requireGroup(groupId);
@@ -688,6 +717,7 @@ public class GroupService {
         }
         vo.setRole(member.getRole());
         vo.setStatus(member.getStatus());
+        vo.setApplyTime(member.getApplyTime());
         return vo;
     }
 
