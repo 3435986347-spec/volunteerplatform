@@ -29,4 +29,7 @@ public class Permission extends BaseEntity {
 
     /** 展示排序 */
     private Integer sort;
+
+    /** 是否可授权给志愿者 0否/1是（志愿者端 RBAC 白名单；V18） */
+    private Integer volunteerGrantable;
 }

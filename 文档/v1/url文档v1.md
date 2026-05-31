@@ -213,6 +213,14 @@
 |---|---|---|---|
 | GET | /v/organization/structure | 组织架构树（部门/职位/成员树形结构） | 需登录 |
 
+### 我的权限 — 志愿者端
+
+> 「管理团队」志愿者凭后台授予的权限点（V18）在 `/v` 端管理/发布活动。前端进页面调本接口，据此显示/隐藏入口；**仅 UX**，各动作接口仍由 `@SaCheckPermission` 后端兜底。
+
+| Method | URL | 说明 | 鉴权 |
+|---|---|---|---|
+| GET | /v/organization/my-permissions | 我的权限码集合（如 `["activity:publish","activity:manage"]`） | 需登录 |
+
 ### 子账号与权限 — 管理端 `/a/organization/sub-accounts`
 
 | Method | URL | 说明 | 鉴权 |
@@ -225,6 +233,7 @@
 | PUT | /a/organization/sub-accounts/{id}/permissions | 全量替换权限集合 | 需登录 |
 | POST | /a/organization/sub-accounts/{id}/password/reset | 重置子账号密码 | 需登录 |
 | GET | /a/organization/permissions | 系统全量可分配权限列表 | 需登录 |
+| GET | /a/organization/permissions/volunteer-grantable | 可授权给志愿者的权限点目录（活动域子集，除 activity:menu） | 需登录 |
 
 ### 志愿小组 — 管理端 `/a/organization/groups`
 
@@ -251,11 +260,13 @@
 | POST | /a/organization/squads/applications/{id}/approve | 批准加入 | 需登录 |
 | POST | /a/organization/squads/applications/{id}/reject | 拒绝加入 | 需登录 |
 
-### 志愿者管理团队标记 — 管理端 `/a/organization/volunteers`
+### 志愿者管理团队标记与权限 — 管理端 `/a/organization/volunteers`
 
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
 | PUT | /a/organization/volunteers/{id}/manager-flag | 设置/取消志愿者「管理团队」标记（body `flag` 0取消/1设为；设为 1 仅限已实名、取消 0 不限；积分 ×1.2 倍率通道；记录操作人/时间） | 需登录（org:manager-flag） |
+| GET | /a/organization/volunteers/{id}/permissions | 志愿者已分配的权限点 | 需登录（org:manager-flag） |
+| PUT | /a/organization/volunteers/{id}/permissions | 全量替换志愿者权限（body `permissionIds`；**仅超管**，只接受活动域子集白名单，非白名单点拒） | 需登录（仅超管） |
 
 ---
 

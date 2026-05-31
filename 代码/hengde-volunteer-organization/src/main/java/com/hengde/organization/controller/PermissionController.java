@@ -37,4 +37,11 @@ public class PermissionController {
     public Result<List<PermissionVO>> listAll() {
         return Result.ok(permissionService.listAll());
     }
+
+    @Operation(summary = "可授权给志愿者的权限点目录")
+    @SaCheckPermission(value = PermissionCode.ORG_SUB_ACCOUNT, type = "admin")
+    @GetMapping("/volunteer-grantable")
+    public Result<List<PermissionVO>> listVolunteerGrantable() {
+        return Result.ok(permissionService.listGrantableToVolunteer());
+    }
 }

@@ -7,6 +7,7 @@ import com.hengde.auth.vo.VolunteerBackfillView;
 import com.hengde.auth.vo.VolunteerDisplayView;
 import com.hengde.auth.vo.VolunteerProfileView;
 import com.hengde.common.constant.Gender;
+import com.hengde.common.constant.UserStatus;
 import com.hengde.common.crypto.CryptoUtil;
 import com.hengde.common.exception.BusinessException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -95,6 +96,25 @@ public class VolunteerQueryService {
         return list.stream()
                 .filter(v -> v.getRealName() != null)
                 .collect(Collectors.toMap(Volunteer::getId, Volunteer::getRealName));
+    }
+
+    /**
+     * 志愿者账号是否处于可用状态。供志愿者端 RBAC 鉴权：停用/注销/不存在的志愿者不应携带任何权限点
+     * （即便 token 未过期，杜绝「停用但 token 仍在」越权窗口）。
+     *
+     * @param volunteerId 志愿者 id
+     * @return true=存在且未被禁用/注销；status 为 null 按正常处理（与 DB 默认 0 对齐）
+     */
+    public boolean isActive(Long volunteerId) {
+        if (volunteerId == null) {
+            return false;
+        }
+        Volunteer v = volunteerMapper.selectById(volunteerId);
+        if (v == null) {
+            return false;
+        }
+        Integer status = v.getStatus();
+        return status == null || UserStatus.NORMAL.equals(status);
     }
 
     /**
