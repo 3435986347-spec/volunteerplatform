@@ -1,6 +1,7 @@
 package com.hengde.activity.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.hengde.activity.config.ActivityProperties;
 import com.hengde.activity.dao.ActivityAttendanceMapper;
 import com.hengde.activity.dao.ActivityEnrollmentMapper;
 import com.hengde.activity.dao.ActivityLeaderMapper;
@@ -14,6 +15,7 @@ import com.hengde.activity.entity.ActivityViolation;
 import com.hengde.activity.vo.AttendanceRosterVO;
 import com.hengde.activity.vo.ManagedActivityDetailVO;
 import com.hengde.activity.vo.ManagedActivityVO;
+import com.hengde.activity.vo.ViolationRecordVO;
 import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.auth.vo.VolunteerDisplayView;
 import com.hengde.common.exception.BusinessException;
@@ -26,8 +28,10 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 活动现场考勤：负责人点开始/结束、志愿者 GPS 自助签到、负责人标到位状态/记违规/统一签退算时长，
@@ -75,10 +79,16 @@ public class AttendanceService {
     private ActivityEnrollmentMapper enrollmentMapper;
     private ActivityLeaderMapper leaderMapper;
     private VolunteerQueryService volunteerQueryService;
+    private ActivityProperties activityProperties;
 
     @Autowired
     public void setActivityMapper(ActivityMapper activityMapper) {
         this.activityMapper = activityMapper;
+    }
+
+    @Autowired
+    public void setActivityProperties(ActivityProperties activityProperties) {
+        this.activityProperties = activityProperties;
     }
 
     @Autowired
@@ -249,6 +259,40 @@ public class AttendanceService {
         return v.getId();
     }
 
+    /**
+     * 活动违规记录明细（名字 / 记录人 / 记录明细 / 记录时间），按记录时间倒序。供负责人板块「违规记录」页。
+     *
+     * <p>违规者与记录人姓名按志愿者域解析（记录人通常为本活动志愿者负责人）；管理端账号录入的记录人名为 null。</p>
+     */
+    public List<ViolationRecordVO> violationRecords(Long activityId) {
+        List<ActivityViolation> rows = violationMapper.selectList(Wrappers.<ActivityViolation>lambdaQuery()
+                .eq(ActivityViolation::getActivityId, activityId)
+                .orderByDesc(ActivityViolation::getRecordedTime));
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+        Set<Long> ids = new HashSet<>();
+        for (ActivityViolation v : rows) {
+            ids.add(v.getVolunteerId());
+            if (v.getRecordedBy() != null) {
+                ids.add(v.getRecordedBy());
+            }
+        }
+        Map<Long, String> nameById = volunteerQueryService.listNamesByIds(ids);
+        return rows.stream().map(v -> {
+            ViolationRecordVO r = new ViolationRecordVO();
+            r.setId(v.getId());
+            r.setVolunteerId(v.getVolunteerId());
+            r.setVolunteerName(nameById.get(v.getVolunteerId()));
+            r.setViolationType(v.getViolationType());
+            r.setDescription(v.getDescription());
+            r.setRecordedBy(v.getRecordedBy());
+            r.setRecordedByName(v.getRecordedBy() == null ? null : nameById.get(v.getRecordedBy()));
+            r.setRecordedTime(v.getRecordedTime());
+            return r;
+        }).toList();
+    }
+
     // ---------- 统一签退（负责人） ----------
 
     /**
@@ -416,6 +460,7 @@ public class AttendanceService {
         vo.setActualStartTime(a.getActualStartTime());
         vo.setActualEndTime(a.getActualEndTime());
         vo.setRoster(buildRoster(activityId));
+        vo.setEmergencyPhone(activityProperties.getEmergencyPhone());
         return vo;
     }
 

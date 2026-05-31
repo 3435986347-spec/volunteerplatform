@@ -1,6 +1,7 @@
 package com.hengde.activity.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.hengde.activity.config.ActivityProperties;
 import com.hengde.activity.dao.ActivityAttendanceMapper;
 import com.hengde.activity.dao.ActivityEnrollmentMapper;
 import com.hengde.activity.dao.ActivityMapper;
@@ -44,6 +45,12 @@ public class MyActivityService {
     private ActivityAttendanceMapper attendanceMapper;
     private ActivityViolationMapper violationMapper;
     private ActivityLeaderService activityLeaderService;
+    private ActivityProperties activityProperties;
+
+    @Autowired
+    public void setActivityProperties(ActivityProperties activityProperties) {
+        this.activityProperties = activityProperties;
+    }
 
     @Autowired
     public void setEnrollmentMapper(ActivityEnrollmentMapper enrollmentMapper) {
@@ -114,6 +121,7 @@ public class MyActivityService {
         vo.setCheckInRadiusM(a.getCheckInRadiusM());
         vo.setLeaders(leaders);
         vo.setCheckInQrContent(CHECKIN_QR_PREFIX + activityId);
+        vo.setEmergencyPhone(activityProperties.getEmergencyPhone());
         if (att != null) {
             vo.setConfirmHomeTime(att.getConfirmHomeTime());
             vo.setConfirmHomeOverdue(isConfirmHomeOverdue(a, att.getConfirmHomeTime()));

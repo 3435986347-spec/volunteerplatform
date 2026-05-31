@@ -97,7 +97,7 @@
 | POST | /v/activity/activities/{id}/proxy-enrollments | 同小组成员代报名 | 需登录 |
 | GET | /v/activity/my-enrollments | 我的报名列表 | 需登录 |
 | GET | /v/activity/my-activities | 我的活动（名称/时间段/负责人/签到状态/是否违规/考勤） | 需登录 |
-| GET | /v/activity/my-activities/{id} | 我的活动详情（含考勤 + 签到二维码数据） | 需登录 |
+| GET | /v/activity/my-activities/{id} | 我的活动详情（含考勤 + 签到二维码数据 + 紧急上报电话 `emergencyPhone`） | 需登录 |
 | POST | /v/activity/activities/{id}/check-in | 自助签到（body: lat/lng；GPS 距活动 ≤ 签到半径 且在签到时间窗口内） | 需登录 |
 | POST | /v/activity/activities/{id}/confirm-home | 确认到家（body: lat/lng；活动结束后；超时仅记录不拒绝） | 需登录 |
 | POST | /v/activity/activities/{id}/review | 评价活动与负责人（body: 活动评分1~5/负责人评分1~5/评论；须实际签到、活动结束后；可覆盖） | 需登录 |
@@ -110,12 +110,13 @@
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
 | GET | /v/activity/managed-activities | 我负责的活动场次列表 | 需登录（活动负责人） |
-| GET | /v/activity/managed-activities/{id} | 负责详情（志愿者名单含名字/电话/学校 + 签到/签退二维码） | 需登录（活动负责人） |
+| GET | /v/activity/managed-activities/{id} | 负责详情（志愿者名单含名字/电话/学校 + 签到/签退二维码 + 紧急上报电话 `emergencyPhone`；名单 roster 即「签到记录」数据：签到/签退时间、到位状态、违规数） | 需登录（活动负责人） |
 | POST | /v/activity/managed-activities/{id}/start | 点击活动开始 | 需登录（活动负责人） |
 | POST | /v/activity/managed-activities/{id}/finish | 点击活动结束 | 需登录（活动负责人） |
 | POST | /v/activity/managed-activities/{id}/check-outs | 统一签退（全部或指定志愿者；活动结束后 2h 内） | 需登录（活动负责人） |
 | PATCH | /v/activity/managed-activities/{id}/attendances/{volunteerId} | 标记到位状态（正常/请假/迟到/缺席）或确认签到 | 需登录（活动负责人） |
-| POST | /v/activity/managed-activities/{id}/attendances/{volunteerId}/violations | 记录违规（玩手机/服装/早退/交头接耳） | 需登录（活动负责人） |
+| POST | /v/activity/managed-activities/{id}/attendances/{volunteerId}/violations | 记录违规（`description`=记录明细自由文本为主；`violationType` 可选、缺省 0其他） | 需登录（活动负责人） |
+| GET | /v/activity/managed-activities/{id}/violations | 违规记录明细（名字/记录人/记录明细/记录时间，按记录时间倒序） | 需登录（活动负责人） |
 | PATCH | /v/activity/managed-activities/{id}/attendances/{volunteerId}/evaluation | 负责人评价志愿者 | 需登录（活动负责人） |
 | POST | /v/activity/managed-activities/{id}/summary | 上传活动总结（文字+图片；须活动已结束） | 需登录（活动负责人） |
 

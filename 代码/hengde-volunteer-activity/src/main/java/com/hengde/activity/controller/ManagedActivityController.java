@@ -10,6 +10,7 @@ import com.hengde.activity.service.ActivityLeaderService;
 import com.hengde.activity.service.AttendanceService;
 import com.hengde.activity.vo.ManagedActivityDetailVO;
 import com.hengde.activity.vo.ManagedActivityVO;
+import com.hengde.activity.vo.ViolationRecordVO;
 import com.hengde.common.result.Result;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -107,6 +108,13 @@ public class ManagedActivityController {
         activityLeaderService.requireVolunteerLeader(id, vid);
         return Result.ok(attendanceService.recordViolation(id, volunteerId, dto.getViolationType(),
                 dto.getDescription(), vid));
+    }
+
+    @Operation(summary = "违规记录明细（名字/记录人/记录明细/记录时间）")
+    @GetMapping("/{id}/violations")
+    public Result<List<ViolationRecordVO>> violations(@PathVariable Long id) {
+        activityLeaderService.requireVolunteerLeader(id, StpUtil.getLoginIdAsLong());
+        return Result.ok(attendanceService.violationRecords(id));
     }
 
     @Operation(summary = "负责人评价志愿者")

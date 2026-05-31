@@ -40,4 +40,7 @@ public class MyActivityDetailVO extends MyActivityVO {
     private String myComment;
     /** 负责人对我的评价（回显） */
     private String leaderEvaluationOfMe;
+
+    /** 「紧急上报 / 联系负责人」预设电话（前端 tel: 拨号；后台配置，未配为 null） */
+    private String emergencyPhone;
 }

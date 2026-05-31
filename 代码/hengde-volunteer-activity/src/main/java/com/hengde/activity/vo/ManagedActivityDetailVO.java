@@ -25,4 +25,7 @@ public class ManagedActivityDetailVO {
     private LocalDateTime actualStartTime;
     private LocalDateTime actualEndTime;
     private List<AttendanceRosterVO> roster;
+
+    /** 「紧急上报 / 联系负责人」预设电话（前端 tel: 拨号；后台 hengde.activity.emergency-phone 配置，未配为 null） */
+    private String emergencyPhone;
 }

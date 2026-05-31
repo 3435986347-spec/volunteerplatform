@@ -18,6 +18,7 @@ import com.hengde.activity.service.ActivityService;
 import com.hengde.activity.service.AttendanceService;
 import com.hengde.activity.service.ServiceRecordService;
 import com.hengde.activity.vo.ActivityAdminDetailVO;
+import com.hengde.activity.vo.ViolationRecordVO;
 import com.hengde.auth.dao.VolunteerMapper;
 import com.hengde.auth.entity.Volunteer;
 import com.hengde.common.exception.BusinessException;
@@ -257,6 +258,28 @@ class ActivityAttendanceServiceTest {
                 .eq(ActivityViolation::getVolunteerId, vid)
                 .eq(ActivityViolation::getViolationType, 5));
         assertEquals(1L, again);
+    }
+
+    @Test
+    void violationRecords_listsDetailWithNames_freeText() {
+        Long aid = insertInProgressActivity();
+        Long offender = insertVolunteer();
+        Long leader = insertVolunteer();   // 记录人（志愿者负责人）
+        approveEnroll(aid, offender);
+
+        // 自由文本：violationType 传 null（DTO 可选）；description=记录明细
+        attendanceService.recordViolation(aid, offender, null, "长时间交头接耳", leader);
+
+        List<ViolationRecordVO> records = attendanceService.violationRecords(aid);
+        assertEquals(1, records.size());
+        ViolationRecordVO r = records.get(0);
+        assertEquals(offender, r.getVolunteerId());
+        assertEquals("测试志愿者", r.getVolunteerName(), "违规者姓名按志愿者域解析");
+        assertEquals("长时间交头接耳", r.getDescription(), "记录明细=自由文本");
+        assertEquals(0, r.getViolationType(), "类型缺省记 0（其他）");
+        assertEquals(leader, r.getRecordedBy());
+        assertEquals("测试志愿者", r.getRecordedByName(), "记录人姓名按志愿者域解析");
+        assertNotNull(r.getRecordedTime());
     }
 
     // ---------- 秘书确认 / 积分发放 的次序与幂等 ----------
