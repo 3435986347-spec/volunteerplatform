@@ -216,7 +216,7 @@
 
 ### 我的权限 — 志愿者端
 
-> **V18 打通志愿者端 RBAC**：后台给志愿者授权 → 志愿者 token 携带权限码 → `@SaCheckPermission`（默认 `login` 域）在 `/v` 端生效。**已落地的消费方**：`POST /v/activity/activities` 发布活动（PR2，需 `activity:publish`）。现场负责人管理仍走 `/v/activity/managed-activities` 的逐活动 `requireVolunteerLeader`（按「被指派」校验，与权限点并行）。前端进本接口拿权限码、据此显示/隐藏入口；**仅 UX**，动作接口由 `@SaCheckPermission` 后端兜底。
+> **V18 打通志愿者端 RBAC**：后台给志愿者授权 → 志愿者 token 携带权限码 → `@SaCheckPermission`（默认 `login` 域）在 `/v` 端生效。**已落地的消费方**：`POST /v/activity/activities` 发布活动（PR2，需 `activity:publish`）。现场负责人管理仍走 `/v/activity/managed-activities` 的逐活动 `requireVolunteerLeader`（按「被指派」校验，与权限点并行）。前端进本接口拿权限码、据此显示/隐藏入口；**仅 UX**，动作接口由 `@SaCheckPermission` 后端兜底。权限码仅对**活跃且 `manager_flag=1`** 的志愿者返回——取消管理团队标记（降级）即时失效，不留 stale 授权（读、写口径一致）。
 
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
@@ -267,7 +267,7 @@
 |---|---|---|---|
 | PUT | /a/organization/volunteers/{id}/manager-flag | 设置/取消志愿者「管理团队」标记（body `flag` 0取消/1设为；设为 1 仅限已实名、取消 0 不限；积分 ×1.2 倍率通道；记录操作人/时间） | 需登录（org:manager-flag） |
 | GET | /a/organization/volunteers/{id}/permissions | 志愿者已分配的权限点 | 需登录（org:manager-flag） |
-| PUT | /a/organization/volunteers/{id}/permissions | 全量替换志愿者权限（body `permissionIds`；**仅超管**；**目标须已标记管理团队 `manager_flag=1`**[防误授普通/游客态志愿者]；只接受活动域子集白名单，非白名单点拒） | 需登录（仅超管） |
+| PUT | /a/organization/volunteers/{id}/permissions | 全量替换志愿者权限（body `permissionIds`；**仅超管**；**目标须已标记管理团队 `manager_flag=1`**[防误授普通/游客态志愿者]；只接受活动域子集白名单，非白名单点拒；传空 `permissionIds`=清空，不要求 manager_flag[便于降级后清理 stale 授权]） | 需登录（仅超管） |
 
 ---
 

@@ -118,6 +118,26 @@ public class VolunteerQueryService {
     }
 
     /**
+     * 志愿者是否「活跃 + 已标记管理团队」（一次查库）。供志愿者端 RBAC <b>读取路径</b>用——
+     * 取消 manager_flag（降级）后立即失效，与授权写入门槛 {@code manager_flag=1} 一致，避免 stale 授权继续生效。
+     *
+     * @param volunteerId 志愿者 id
+     * @return true=存在、未停用且 {@code manager_flag=1}
+     */
+    public boolean isActiveManager(Long volunteerId) {
+        if (volunteerId == null) {
+            return false;
+        }
+        Volunteer v = volunteerMapper.selectById(volunteerId);
+        if (v == null) {
+            return false;
+        }
+        Integer status = v.getStatus();
+        boolean active = status == null || UserStatus.NORMAL.equals(status);
+        return active && Integer.valueOf(1).equals(v.getManagerFlag());
+    }
+
+    /**
      * 该志愿者是否被标记为「管理团队」（V11 manager_flag）。供 activity 积分发放判定 ×1.2 倍率。
      *
      * @param volunteerId 志愿者 id

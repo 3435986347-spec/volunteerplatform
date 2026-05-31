@@ -67,27 +67,27 @@ class VolunteerPermissionRbacTest {
     }
 
     @Test
-    void activeVolunteerGetsAssignedCodes() {
-        Long vid = insertVolunteer(0);
+    void activeManagerGetsAssignedCodes() {
+        Long vid = insertManager();
         insertVolunteerPermission(vid, permId("activity:publish"));
 
         List<String> codes = adminStpInterface.getPermissionList(vid, "login");
-        assertEquals(List.of("activity:publish"), codes, "志愿者域应返回已分配的活动权限点");
+        assertEquals(List.of("activity:publish"), codes, "活跃的管理团队志愿者应返回已分配的活动权限点");
     }
 
     @Test
     void suspendedVolunteerGetsEmpty() {
-        Long vid = insertVolunteer(1); // 1=禁用
+        Long vid = insertVolunteer(1, 1); // 停用的「管理团队」志愿者——隔离出「停用」这一单因
         insertVolunteerPermission(vid, permId("activity:publish"));
 
         assertTrue(adminStpInterface.getPermissionList(vid, "login").isEmpty(),
-                "停用志愿者即便有授权行也拿不到任何权限点");
+                "停用志愿者即便有授权行、且仍标记管理团队，也拿不到任何权限点");
     }
 
     @Test
     void suspendedVolunteerMyCodesEmpty() {
         // my-permissions 须与 StpInterface「停用返空」同口径，避免停用 token 仍拿到码让前端误显入口
-        Long vid = insertVolunteer(1); // 1=禁用
+        Long vid = insertVolunteer(1, 1); // 停用的「管理团队」志愿者
         insertVolunteerPermission(vid, permId("activity:publish"));
 
         assertTrue(volunteerPermissionService.myCodes(vid).isEmpty(),
@@ -145,6 +145,34 @@ class VolunteerPermissionRbacTest {
                 "未标记管理团队的志愿者不可被授权（防误授普通/游客态志愿者发活动）");
     }
 
+    @Test
+    void downgradedManagerLosesPermissionsImmediately() {
+        Long saId = insertAdmin(1);
+        Long vid = insertManager();
+        volunteerPermissionService.assignPermissionsBy(vid, List.of(permId("activity:publish")), saId);
+        assertEquals(List.of("activity:publish"), adminStpInterface.getPermissionList(vid, "login"));
+
+        setManagerFlag(vid, 0); // 取消管理团队标记 = 降级
+
+        assertTrue(adminStpInterface.getPermissionList(vid, "login").isEmpty(),
+                "降级后 StpInterface 应立即返空（stale 授权不再生效）");
+        assertTrue(volunteerPermissionService.myCodes(vid).isEmpty(), "myCodes 同步降级即失效");
+    }
+
+    @Test
+    void clearPermissionsAllowedAfterDowngrade() {
+        Long saId = insertAdmin(1);
+        Long vid = insertManager();
+        volunteerPermissionService.assignPermissionsBy(vid, List.of(permId("activity:publish")), saId);
+        setManagerFlag(vid, 0); // 降级
+
+        // 降级后传空列表清空 stale 授权——不被 manager 门槛拒
+        volunteerPermissionService.assignPermissionsBy(vid, List.of(), saId);
+
+        assertTrue(volunteerPermissionMapper.selectCodesByVolunteerId(vid).isEmpty(),
+                "降级后传空 permissionIds 应清空旧授权，不被 manager_flag 门槛挡住");
+    }
+
     // ---------- helpers ----------
 
     private Long permId(String code) {
@@ -154,23 +182,28 @@ class VolunteerPermissionRbacTest {
     }
 
     private Long insertVolunteer(int status) {
+        return insertVolunteer(status, null);
+    }
+
+    /** 活跃 + 已标记「管理团队」(manager_flag=1) 的志愿者——授权写入与读取门槛均要求此身份。 */
+    private Long insertManager() {
+        return insertVolunteer(0, 1);
+    }
+
+    private Long insertVolunteer(int status, Integer managerFlag) {
         Volunteer v = new Volunteer();
         v.setOpenid("test:perm:" + System.nanoTime() + ":" + SEQ.incrementAndGet());
         v.setRealName("测试志愿者");
         v.setStatus(status);
+        v.setManagerFlag(managerFlag);
         volunteerMapper.insert(v);
         return v.getId();
     }
 
-    /** 活跃 + 已标记「管理团队」(manager_flag=1) 的志愿者——授权门槛要求此身份。 */
-    private Long insertManager() {
-        Volunteer v = new Volunteer();
-        v.setOpenid("test:perm:" + System.nanoTime() + ":" + SEQ.incrementAndGet());
-        v.setRealName("管理团队志愿者");
-        v.setStatus(0);
-        v.setManagerFlag(1);
-        volunteerMapper.insert(v);
-        return v.getId();
+    private void setManagerFlag(Long volunteerId, Integer flag) {
+        Volunteer v = volunteerMapper.selectById(volunteerId);
+        v.setManagerFlag(flag);
+        volunteerMapper.updateById(v);
     }
 
     private Long insertAdmin(int isSuper) {

@@ -22,9 +22,9 @@ import java.util.List;
  *   <li>超管（{@code is_super_admin=1}）→ 返回 {@code *} 万能码，放行所有 {@code @SaCheckPermission}；</li>
  *   <li>普通子账号 → 返回其 {@code admin_permission} 关联的权限点编码集合。</li>
  * </ul>
- * 志愿者端（loginType={@code login}，默认 {@code StpUtil}，V18 起）：返回其 {@code volunteer_permission} 关联的
- * 权限点编码集合（无 {@code *} 通配）——RBAC 基建，供后续 {@code /v} 活动动作消费；当前仅 {@code my-permissions}
- * 返回码，消费这些码的 {@code /v} 发布/现场管理动作属 PR2、尚未落地。</p>
+ * 志愿者端（loginType={@code login}，默认 {@code StpUtil}，V18 起）：<b>活跃且为管理团队</b>（{@code manager_flag=1}）
+ * 才返回其 {@code volunteer_permission} 权限点（无 {@code *} 通配）；取消标记（降级）即时失效，与授权写入门槛一致。
+ * 「管理团队」志愿者凭此在 {@code /v} 发布活动（{@code POST /v/activity/activities}）等。</p>
  *
  * <p>两端口径一致：账号被禁用/注销/不存在一律返回空集——即便 token 未过期也拿不到任何权限点，
  * 使所有 {@code @SaCheckPermission} 拒绝，避免「停用但 token 仍在」的越权窗口。
@@ -88,10 +88,14 @@ public class AdminStpInterface implements StpInterface {
         return adminPermissionMapper.selectCodesByAdminId(adminId);
     }
 
-    /** 志愿者端权限：活跃志愿者 → 已分配权限点（无通配）；停用/注销/不存在 → 空。 */
+    /**
+     * 志愿者端权限：<b>活跃且为管理团队</b>（{@code manager_flag=1}）→ 已分配权限点（无通配）；
+     * 停用/注销/不存在/已降级（取消管理团队）→ 空。读路径与授权写入门槛一致，取消标记即时失效，
+     * 不留 stale 授权。
+     */
     private List<String> volunteerPermissions(Object loginId) {
         long volunteerId = Long.parseLong(loginId.toString());
-        if (!volunteerQueryService.isActive(volunteerId)) {
+        if (!volunteerQueryService.isActiveManager(volunteerId)) {
             return Collections.emptyList();
         }
         return volunteerPermissionMapper.selectCodesByVolunteerId(volunteerId);

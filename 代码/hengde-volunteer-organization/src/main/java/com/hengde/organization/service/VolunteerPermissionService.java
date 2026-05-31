@@ -25,7 +25,8 @@ import java.util.List;
  * <p>口径对齐 {@link SubAccountService#assignPermissions}：<b>仅超管</b>可分配（手写校验、不挂注解，防自助提权），
  * 全量替换式维护。两道校验：<b>目标须已标记「管理团队」</b>（{@code manager_flag=1}；避免把发活动等权限误授给普通 /
  * 游客态志愿者，该标记本身只能给已实名者设，故已实名亦被覆盖）+ <b>白名单</b>（只接受
- * {@code permission.volunteer_grantable=1} 的点，本期=活动域子集，杜绝把删志愿者 / 子账号 / 分队等纯后台权限授给 C 端志愿者）。</p>
+ * {@code permission.volunteer_grantable=1} 的点，本期=活动域子集，杜绝把删志愿者 / 子账号 / 分队等纯后台权限授给 C 端志愿者）。
+ * 二者<b>仅在非空授权时校验</b>：传空 {@code permissionIds}=清空，始终放行（便于降级/停用后清理 stale 授权）。</p>
  *
  * <p>仿 {@code GroupService.joinApplicationsBy} 的可测性约定：对外提供读 {@code StpAdminUtil} 的便捷入口，
  * 另留显式操作人 {@link #assignPermissionsBy} 入口供测试 / 需绕过 Sa-Token 上下文的场景。</p>
@@ -63,11 +64,11 @@ public class VolunteerPermissionService {
     /**
      * 当前志愿者的权限码集合（供 /v my-permissions；前端据此显示/隐藏管理团队入口）。
      *
-     * <p>与 {@code AdminStpInterface} 的志愿者分支同口径：停用/注销/不存在的志愿者返回空——否则停用 token
-     * 虽然后续动作会被 {@code @SaCheckPermission} 拒（403），却仍能从本接口拿到权限码让前端误显入口。</p>
+     * <p>与 {@code AdminStpInterface} 志愿者分支同口径：仅<b>活跃且为管理团队</b>（{@code manager_flag=1}）返回——
+     * 停用/降级的志愿者返回空，避免前端误显入口（停用 token 的后续动作虽也会被 {@code @SaCheckPermission} 拒）。</p>
      */
     public List<String> myCodes(Long volunteerId) {
-        if (!volunteerQueryService.isActive(volunteerId)) {
+        if (!volunteerQueryService.isActiveManager(volunteerId)) {
             return List.of();
         }
         return volunteerPermissionMapper.selectCodesByVolunteerId(volunteerId);
@@ -99,17 +100,19 @@ public class VolunteerPermissionService {
     @Transactional
     public void assignPermissionsBy(Long volunteerId, List<Long> permissionIds, Long operatorAdminId) {
         requireSuperAdmin(operatorAdminId);
-        if (!volunteerQueryService.isActive(volunteerId)) {
-            throw new BusinessException("志愿者不存在或已停用");
-        }
-        // 仅可给已标记「管理团队」的志愿者授权——否则误授后，普通/游客态志愿者就能凭权限发全平台活动。
-        // manager_flag 本身只能给已实名者设（setManagerFlag 硬校验），故此处一并覆盖「须已实名」。
-        if (!volunteerQueryService.isManager(volunteerId)) {
-            throw new BusinessException("仅可给已标记「管理团队」的志愿者授权（请先设置 manager_flag）");
-        }
         List<Long> distinctIds = CollectionUtils.isEmpty(permissionIds)
                 ? List.of() : permissionIds.stream().distinct().toList();
+        // 授权（非空）才校验身份与白名单；清空（空列表）始终放行——便于降级/停用后清理 stale 授权，
+        // 否则「降级即不能授权」会把已失效的 stale 行锁死、无法经本接口清除。
         if (!distinctIds.isEmpty()) {
+            if (!volunteerQueryService.isActive(volunteerId)) {
+                throw new BusinessException("志愿者不存在或已停用");
+            }
+            // 仅可给已标记「管理团队」的志愿者授权——否则普通/游客态志愿者就能凭权限发全平台活动。
+            // manager_flag 本身只能给已实名者设（setManagerFlag 硬校验），故一并覆盖「须已实名」。
+            if (!volunteerQueryService.isManager(volunteerId)) {
+                throw new BusinessException("仅可给已标记「管理团队」的志愿者授权（请先设置 manager_flag）");
+            }
             long grantableCount = permissionMapper.selectCount(Wrappers.<Permission>lambdaQuery()
                     .in(Permission::getId, distinctIds)
                     .eq(Permission::getVolunteerGrantable, 1));
