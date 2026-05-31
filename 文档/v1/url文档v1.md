@@ -115,8 +115,8 @@
 | POST | /v/activity/managed-activities/{id}/finish | 点击活动结束 | 需登录（活动负责人） |
 | POST | /v/activity/managed-activities/{id}/check-outs | 统一签退（全部或指定志愿者；活动结束后 2h 内） | 需登录（活动负责人） |
 | PATCH | /v/activity/managed-activities/{id}/attendances/{volunteerId} | 标记到位状态（正常/请假/迟到/缺席）或确认签到 | 需登录（活动负责人） |
-| POST | /v/activity/managed-activities/{id}/attendances/{volunteerId}/violations | 记录违规（`description`=记录明细自由文本为主；`violationType` 可选、缺省 0其他） | 需登录（活动负责人） |
-| GET | /v/activity/managed-activities/{id}/violations | 违规记录明细（名字/记录人/记录明细/记录时间，按记录时间倒序） | 需登录（活动负责人） |
+| POST | /v/activity/managed-activities/{id}/attendances/{volunteerId}/violations | 记录违规（`description`=记录明细，**必填 ≤512**；`violationType` 可选、缺省 0其他） | 需登录（活动负责人） |
+| GET | /v/activity/managed-activities/{id}/violations | 违规记录明细（名字/记录人/记录明细/记录时间，按记录时间倒序；记录人姓名仅本活动志愿者负责人解析，管理端录入为 null 避免跨域同号错认） | 需登录（活动负责人） |
 | PATCH | /v/activity/managed-activities/{id}/attendances/{volunteerId}/evaluation | 负责人评价志愿者 | 需登录（活动负责人） |
 | POST | /v/activity/managed-activities/{id}/summary | 上传活动总结（文字+图片；须活动已结束） | 需登录（活动负责人） |
 

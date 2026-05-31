@@ -35,6 +35,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -264,11 +265,13 @@ class ActivityAttendanceServiceTest {
     void violationRecords_listsDetailWithNames_freeText() {
         Long aid = insertInProgressActivity();
         Long offender = insertVolunteer();
-        Long leader = insertVolunteer();   // 记录人（志愿者负责人）
+        Long leaderVid = insertVolunteer();
         approveEnroll(aid, offender);
+        approveEnroll(aid, leaderVid);
+        leaderService.assign(aid, 1, leaderVid, 100L);   // 记录人 = 本活动志愿者负责人
 
         // 自由文本：violationType 传 null（DTO 可选）；description=记录明细
-        attendanceService.recordViolation(aid, offender, null, "长时间交头接耳", leader);
+        attendanceService.recordViolation(aid, offender, null, "长时间交头接耳", leaderVid);
 
         List<ViolationRecordVO> records = attendanceService.violationRecords(aid);
         assertEquals(1, records.size());
@@ -277,9 +280,32 @@ class ActivityAttendanceServiceTest {
         assertEquals("测试志愿者", r.getVolunteerName(), "违规者姓名按志愿者域解析");
         assertEquals("长时间交头接耳", r.getDescription(), "记录明细=自由文本");
         assertEquals(0, r.getViolationType(), "类型缺省记 0（其他）");
-        assertEquals(leader, r.getRecordedBy());
-        assertEquals("测试志愿者", r.getRecordedByName(), "记录人姓名按志愿者域解析");
+        assertEquals(leaderVid, r.getRecordedBy());
+        assertEquals("测试志愿者", r.getRecordedByName(), "记录人是本活动志愿者负责人，按志愿者域解析");
         assertNotNull(r.getRecordedTime());
+    }
+
+    @Test
+    void violationRecords_nonLeaderRecorder_nameNullAvoidsIdCollision() {
+        Long aid = insertInProgressActivity();
+        Long offender = insertVolunteer();
+        approveEnroll(aid, offender);
+        // 记录人 = 非本活动志愿者负责人（模拟管理端 admin_user.id；即便与某 volunteer.id 同号也不该错认）
+        attendanceService.recordViolation(aid, offender, 1, "玩手机", 999_999L);
+
+        ViolationRecordVO r = attendanceService.violationRecords(aid).get(0);
+        assertEquals(999_999L, r.getRecordedBy());
+        assertNull(r.getRecordedByName(), "记录人不在本活动志愿者负责人集合 → 姓名置 null，避免跨域同号错认");
+    }
+
+    @Test
+    void recordViolation_blankDescription_rejected() {
+        Long aid = insertInProgressActivity();
+        Long vid = insertVolunteer();
+        approveEnroll(aid, vid);
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> attendanceService.recordViolation(aid, vid, 1, "  ", 100L));
+        assertTrue(ex.getMessage().contains("违规说明"), "记录明细必填，空白应被拒");
     }
 
     // ---------- 秘书确认 / 积分发放 的次序与幂等 ----------

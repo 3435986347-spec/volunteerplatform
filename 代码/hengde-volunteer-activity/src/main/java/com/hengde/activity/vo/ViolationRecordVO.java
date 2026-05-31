@@ -7,8 +7,9 @@ import java.time.LocalDateTime;
 /**
  * 活动违规记录明细行（负责人板块「违规记录」页：名字 / 记录人 / 记录明细 / 记录时间）。
  *
- * <p>违规者与记录人姓名均按<b>志愿者域</b>解析（记录人通常为本活动的志愿者负责人）；若由管理端
- * 账号录入，{@link #recordedByName} 可能为 null（其 id 属 admin_user 域，本视图不跨域解析）。</p>
+ * <p>违规者 id 必是志愿者，姓名按志愿者域解析。<b>记录人 {@link #recordedBy} 跨 volunteer/admin 两套 ID
+ * 空间且会重叠</b>，故 {@link #recordedByName} 仅当其属<b>本活动志愿者负责人</b>（{@code leaderType=1}）时才解析，
+ * 否则置 null（管理端账号录入 / 已撤销负责人 / 跨域同号）——避免把 admin_user.id 错认成同号志愿者。</p>
  *
  * @author hengde
  */

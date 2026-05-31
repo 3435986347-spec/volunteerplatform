@@ -28,10 +28,11 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 活动现场考勤：负责人点开始/结束、志愿者 GPS 自助签到、负责人标到位状态/记违规/统一签退算时长，
@@ -246,6 +247,14 @@ public class AttendanceService {
     /** 负责人记录违规，返回违规记录 id。 */
     @Transactional(rollbackFor = Exception.class)
     public Long recordViolation(Long activityId, Long volunteerId, Integer type, String description, Long operatorId) {
+        // 自由文本=记录明细：必填且 ≤512（与 DB activity_violation.description 对齐，防超长截断 → 500）。
+        // 注：缺席自动违规走 autoAbsentViolation 直插、不经此方法，故此处的「必填」不影响自动违规。
+        if (description == null || description.isBlank()) {
+            throw new BusinessException("请填写违规说明");
+        }
+        if (description.length() > 512) {
+            throw new BusinessException("违规说明过长（不超过 512 字）");
+        }
         requirePublished(activityId);
         requireApprovedEnrollment(activityId, volunteerId, "该志愿者未报名或报名未通过");
         ActivityViolation v = new ActivityViolation();
@@ -262,7 +271,9 @@ public class AttendanceService {
     /**
      * 活动违规记录明细（名字 / 记录人 / 记录明细 / 记录时间），按记录时间倒序。供负责人板块「违规记录」页。
      *
-     * <p>违规者与记录人姓名按志愿者域解析（记录人通常为本活动志愿者负责人）；管理端账号录入的记录人名为 null。</p>
+     * <p>违规者 id 必是志愿者，姓名直接按志愿者域解析。<b>记录人 recorded_by 跨 volunteer/admin 两套 ID 空间
+     * 且会重叠</b>，故仅当其属本活动「志愿者负责人」（leaderType=1）时才解析姓名，否则置 null（管理端账号录入 /
+     * 已撤销负责人 / 跨域同号）——避免把 admin_user.id 错认成同号志愿者。</p>
      */
     public List<ViolationRecordVO> violationRecords(Long activityId) {
         List<ActivityViolation> rows = violationMapper.selectList(Wrappers.<ActivityViolation>lambdaQuery()
@@ -271,23 +282,25 @@ public class AttendanceService {
         if (rows.isEmpty()) {
             return List.of();
         }
-        Set<Long> ids = new HashSet<>();
-        for (ActivityViolation v : rows) {
-            ids.add(v.getVolunteerId());
-            if (v.getRecordedBy() != null) {
-                ids.add(v.getRecordedBy());
-            }
-        }
-        Map<Long, String> nameById = volunteerQueryService.listNamesByIds(ids);
+        // 违规者：一定是志愿者，安全解析
+        Set<Long> offenderIds = rows.stream().map(ActivityViolation::getVolunteerId).collect(Collectors.toSet());
+        Map<Long, String> offenderNames = volunteerQueryService.listNamesByIds(offenderIds);
+        // 记录人：仅本活动志愿者负责人（leaderType=1 的 volunteer.id）才解析姓名，避免跨域同号错认
+        Set<Long> volunteerLeaderIds = leaderMapper.selectList(Wrappers.<ActivityLeader>lambdaQuery()
+                        .eq(ActivityLeader::getActivityId, activityId)
+                        .eq(ActivityLeader::getLeaderType, LEADER_TYPE_VOLUNTEER))
+                .stream().map(ActivityLeader::getVolunteerId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, String> leaderNames = volunteerQueryService.listNamesByIds(volunteerLeaderIds);
         return rows.stream().map(v -> {
             ViolationRecordVO r = new ViolationRecordVO();
             r.setId(v.getId());
             r.setVolunteerId(v.getVolunteerId());
-            r.setVolunteerName(nameById.get(v.getVolunteerId()));
+            r.setVolunteerName(offenderNames.get(v.getVolunteerId()));
             r.setViolationType(v.getViolationType());
             r.setDescription(v.getDescription());
-            r.setRecordedBy(v.getRecordedBy());
-            r.setRecordedByName(v.getRecordedBy() == null ? null : nameById.get(v.getRecordedBy()));
+            Long rb = v.getRecordedBy();
+            r.setRecordedBy(rb);
+            r.setRecordedByName(rb != null && volunteerLeaderIds.contains(rb) ? leaderNames.get(rb) : null);
             r.setRecordedTime(v.getRecordedTime());
             return r;
         }).toList();
