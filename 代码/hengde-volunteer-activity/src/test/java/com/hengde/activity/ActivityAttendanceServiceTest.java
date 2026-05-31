@@ -308,6 +308,17 @@ class ActivityAttendanceServiceTest {
         assertTrue(ex.getMessage().contains("违规说明"), "记录明细必填，空白应被拒");
     }
 
+    @Test
+    void recordViolation_typeOutOfRange_rejected() {
+        Long aid = insertInProgressActivity();
+        Long vid = insertVolunteer();
+        approveEnroll(aid, vid);
+        // 99 超 TINYINT 业务范围（且超 DB 取值）→ service 兜底拦下，不落库变 500
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> attendanceService.recordViolation(aid, vid, 99, "玩手机", 100L));
+        assertTrue(ex.getMessage().contains("违规类型"), "类型超 0~4 应被拒");
+    }
+
     // ---------- 秘书确认 / 积分发放 的次序与幂等 ----------
 
     @Test

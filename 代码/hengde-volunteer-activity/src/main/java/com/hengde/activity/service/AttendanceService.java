@@ -255,6 +255,11 @@ public class AttendanceService {
         if (description.length() > 512) {
             throw new BusinessException("违规说明过长（不超过 512 字）");
         }
+        // 类型范围兜底（防跨模块绕过 DTO）：手工违规 0~4；缺席=5 系统自动直插、不经此方法。
+        // 超出 TINYINT 取值（如 128/999）会触发 DB 截断/越界异常变 500，故此处先拦。
+        if (type != null && (type < 0 || type > 4)) {
+            throw new BusinessException("违规类型不合法（0其他 / 1~4）");
+        }
         requirePublished(activityId);
         requireApprovedEnrollment(activityId, volunteerId, "该志愿者未报名或报名未通过");
         ActivityViolation v = new ActivityViolation();
