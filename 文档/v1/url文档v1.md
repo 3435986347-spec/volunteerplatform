@@ -90,6 +90,7 @@
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
 | GET | /v/activity/activities | 活动列表/推荐（排序：有名额优先→最新活动时间；返回含 `enrolledCount` 报名人数、`hasQuota` 是否有名额） | 需登录 |
+| POST | /v/activity/activities | 发布活动（「管理团队」志愿者；复用 `/a` 同款发布，操作人记志愿者；不带 `type=admin` 故走默认 login 域鉴权，吃 V18 志愿者权限） | 需登录（activity:publish） |
 | GET | /v/activity/activities/{id} | 活动详情（含子时间段/子项目/报名须知；内部展示全字段：定位+经纬度、三类报名开放时间、报名限制等） | 需登录 |
 | POST | /v/activity/activities/{id}/enroll | 报名（body 指定时间段） | 需登录 |
 | DELETE | /v/activity/activities/{id}/enroll | 取消报名 | 需登录 |
@@ -215,7 +216,7 @@
 
 ### 我的权限 — 志愿者端
 
-> **V18 是 RBAC 基建**：打通「后台给志愿者授权 → 志愿者 token 携带权限码 → `@SaCheckPermission` 可在 `/v` 端按默认 `login` 域生效」的链路。**消费这些权限码的 `/v` 活动动作（发布 / 现场管理）属 PR2，尚未落地**——当前活动发布仍在 `POST /a/activity/activities`（`activity:publish`，admin token），现场负责人仍走 `/v/activity/managed-activities` 的逐活动 `requireVolunteerLeader` 校验。前端进页面调本接口拿权限码、据此显示/隐藏入口；**仅 UX**，动作接口由 `@SaCheckPermission` 后端兜底。
+> **V18 打通志愿者端 RBAC**：后台给志愿者授权 → 志愿者 token 携带权限码 → `@SaCheckPermission`（默认 `login` 域）在 `/v` 端生效。**已落地的消费方**：`POST /v/activity/activities` 发布活动（PR2，需 `activity:publish`）。现场负责人管理仍走 `/v/activity/managed-activities` 的逐活动 `requireVolunteerLeader`（按「被指派」校验，与权限点并行）。前端进本接口拿权限码、据此显示/隐藏入口；**仅 UX**，动作接口由 `@SaCheckPermission` 后端兜底。
 
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
