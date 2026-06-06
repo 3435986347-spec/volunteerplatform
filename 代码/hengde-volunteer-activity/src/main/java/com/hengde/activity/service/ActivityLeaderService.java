@@ -1,6 +1,7 @@
 package com.hengde.activity.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.hengde.activity.constant.ActivityStatus;
 import com.hengde.activity.dao.ActivityEnrollmentMapper;
 import com.hengde.activity.dao.ActivityLeaderMapper;
 import com.hengde.activity.dao.ActivityMapper;
@@ -70,10 +71,7 @@ public class ActivityLeaderService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Long assign(Long activityId, Integer leaderType, Long refId, Long adminId) {
-        Activity activity = activityMapper.selectById(activityId);
-        if (activity == null) {
-            throw new BusinessException("活动不存在");
-        }
+        requireNonReviewActivity(activityId);
         if (refId == null) {
             throw new BusinessException("负责人 id 不能为空");
         }
@@ -110,6 +108,7 @@ public class ActivityLeaderService {
     /** 取消指派（按负责人记录 id；校验属于该活动）。 */
     @Transactional(rollbackFor = Exception.class)
     public void remove(Long activityId, Long leaderId) {
+        requireNonReviewActivity(activityId);
         ActivityLeader leader = leaderMapper.selectById(leaderId);
         if (leader == null || !leader.getActivityId().equals(activityId)) {
             throw new BusinessException("负责人记录不存在");
@@ -119,6 +118,7 @@ public class ActivityLeaderService {
 
     /** 负责人列表（志愿者负责人带出姓名；管理团队负责人仅出 admin_user.id，名字由 admin 模块自管）。 */
     public List<ActivityLeaderVO> list(Long activityId) {
+        requireNonReviewActivity(activityId);
         List<ActivityLeader> leaders = leaderMapper.selectList(Wrappers.<ActivityLeader>lambdaQuery()
                 .eq(ActivityLeader::getActivityId, activityId)
                 .orderByAsc(ActivityLeader::getId));
@@ -158,10 +158,29 @@ public class ActivityLeaderService {
         return c != null && c > 0;
     }
 
-    /** 校验该志愿者是本活动的志愿者负责人，否则抛业务异常（/v 端 leader 操作入口用）。 */
+    /**
+     * 校验该志愿者是本活动的志愿者负责人，否则抛业务异常（/v 端 leader 操作入口用）。
+     *
+     * <p>先挡审核域活动：即便存在历史/脏 leader 行指向待审/驳回活动，/v 负责人动作也不得触达
+     * （否则负责人能在小程序看到/操作未上线活动）。</p>
+     */
     public void requireVolunteerLeader(Long activityId, Long volunteerId) {
+        requireNonReviewActivity(activityId);
         if (!isVolunteerLeader(activityId, volunteerId)) {
             throw new BusinessException("您不是该活动的负责人");
         }
+    }
+
+    /**
+     * 活动须存在且非「审核域」（待审核 4/驳回 5）。待审/驳回活动只能经发布审核流程处置，
+     * 负责人指派/取消/查看等常规动作不得触达——否则有 {@code activity:leader-assign} 者凭 id 就能
+     * 给未上线/已驳回活动安排负责人（leaderType=2 还不受报名校验限制）。
+     */
+    private Activity requireNonReviewActivity(Long activityId) {
+        Activity activity = activityMapper.selectById(activityId);
+        if (activity == null || ActivityStatus.isUnderReview(activity.getStatus())) {
+            throw new BusinessException("活动不存在");
+        }
+        return activity;
     }
 }

@@ -164,7 +164,18 @@ public class SquadService {
         squadMapper.updateById(squad);
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
+        requireSquad(id);
+        // 物理删除前挡住「仍有成员」的分队：否则 volunteer.squad_id 会指向已删分队成为悬挂引用
+        // （详情/成员视图断链）。需先转移成员或改为停用(status=0)。
+        Long members = volunteerMapper.selectCount(Wrappers.<Volunteer>lambdaQuery()
+                .eq(Volunteer::getSquadId, id));
+        if (members != null && members > 0) {
+            throw new BusinessException("分队仍有成员，无法删除（请先转移成员或停用分队）");
+        }
+        // 已知遗留：squad_application 仍可能残留对已删分队的引用（待审/历史申请的 squadName 将解析为 null）；
+        // 本次控制改动面仅挡成员，不连带清理申请记录。
         squadMapper.deleteById(id);
     }
 
@@ -195,6 +206,20 @@ public class SquadService {
     public PageResult<SquadApplicationVO> applications(Long squadId, PageQuery query) {
         IPage<SquadApplication> page = applicationMapper.selectPage(query.toPage(), Wrappers.<SquadApplication>lambdaQuery()
                 .eq(SquadApplication::getSquadId, squadId)
+                .orderByDesc(SquadApplication::getId));
+        return PageResult.of(page.convert(this::toApplicationVO));
+    }
+
+    /**
+     * 全局分队加入申请列表（不按分队 ID），供后台概览「待审分队加入」待办卡片与统一审批入口。
+     *
+     * <p>无对应的全局接口曾导致前端无法做该待办卡片（须先列分队再逐个进）。{@code status} 为空时默认
+     * 仅返回待审（status=0）；传入则按指定状态筛选。每行带 {@code squadName}/{@code volunteerName} 便于识别。</p>
+     */
+    public PageResult<SquadApplicationVO> applications(PageQuery query, Integer status) {
+        int effectiveStatus = status == null ? APPLY_PENDING : status;
+        IPage<SquadApplication> page = applicationMapper.selectPage(query.toPage(), Wrappers.<SquadApplication>lambdaQuery()
+                .eq(SquadApplication::getStatus, effectiveStatus)
                 .orderByDesc(SquadApplication::getId));
         return PageResult.of(page.convert(this::toApplicationVO));
     }
@@ -317,6 +342,8 @@ public class SquadService {
         SquadApplicationVO vo = new SquadApplicationVO();
         vo.setId(application.getId());
         vo.setSquadId(application.getSquadId());
+        VolunteerSquad squad = squadMapper.selectById(application.getSquadId());
+        vo.setSquadName(squad == null ? null : squad.getName());
         vo.setVolunteerId(application.getVolunteerId());
         Volunteer volunteer = volunteerMapper.selectById(application.getVolunteerId());
         vo.setVolunteerName(volunteer == null ? null : volunteer.getRealName());

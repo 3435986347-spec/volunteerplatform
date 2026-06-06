@@ -104,7 +104,7 @@ public class ActivityAdminDetailVO {
     /** 报名成功提示图片 */
     private String successTipImageUrl;
 
-    /** 状态 0草稿/1已发布/2已结束/3已取消 */
+    /** 状态 0草稿/1已发布/2已结束/3已取消/4待审核发布/5发布被驳回 */
     private Integer status;
 
     /** 发布人 admin_user.id */
@@ -142,4 +142,15 @@ public class ActivityAdminDetailVO {
 
     /** 时间段/子项目 */
     private List<ActivitySlotVO> slots;
+
+    // ---------- V19 发布审核留痕（review-detail 回显，常规活动为 null） ----------
+
+    /** 发布审核驳回原因（status=5 时） */
+    private String publishRejectReason;
+
+    /** 发布审核人 admin_user.id */
+    private Long publishReviewBy;
+
+    /** 发布审核时间 */
+    private LocalDateTime publishReviewTime;
 }

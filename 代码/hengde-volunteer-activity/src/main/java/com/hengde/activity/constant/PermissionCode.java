@@ -63,4 +63,7 @@ public final class PermissionCode {
 
     /** 活动补录审核（部长；第3批） */
     public static final String ACTIVITY_BACKFILL_AUDIT = "activity:backfill-audit";
+
+    /** 活动发布审核（部长；审核小程序提交的活动，V19） */
+    public static final String ACTIVITY_PUBLISH_AUDIT = "activity:publish-audit";
 }

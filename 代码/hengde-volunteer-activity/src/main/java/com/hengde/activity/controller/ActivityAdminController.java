@@ -4,10 +4,13 @@ import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.hengde.activity.constant.PermissionCode;
 import com.hengde.activity.dto.ActivityCreateDTO;
 import com.hengde.activity.dto.ActivityUpdateDTO;
+import com.hengde.activity.dto.PublishRejectDTO;
 import com.hengde.activity.dto.RecurringActivityDTO;
+import com.hengde.activity.service.ActivityReviewService;
 import com.hengde.activity.service.ActivityService;
 import com.hengde.activity.vo.ActivityAdminDetailVO;
 import com.hengde.activity.vo.ActivityListVO;
+import com.hengde.activity.vo.ActivityReviewVO;
 import com.hengde.auth.config.StpAdminUtil;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
@@ -38,10 +41,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class ActivityAdminController {
 
     private ActivityService activityService;
+    private ActivityReviewService activityReviewService;
 
     @Autowired
     public void setActivityService(ActivityService activityService) {
         this.activityService = activityService;
+    }
+
+    @Autowired
+    public void setActivityReviewService(ActivityReviewService activityReviewService) {
+        this.activityReviewService = activityReviewService;
     }
 
     @Operation(summary = "活动列表（可按状态/关键词筛选）")
@@ -58,6 +67,38 @@ public class ActivityAdminController {
     @GetMapping("/{id}")
     public Result<ActivityAdminDetailVO> detail(@PathVariable Long id) {
         return Result.ok(activityService.detailForAdmin(id));
+    }
+
+    @Operation(summary = "活动发布审核列表（带提交人；status 默认 4 待审核，可传 5 看已驳回）")
+    @SaCheckPermission(value = PermissionCode.ACTIVITY_PUBLISH_AUDIT, type = "admin")
+    @GetMapping("/pending-reviews")
+    public Result<PageResult<ActivityReviewVO>> pendingReviews(PageQuery query,
+                                                              @RequestParam(required = false) Integer status) {
+        return Result.ok(activityReviewService.reviews(query, status));
+    }
+
+    @Operation(summary = "待审核/驳回活动详情（完整字段，供审核者决定通过/驳回，无需 activity:menu）")
+    @SaCheckPermission(value = PermissionCode.ACTIVITY_PUBLISH_AUDIT, type = "admin")
+    @GetMapping("/{id}/review-detail")
+    public Result<ActivityAdminDetailVO> reviewDetail(@PathVariable Long id) {
+        return Result.ok(activityService.reviewDetail(id));
+    }
+
+    @Operation(summary = "发布审核通过（小程序提交的活动上线）")
+    @SaCheckPermission(value = PermissionCode.ACTIVITY_PUBLISH_AUDIT, type = "admin")
+    @PostMapping("/{id}/publish-approve")
+    public Result<Void> publishApprove(@PathVariable Long id) {
+        activityReviewService.approve(id, StpAdminUtil.getLoginIdAsLong());
+        return Result.ok();
+    }
+
+    @Operation(summary = "发布审核驳回（body 可填原因）")
+    @SaCheckPermission(value = PermissionCode.ACTIVITY_PUBLISH_AUDIT, type = "admin")
+    @PostMapping("/{id}/publish-reject")
+    public Result<Void> publishReject(@PathVariable Long id,
+                                      @RequestBody(required = false) @Valid PublishRejectDTO dto) {
+        activityReviewService.reject(id, dto == null ? null : dto.getReason(), StpAdminUtil.getLoginIdAsLong());
+        return Result.ok();
     }
 
     @Operation(summary = "发布活动")

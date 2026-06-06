@@ -15,8 +15,8 @@ Implemented modules:
 - `代码/hengde-volunteer-parent/`: parent POM, Java 17, Spring Boot 4.0.6, dependency management, shared plugins.
 - `代码/hengde-volunteer-common/`: shared primitives, errors, crypto, Redis, SMS, OSS, Excel, pagination, Flyway migrations, and testcontainers test support.
 - `代码/hengde-volunteer-auth/`: volunteer login/register/agreement/signature, admin auth, PII encryption/decryption, volunteer query/admin services.
-- `代码/hengde-volunteer-organization/`: RBAC sub-accounts, groups, squads, structure, manager-team flag workflows.
-- `代码/hengde-volunteer-activity/`: activity publishing, enrollment, attendance, service records, points, leaders, messages, recurring publish, backfill.
+- `代码/hengde-volunteer-organization/`: RBAC sub-accounts, groups, squads, structure, manager-team flag workflows, and volunteer-side RBAC grants.
+- `代码/hengde-volunteer-activity/`: activity publishing, enrollment, attendance, service records, points, leaders, messages, recurring publish, backfill, volunteer-side publishing, and leader views.
 - `代码/hengde-volunteer-publicity/`: banners, announcements, and downloadable files.
 - `代码/hengde-volunteer-api/`: single deployable Spring Boot app, global config, filters, exception handling, aggregate controllers.
 
@@ -44,6 +44,7 @@ cd 代码\hengde-volunteer-parent
 
 # Run tests for a changed module.
 .\mvnw.cmd test -f ..\hengde-volunteer-activity\pom.xml
+.\mvnw.cmd test -f ..\hengde-volunteer-organization\pom.xml
 .\mvnw.cmd test -f ..\hengde-volunteer-api\pom.xml
 
 # Run a single test class or method.
@@ -62,7 +63,7 @@ Docker Desktop must be running for MySQL/Redis Testcontainers tests.
 - Use role prefixes from the URL contract: `/v` for volunteers, `/a` for admin, `/e` reserved for enterprise.
 - Keep Jackson behavior in `hengde-volunteer-api` `JacksonConfig`, not `spring.jackson.*` YAML.
 - Use Spring Boot's default HikariCP datasource; do not add Druid.
-- Flyway scripts are centralized in `hengde-volunteer-common/src/main/resources/db/migration/` with one global version sequence. Current sequence is V17.
+- Flyway scripts are centralized in `hengde-volunteer-common/src/main/resources/db/migration/` with one global version sequence. Current sequence is V18.
 
 ## Fixed Product Contracts
 
@@ -80,6 +81,18 @@ Organization approval rules are fixed:
 - Disabled squads cannot be approved or joined from volunteer flows.
 - Volunteer assignment to `squad_id` must use conditional update with `squad_id is null` and explicit `update_time`.
 - One active group per volunteer is enforced by service checks plus the V9 unique constraint.
+- Group join approval must be reachable through `GET /v/organization/groups/{id}/join-applications`; this returns pending join rows and their `memberId` for approve/reject.
+
+Volunteer-side RBAC rules are fixed:
+
+- V18 adds `volunteer_permission` and `permission.volunteer_grantable`.
+- Only activity-domain grantable points may be assigned to volunteers; `activity:menu` is not volunteer-grantable.
+- Volunteer permission assignment is super-admin only.
+- Non-empty assignment requires the target volunteer to be active and `manager_flag=1`.
+- Empty assignment is allowed as a cleanup path even after the volunteer is downgraded.
+- Permission reads use `VolunteerQueryService.isActiveManager`; suspended, deleted, or downgraded volunteers get no codes.
+- `@SaCheckPermission` on `/v` endpoints must not use `type="admin"`; it should use the default login realm.
+- `POST /v/activity/activities` consumes `activity:publish` for manager-team volunteers. Recurring and historical publishing remain admin-only.
 
 Activity rules already decided in code/docs should keep their current wording and error semantics:
 
@@ -87,6 +100,12 @@ Activity rules already decided in code/docs should keep their current wording an
 - Activity albums are postponed until `social` exists.
 - Historical activities are not visible to volunteers and must not grant points.
 - Attendance/points changes require the V14 two-step approval flow.
+- Activity backfill approval is terminal: it writes confirmed attendance directly; historical backfill records time only and finalizes points as issued with 0 points.
+- Leader emergency reporting is a configured phone number (`hengde.activity.emergency-phone`) returned as `emergencyPhone`; no table is used.
+- Manual violation records use `description` as required free text with max length 512.
+- Manual `violationType` is optional and limited to 0-4. Type 5 means absence and is system-generated only by marking absent.
+- `recordViolation` must keep service-level guards for required text, max length, and type range so internal callers cannot bypass DTO validation.
+- Violation record views must not resolve `recorded_by` blindly through volunteer IDs because it can also contain `admin_user.id`. Only resolve `recordedByName` when the recorder is a volunteer leader of that activity; otherwise leave it null.
 
 ## Testing Guidelines
 
@@ -106,6 +125,7 @@ Tests use JUnit 5 and Spring Boot test. Put tests under `src/test/java` with nam
 - Production config guards should fail fast when required production settings are missing or still using development placeholders.
 - Sensitive volunteer data decryption stays in `auth`. Other modules should consume `auth` service outputs and should not manipulate encrypted columns directly.
 - Public display use cases should request narrow outputs, such as name-only views, instead of loading decrypted phone numbers into memory.
+- Cross-domain ID columns that can hold IDs from multiple tables must not be name-resolved without a subject-type discriminator or a safe local proof of subject type.
 - OpenAPI auth uses `apiKey` in the `Authorization` header to match Sa-Token direct token behavior.
 
 ## Git And Handoff

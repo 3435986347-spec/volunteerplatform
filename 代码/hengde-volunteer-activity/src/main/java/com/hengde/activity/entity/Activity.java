@@ -105,7 +105,7 @@ public class Activity extends BaseEntity {
     /** 报名成功提示图片（群二维码） */
     private String successTipImageUrl;
 
-    /** 状态 0草稿/1已发布/2已结束/3已取消 */
+    /** 状态 0草稿/1已发布/2已结束/3已取消/4待审核发布(小程序提交)/5发布被驳回 */
     private Integer status;
 
     /** 发布人 admin_user.id */
@@ -166,4 +166,15 @@ public class Activity extends BaseEntity {
 
     /** 0普通活动/1历史补录活动（V16；历史活动补录只记时长不发积分） */
     private Integer isHistorical;
+
+    // ---------- V19 活动发布审核（小程序提交的活动需后台审核） ----------
+
+    /** 发布审核驳回原因（status=5 时；V19） */
+    private String publishRejectReason;
+
+    /** 发布审核人 admin_user.id（V19） */
+    private Long publishReviewBy;
+
+    /** 发布审核时间（V19） */
+    private LocalDateTime publishReviewTime;
 }

@@ -8,6 +8,14 @@
 		<version>4.0.6</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
+	<modules>
+		<module>../hengde-volunteer-common</module>
+		<module>../hengde-volunteer-auth</module>
+		<module>../hengde-volunteer-organization</module>
+		<module>../hengde-volunteer-publicity</module>
+		<module>../hengde-volunteer-activity</module>
+		<module>../hengde-volunteer-api</module>
+	</modules>
 	<groupId>com.hengde</groupId>
 	<artifactId>hengde-volunteer-parent</artifactId>
 	<version>1.1-SNAPSHOT</version>

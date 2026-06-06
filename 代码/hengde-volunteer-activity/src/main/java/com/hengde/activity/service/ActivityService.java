@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hengde.activity.dao.ActivityEnrollmentMapper;
 import com.hengde.activity.dao.ActivityMapper;
 import com.hengde.activity.dao.ActivitySlotMapper;
+import com.hengde.activity.constant.ActivityStatus;
 import com.hengde.activity.dto.ActivityCreateDTO;
 import com.hengde.activity.dto.ActivitySlotDTO;
 import com.hengde.activity.dto.ActivityUpdateDTO;
@@ -54,7 +55,13 @@ public class ActivityService {
     private static final int STATUS_FINISHED = 2;
     /** 已取消 */
     private static final int STATUS_CANCELLED = 3;
+    /** 待审核发布（小程序/志愿者端提交，需后台审核才上线；V19。审核流转见 {@link ActivityReviewService}） */
+    private static final int STATUS_PENDING_REVIEW = 4;
+    /** 发布被驳回（V19）。与待审核一道属「审核域」，常规活动列表/详情排除、仅审核侧可见 */
+    private static final int STATUS_REJECTED = 5;
 
+    /** 现场运行状态：未开始（复制活动重置为此） */
+    private static final int RUN_NOT_STARTED = 0;
     /** 现场运行状态：已结束（历史活动直接置此） */
     private static final int RUN_ENDED = 2;
 
@@ -87,11 +94,21 @@ public class ActivityService {
     }
 
     /**
-     * 发布活动（创建即发布）。
+     * 发布活动（创建即发布）。后台 {@code /a} 发布走此路径，直接上线、不进审核队列。
      */
     @Transactional
     public Long publish(ActivityCreateDTO dto, Long adminId) {
         return publishOne(dto, adminId, STATUS_PUBLISHED, false);
+    }
+
+    /**
+     * 提交活动待审核发布（V19）：小程序（志愿者端）管理团队提交的活动落 {@code status=待审核}，
+     * <b>不</b>对志愿者端可见（{@code listForVolunteer}/{@code detailForVolunteer} 仅放已发布），
+     * 须经后台 {@code activity:publish-audit} 审核通过才上线。{@code createBy} 记提交的志愿者 id。
+     */
+    @Transactional
+    public Long submitForReview(ActivityCreateDTO dto, Long volunteerId) {
+        return publishOne(dto, volunteerId, STATUS_PENDING_REVIEW, false);
     }
 
     /**
@@ -247,7 +264,8 @@ public class ActivityService {
     @Transactional
     public void update(Long id, ActivityUpdateDTO dto) {
         Activity activity = activityMapper.selectById(id);
-        if (activity == null) {
+        if (activity == null || isUnderReview(activity)) {
+            // 审核域（待审核/驳回）活动不在常规管理面可达，按 id 也不允许常规修改——避免绕开审核边界
             throw new BusinessException("活动不存在");
         }
         if (Integer.valueOf(STATUS_FINISHED).equals(activity.getStatus())
@@ -276,7 +294,8 @@ public class ActivityService {
     @Transactional
     public void delete(Long id) {
         Activity activity = activityMapper.selectById(id);
-        if (activity == null) {
+        if (activity == null || isUnderReview(activity)) {
+            // 审核域活动不走常规删除（属审核侧处置范畴），按 id 也拒绝，保持权限边界
             throw new BusinessException("活动不存在");
         }
         if (Integer.valueOf(STATUS_FINISHED).equals(activity.getStatus())) {
@@ -304,7 +323,9 @@ public class ActivityService {
     @Transactional
     public Long copy(Long id, Long adminId) {
         Activity src = activityMapper.selectById(id);
-        if (src == null) {
+        if (src == null || isUnderReview(src)) {
+            // 关键边界：禁止复制待审核/驳回活动——否则有 activity:publish 者只要知道 id 就能复制成 status=1
+            // 直接上线、绕开审核队列。审核域活动只能经 publish-approve/reject 处置。
             throw new BusinessException("活动不存在");
         }
         if (Integer.valueOf(STATUS_CANCELLED).equals(src.getStatus())) {
@@ -320,6 +341,20 @@ public class ActivityService {
         copy.setStatus(STATUS_PUBLISHED);
         copy.setCreateBy(adminId);
         copy.setTitle(src.getTitle() + "（复制）");
+        // 复制源若为驳回/已审核活动，不继承其发布审核留痕（V19）——新活动直接发布、无审核历史
+        copy.setPublishRejectReason(null);
+        copy.setPublishReviewBy(null);
+        copy.setPublishReviewTime(null);
+        // 复制 = 全新「普通已发布活动」：源活动若已开始/结束/历史/有总结，这些运行态字段不得带入副本，
+        // 否则副本会是「已发布但 run_status=已结束/带旧总结/被标历史」的坏活动（负责人无法再开始、grantPoints 被拒）。
+        copy.setRunStatus(RUN_NOT_STARTED);
+        copy.setActualStartTime(null);
+        copy.setActualEndTime(null);
+        copy.setSummaryText(null);
+        copy.setSummaryImages(null);
+        copy.setSummaryBy(null);
+        copy.setSummaryTime(null);
+        copy.setIsHistorical(0);
         activityMapper.insert(copy);
         copy.setSerialNo(copy.getId());
         activityMapper.updateById(copy);
@@ -381,7 +416,10 @@ public class ActivityService {
      */
     public PageResult<ActivityListVO> listForAdmin(PageQuery query, String keyword, Integer status) {
         Page<Activity> page = query.toPage();
-        var wrapper = Wrappers.<Activity>lambdaQuery();
+        // 常规活动管理菜单（activity:menu）排除「审核域」活动（待审核 4/驳回 5）——它们只在审核侧
+        // （activity:publish-audit 的 pending-reviews / review-detail）可见，避免有 menu 无审核权者越界看到。
+        var wrapper = Wrappers.<Activity>lambdaQuery()
+                .notIn(Activity::getStatus, STATUS_PENDING_REVIEW, STATUS_REJECTED);
         if (status != null) {
             wrapper.eq(Activity::getStatus, status);
         }
@@ -394,16 +432,43 @@ public class ActivityService {
     }
 
     /**
-     * 管理端活动详情（不限状态，全量字段）。
+     * 管理端活动详情（常规活动 1已发布/2已结束/3已取消，全量字段）。
+     *
+     * <p>待审核(4)/驳回(5) 不在此暴露——否则仅有 {@code activity:menu} 的人就能看到待审/驳回活动；
+     * 审核者看完整详情走 {@link #reviewDetail}（{@code activity:publish-audit}）。</p>
      */
     public ActivityAdminDetailVO detailForAdmin(Long id) {
+        Activity activity = activityMapper.selectById(id);
+        if (activity == null || isUnderReview(activity)) {
+            throw new BusinessException("活动不存在");
+        }
+        return toAdminDetailVO(activity);
+    }
+
+    /**
+     * 活动发布审核详情（仅待审核 4/驳回 5）：供审核者（{@code activity:publish-audit}）看完整字段决定
+     * 通过/驳回，无需额外配 {@code activity:menu}。
+     */
+    public ActivityAdminDetailVO reviewDetail(Long id) {
         Activity activity = activityMapper.selectById(id);
         if (activity == null) {
             throw new BusinessException("活动不存在");
         }
+        if (!isUnderReview(activity)) {
+            throw new BusinessException("该活动非待审核/驳回状态，请走常规活动详情");
+        }
+        return toAdminDetailVO(activity);
+    }
+
+    /** 是否处于「审核域」状态（待审核发布 4 或 发布被驳回 5）。统一口径见 {@link ActivityStatus#isUnderReview}。 */
+    private boolean isUnderReview(Activity activity) {
+        return ActivityStatus.isUnderReview(activity.getStatus());
+    }
+
+    private ActivityAdminDetailVO toAdminDetailVO(Activity activity) {
         ActivityAdminDetailVO vo = new ActivityAdminDetailVO();
         BeanUtils.copyProperties(activity, vo);
-        vo.setSlots(loadSlotVOs(id));
+        vo.setSlots(loadSlotVOs(activity.getId()));
         return vo;
     }
 

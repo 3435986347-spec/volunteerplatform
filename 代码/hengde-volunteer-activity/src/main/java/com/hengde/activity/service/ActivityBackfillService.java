@@ -6,6 +6,7 @@ import com.hengde.activity.dao.ActivityAttendanceMapper;
 import com.hengde.activity.dao.ActivityBackfillMapper;
 import com.hengde.activity.dao.ActivityMapper;
 import com.hengde.activity.dao.ActivitySlotMapper;
+import com.hengde.activity.constant.ActivityStatus;
 import com.hengde.activity.dto.BackfillRequestDTO;
 import com.hengde.activity.entity.Activity;
 import com.hengde.activity.entity.ActivityAttendance;
@@ -108,7 +109,8 @@ public class ActivityBackfillService {
             throw new BusinessException("操作人不能为空");
         }
         Activity activity = activityMapper.selectById(activityId);
-        if (activity == null) {
+        // 审核域（待审核 4/驳回 5）活动不可补录——否则知道 id 的组织部能给未上线/已驳回活动落服务记录与积分
+        if (activity == null || ActivityStatus.isUnderReview(activity.getStatus())) {
             throw new BusinessException("活动不存在");
         }
         VolunteerBackfillView v = volunteerQueryService.findForBackfill(dto.getIdCard(), dto.getPhone(), dto.getName());
@@ -215,7 +217,8 @@ public class ActivityBackfillService {
             throw new BusinessException("该志愿者已有该活动的考勤记录，补录冲突");
         }
         Activity activity = activityMapper.selectById(bf.getActivityId());
-        if (activity == null) {
+        // 落账前再查一次（防 request→approve 之间活动状态变化）：审核域活动一律拒绝落账
+        if (activity == null || ActivityStatus.isUnderReview(activity.getStatus())) {
             throw new BusinessException("活动不存在");
         }
         ActivitySlot slot = slotMapper.selectById(bf.getSlotId());

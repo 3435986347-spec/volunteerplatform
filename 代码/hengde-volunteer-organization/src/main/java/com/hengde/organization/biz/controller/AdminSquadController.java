@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "管理端-归属分队")
@@ -64,7 +65,15 @@ public class AdminSquadController {
         return Result.ok();
     }
 
-    @Operation(summary = "加入申请列表")
+    @Operation(summary = "全局待审分队加入申请（不按分队；默认仅待审，可传 status 覆盖。概览待办用）")
+    @SaCheckPermission(value = "org:squad-audit", type = "admin")
+    @GetMapping("/applications")
+    public Result<PageResult<SquadApplicationVO>> pendingApplications(PageQuery query,
+                                                                     @RequestParam(required = false) Integer status) {
+        return Result.ok(squadService.applications(query, status));
+    }
+
+    @Operation(summary = "加入申请列表（指定分队）")
     @SaCheckPermission(value = "org:squad-audit", type = "admin")
     @GetMapping("/{id}/applications")
     public Result<PageResult<SquadApplicationVO>> applications(@PathVariable Long id, PageQuery query) {

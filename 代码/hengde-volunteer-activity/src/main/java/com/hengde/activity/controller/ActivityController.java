@@ -27,8 +27,9 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>发布活动是个例外：给「管理团队」志愿者用，需 {@code activity:publish} 权限点（V18 志愿者端 RBAC）。
  * 这里不带 {@code type="admin"}，故 {@code @SaCheckPermission} 走默认 {@code login} 域，鉴权数据来自
- * organization 的 StpInterface 志愿者分支（`volunteer_permission`）。复用与 {@code /a} 相同的
- * {@code ActivityService.publish}，操作人记当前志愿者。</p>
+ * organization 的 StpInterface 志愿者分支（`volunteer_permission`）。<b>V19 起：小程序提交的活动不直接上线，
+ * 落「待审核发布」，须后台 {@code activity:publish-audit} 审核通过才对志愿者端可见</b>（后台 {@code /a} 直接
+ * 发布的不审核）。操作人记当前志愿者。</p>
  *
  * @author hengde
  */
@@ -44,11 +45,11 @@ public class ActivityController {
         this.activityService = activityService;
     }
 
-    @Operation(summary = "发布活动（管理团队志愿者，需 activity:publish 权限）")
+    @Operation(summary = "提交活动（管理团队志愿者，需 activity:publish；提交后待后台审核才上线）")
     @SaCheckPermission(PermissionCode.ACTIVITY_PUBLISH)
     @PostMapping
     public Result<Long> publish(@RequestBody @Valid ActivityCreateDTO dto) {
-        return Result.ok(activityService.publish(dto, StpUtil.getLoginIdAsLong()));
+        return Result.ok(activityService.submitForReview(dto, StpUtil.getLoginIdAsLong()));
     }
 
     @Operation(summary = "活动列表/推荐（仅已发布；有名额优先排序，带报名人数/有名额标记）")

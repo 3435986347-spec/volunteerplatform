@@ -2,6 +2,7 @@ package com.hengde.activity.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.hengde.activity.config.ActivityProperties;
+import com.hengde.activity.constant.ActivityStatus;
 import com.hengde.activity.dao.ActivityAttendanceMapper;
 import com.hengde.activity.dao.ActivityEnrollmentMapper;
 import com.hengde.activity.dao.ActivityLeaderMapper;
@@ -446,7 +447,8 @@ public class AttendanceService {
         }
         return activityIds.stream().map(aid -> {
             Activity a = activityById.get(aid);
-            if (a == null) {
+            // 跳过审核域（待审核/驳回）活动——即便有历史/脏 leader 行也不让负责人在 /v 看到未上线活动
+            if (a == null || ActivityStatus.isUnderReview(a.getStatus())) {
                 return null;
             }
             ManagedActivityVO vo = new ManagedActivityVO();
@@ -464,7 +466,8 @@ public class AttendanceService {
     /** 负责人「活动详情」：活动概要 + 志愿者考勤名单（名字/电话/学校 + 签到签退/到位/时长/违规数）。 */
     public ManagedActivityDetailVO leaderDetail(Long activityId) {
         Activity a = activityMapper.selectById(activityId);
-        if (a == null) {
+        // 审核域活动对负责人视图不可见（防历史/脏 leader 行泄露未上线活动详情）
+        if (a == null || ActivityStatus.isUnderReview(a.getStatus())) {
             throw new BusinessException("活动不存在");
         }
         ManagedActivityDetailVO vo = new ManagedActivityDetailVO();
