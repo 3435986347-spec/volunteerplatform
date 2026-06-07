@@ -37,6 +37,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import org.springframework.dao.DuplicateKeyException;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -128,14 +129,14 @@ public class GroupService {
         }
         wrapper.orderByDesc(VolunteerGroup::getId);
         IPage<VolunteerGroup> page = groupMapper.selectPage(query.toPage(), wrapper);
-        return PageResult.of(page.convert(this::toGroupVO));
+        return PageResult.of(toGroupVOList(page.getRecords()), page.getTotal(), page.getCurrent(), page.getSize());
     }
 
     public PageResult<GroupVO> applications(PageQuery query) {
         IPage<VolunteerGroup> page = groupMapper.selectPage(query.toPage(), Wrappers.<VolunteerGroup>lambdaQuery()
                 .eq(VolunteerGroup::getStatus, GROUP_PENDING)
                 .orderByDesc(VolunteerGroup::getId));
-        return PageResult.of(page.convert(this::toGroupVO));
+        return PageResult.of(toGroupVOList(page.getRecords()), page.getTotal(), page.getCurrent(), page.getSize());
     }
 
     /** 全局搜索：正常状态小组按名称/编号匹配的命中总数（供 api 聚合层算精确分页 total）。 */
@@ -685,6 +686,61 @@ public class GroupService {
         h.setOperatorId(operatorId);
         h.setReason(reason);
         leaderHistoryMapper.insert(h);
+    }
+
+    /**
+     * 批量组装小组 VO：一次取组长姓名 + 一次按 group_id 聚合在册成员数，避免逐行 N+1。
+     * 仅替换 records，分页 total/page/size 由调用方沿用原 page，语义不变。
+     */
+    private List<GroupVO> toGroupVOList(List<VolunteerGroup> groups) {
+        if (groups == null || groups.isEmpty()) {
+            return List.of();
+        }
+        List<Long> leaderIds = groups.stream().map(VolunteerGroup::getLeaderId)
+                .filter(Objects::nonNull).distinct().toList();
+        Map<Long, String> leaderNameById = volunteerQueryService.listNamesByIds(leaderIds);
+        Map<Long, Long> memberCountById = countActiveMembersByGroup(
+                groups.stream().map(VolunteerGroup::getId).toList());
+        return groups.stream().map(g -> {
+            GroupVO vo = new GroupVO();
+            vo.setId(g.getId());
+            vo.setGroupNo(g.getGroupNo());
+            vo.setName(g.getName());
+            vo.setDescription(g.getDescription());
+            vo.setLeaderId(g.getLeaderId());
+            vo.setLeaderName(g.getLeaderId() == null ? null : leaderNameById.get(g.getLeaderId()));
+            vo.setStatus(g.getStatus());
+            vo.setRejectReason(g.getRejectReason());
+            vo.setCreateTime(g.getCreateTime());
+            vo.setMemberCount(memberCountById.getOrDefault(g.getId(), 0L));
+            return vo;
+        }).toList();
+    }
+
+    /** 一次按 group_id 聚合在册(ACTIVE)成员数（selectMaps 仍自动带 is_deleted=0）。空 ids 早返回避免 in()。 */
+    private Map<Long, Long> countActiveMembersByGroup(List<Long> groupIds) {
+        if (groupIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Map<String, Object>> rows = memberMapper.selectMaps(Wrappers.<VolunteerGroupMember>query()
+                .select("group_id AS gid", "COUNT(*) AS cnt")
+                .in("group_id", groupIds)
+                .eq("status", MEMBER_ACTIVE)
+                .groupBy("group_id"));
+        Map<Long, Long> result = new HashMap<>(rows.size());
+        for (Map<String, Object> row : rows) {
+            result.put(numOf(row, "gid"), numOf(row, "cnt"));
+        }
+        return result;
+    }
+
+    /** 从 selectMaps 行取数值（兼容驱动对别名大小写处理差异）。 */
+    private static long numOf(Map<String, Object> row, String key) {
+        Object v = row.get(key);
+        if (v == null) {
+            v = row.get(key.toUpperCase());
+        }
+        return v == null ? 0L : ((Number) v).longValue();
     }
 
     private GroupVO toGroupVO(VolunteerGroup group) {

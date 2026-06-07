@@ -28,6 +28,7 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -74,7 +75,7 @@ public class SquadService {
         IPage<VolunteerSquad> page = squadMapper.selectPage(query.toPage(), Wrappers.<VolunteerSquad>lambdaQuery()
                 .eq(!admin, VolunteerSquad::getStatus, SQUAD_ENABLED)
                 .orderByDesc(VolunteerSquad::getId));
-        return PageResult.of(page.convert(this::toVO));
+        return PageResult.of(toVOList(page.getRecords()), page.getTotal(), page.getCurrent(), page.getSize());
     }
 
     /**
@@ -85,7 +86,9 @@ public class SquadService {
      */
     public SquadVO detail(Long id) {
         VolunteerSquad squad = requireEnabledSquad(id);
-        SquadVO vo = toVO(squad);
+        Long memberCount = volunteerMapper.selectCount(Wrappers.<Volunteer>lambdaQuery()
+                .eq(Volunteer::getSquadId, id));
+        SquadVO vo = toVO(squad, memberCount == null ? 0L : memberCount);
         Long currentVolunteerId = StpUtil.getLoginIdAsLong();
         Volunteer me = volunteerMapper.selectById(currentVolunteerId);
         boolean belonged = me != null && Objects.equals(me.getSquadId(), id);
@@ -167,8 +170,8 @@ public class SquadService {
     @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
         requireSquad(id);
-        // 物理删除前挡住「仍有成员」的分队：否则 volunteer.squad_id 会指向已删分队成为悬挂引用
-        // （详情/成员视图断链）。需先转移成员或改为停用(status=0)。
+        // 删除前挡住「仍有成员」的分队：deleteById 走 BaseEntity @TableLogic 逻辑删除，删后分队对查询不可见，
+        // 但 volunteer.squad_id 仍指向它形成悬挂引用（详情/成员视图断链）。需先转移成员或改为停用(status=0)。
         Long members = volunteerMapper.selectCount(Wrappers.<Volunteer>lambdaQuery()
                 .eq(Volunteer::getSquadId, id));
         if (members != null && members > 0) {
@@ -207,7 +210,7 @@ public class SquadService {
         IPage<SquadApplication> page = applicationMapper.selectPage(query.toPage(), Wrappers.<SquadApplication>lambdaQuery()
                 .eq(SquadApplication::getSquadId, squadId)
                 .orderByDesc(SquadApplication::getId));
-        return PageResult.of(page.convert(this::toApplicationVO));
+        return PageResult.of(toApplicationVOList(page.getRecords()), page.getTotal(), page.getCurrent(), page.getSize());
     }
 
     /**
@@ -221,7 +224,7 @@ public class SquadService {
         IPage<SquadApplication> page = applicationMapper.selectPage(query.toPage(), Wrappers.<SquadApplication>lambdaQuery()
                 .eq(SquadApplication::getStatus, effectiveStatus)
                 .orderByDesc(SquadApplication::getId));
-        return PageResult.of(page.convert(this::toApplicationVO));
+        return PageResult.of(toApplicationVOList(page.getRecords()), page.getTotal(), page.getCurrent(), page.getSize());
     }
 
     /** 全局搜索：启用分队按名称匹配的命中总数（供 api 聚合层算精确分页 total）。 */
@@ -322,7 +325,19 @@ public class SquadService {
         throw new BusinessException("申请不在待审核状态");
     }
 
-    private SquadVO toVO(VolunteerSquad squad) {
+    /** 批量组装分队 VO：一次按 squad_id 聚合成员数，避免逐行 N+1。空列表早返回。 */
+    private List<SquadVO> toVOList(List<VolunteerSquad> squads) {
+        if (squads == null || squads.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, Long> countBySquad = countMembersBySquad(
+                squads.stream().map(VolunteerSquad::getId).toList());
+        return squads.stream()
+                .map(s -> toVO(s, countBySquad.getOrDefault(s.getId(), 0L)))
+                .toList();
+    }
+
+    private SquadVO toVO(VolunteerSquad squad, long memberCount) {
         SquadVO vo = new SquadVO();
         vo.setId(squad.getId());
         vo.setName(squad.getName());
@@ -333,25 +348,61 @@ public class SquadService {
         vo.setMemberLimit(squad.getMemberLimit());
         vo.setVisibleFields(squad.getVisibleFields());
         vo.setStatus(squad.getStatus());
-        vo.setMemberCount(volunteerMapper.selectCount(Wrappers.<Volunteer>lambdaQuery()
-                .eq(Volunteer::getSquadId, squad.getId())));
+        vo.setMemberCount(memberCount);
         return vo;
     }
 
-    private SquadApplicationVO toApplicationVO(SquadApplication application) {
-        SquadApplicationVO vo = new SquadApplicationVO();
-        vo.setId(application.getId());
-        vo.setSquadId(application.getSquadId());
-        VolunteerSquad squad = squadMapper.selectById(application.getSquadId());
-        vo.setSquadName(squad == null ? null : squad.getName());
-        vo.setVolunteerId(application.getVolunteerId());
-        Volunteer volunteer = volunteerMapper.selectById(application.getVolunteerId());
-        vo.setVolunteerName(volunteer == null ? null : volunteer.getRealName());
-        vo.setReason(application.getReason());
-        vo.setStatus(application.getStatus());
-        vo.setRejectReason(application.getRejectReason());
-        vo.setApplyTime(application.getApplyTime());
-        return vo;
+    /** 一次按 squad_id 聚合分队成员数（selectMaps 仍自动带 is_deleted=0）。空 ids 早返回避免 in()。 */
+    private Map<Long, Long> countMembersBySquad(List<Long> squadIds) {
+        if (squadIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Map<String, Object>> rows = volunteerMapper.selectMaps(Wrappers.<Volunteer>query()
+                .select("squad_id AS sid", "COUNT(*) AS cnt")
+                .in("squad_id", squadIds)
+                .groupBy("squad_id"));
+        Map<Long, Long> result = new HashMap<>(rows.size());
+        for (Map<String, Object> row : rows) {
+            result.put(numOf(row, "sid"), numOf(row, "cnt"));
+        }
+        return result;
+    }
+
+    /** 批量组装申请 VO：一次取分队名 + 一次取志愿者姓名，避免逐行 N+1。空列表早返回。 */
+    private List<SquadApplicationVO> toApplicationVOList(List<SquadApplication> apps) {
+        if (apps == null || apps.isEmpty()) {
+            return List.of();
+        }
+        List<Long> squadIds = apps.stream().map(SquadApplication::getSquadId)
+                .filter(Objects::nonNull).distinct().toList();
+        Map<Long, String> squadNameById = squadIds.isEmpty() ? Map.of()
+                : squadMapper.selectBatchIds(squadIds).stream()
+                .collect(Collectors.toMap(VolunteerSquad::getId, VolunteerSquad::getName));
+        List<Long> volunteerIds = apps.stream().map(SquadApplication::getVolunteerId)
+                .filter(Objects::nonNull).distinct().toList();
+        Map<Long, String> volunteerNameById = volunteerQueryService.listNamesByIds(volunteerIds);
+        return apps.stream().map(a -> {
+            SquadApplicationVO vo = new SquadApplicationVO();
+            vo.setId(a.getId());
+            vo.setSquadId(a.getSquadId());
+            vo.setSquadName(a.getSquadId() == null ? null : squadNameById.get(a.getSquadId()));
+            vo.setVolunteerId(a.getVolunteerId());
+            vo.setVolunteerName(a.getVolunteerId() == null ? null : volunteerNameById.get(a.getVolunteerId()));
+            vo.setReason(a.getReason());
+            vo.setStatus(a.getStatus());
+            vo.setRejectReason(a.getRejectReason());
+            vo.setApplyTime(a.getApplyTime());
+            return vo;
+        }).toList();
+    }
+
+    /** 从 selectMaps 行取数值（兼容驱动对别名大小写处理差异）。 */
+    private static long numOf(Map<String, Object> row, String key) {
+        Object v = row.get(key);
+        if (v == null) {
+            v = row.get(key.toUpperCase());
+        }
+        return v == null ? 0L : ((Number) v).longValue();
     }
 
     private VolunteerSquad requireSquad(Long id) {
