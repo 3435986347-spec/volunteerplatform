@@ -2,6 +2,10 @@ package com.hengde.activity.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.hengde.activity.constant.AttendStatus;
+import com.hengde.activity.constant.PointsFactor;
+import com.hengde.activity.constant.PointsStatus;
+import com.hengde.activity.constant.SecretaryStatus;
 import com.hengde.activity.dao.ActivityAttendanceMapper;
 import com.hengde.activity.dao.ActivityMapper;
 import com.hengde.activity.entity.Activity;
@@ -36,17 +40,17 @@ import java.util.Map;
 @Service
 public class ServiceRecordService {
 
-    private static final int ATTEND_LEAVE = 2;
-    private static final int ATTEND_ABSENT = 4;
+    private static final int ATTEND_LEAVE = AttendStatus.LEAVE;
+    private static final int ATTEND_ABSENT = AttendStatus.ABSENT;
 
-    private static final int SECRETARY_PENDING = 0;
-    private static final int SECRETARY_CONFIRMED = 1;
-    private static final int POINTS_NOT_GRANTED = 0;
-    private static final int POINTS_GRANTED = 1;
+    private static final int SECRETARY_PENDING = SecretaryStatus.PENDING;
+    private static final int SECRETARY_CONFIRMED = SecretaryStatus.CONFIRMED;
+    private static final int POINTS_NOT_GRANTED = PointsStatus.NOT_GRANTED;
+    private static final int POINTS_GRANTED = PointsStatus.GRANTED;
 
-    private static final int FACTOR_NORMAL = 0;
-    private static final int FACTOR_HALF = 1;
-    private static final int FACTOR_NONE = 2;
+    private static final int FACTOR_NORMAL = PointsFactor.NORMAL;
+    private static final int FACTOR_HALF = PointsFactor.HALF;
+    private static final int FACTOR_NONE = PointsFactor.NONE;
 
     private ActivityAttendanceMapper attendanceMapper;
     private ActivityMapper activityMapper;

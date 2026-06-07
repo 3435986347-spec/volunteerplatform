@@ -2,6 +2,7 @@ package com.hengde.activity.service;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.hengde.activity.constant.ActivityStatus;
 import com.hengde.activity.dao.ActivityMapper;
 import com.hengde.activity.entity.Activity;
 import com.hengde.activity.vo.ActivityReviewVO;
@@ -31,11 +32,11 @@ import java.util.stream.Collectors;
 public class ActivityReviewService {
 
     /** 待审核发布 */
-    private static final int PENDING = 4;
+    private static final int PENDING = ActivityStatus.PENDING_REVIEW;
     /** 已发布（审核通过上线） */
-    private static final int PUBLISHED = 1;
+    private static final int PUBLISHED = ActivityStatus.PUBLISHED;
     /** 发布被驳回 */
-    private static final int REJECTED = 5;
+    private static final int REJECTED = ActivityStatus.REJECTED;
     /** 驳回原因长度上限（与 DB 列 VARCHAR(512) 对齐；service 兜底防内部调用绕过 DTO 校验） */
     private static final int MAX_REASON_LEN = 512;
 

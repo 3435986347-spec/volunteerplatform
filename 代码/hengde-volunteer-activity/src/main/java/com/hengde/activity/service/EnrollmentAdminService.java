@@ -2,6 +2,7 @@ package com.hengde.activity.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.hengde.activity.constant.EnrollmentStatus;
 import com.hengde.activity.dao.ActivityEnrollmentMapper;
 import com.hengde.activity.dao.ActivitySlotMapper;
 import com.hengde.activity.entity.ActivityEnrollment;
@@ -39,10 +40,10 @@ import java.util.stream.Collectors;
 @Service
 public class EnrollmentAdminService {
 
-    private static final int ENROLL_PENDING = 0;
-    private static final int ENROLL_APPROVED = 1;
-    private static final int ENROLL_REJECTED = 2;
-    private static final int ENROLL_CANCELLED = 3;
+    private static final int ENROLL_PENDING = EnrollmentStatus.PENDING;
+    private static final int ENROLL_APPROVED = EnrollmentStatus.APPROVED;
+    private static final int ENROLL_REJECTED = EnrollmentStatus.REJECTED;
+    private static final int ENROLL_CANCELLED = EnrollmentStatus.CANCELLED;
 
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 

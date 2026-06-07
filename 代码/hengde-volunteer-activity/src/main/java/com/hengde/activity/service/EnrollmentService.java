@@ -2,6 +2,8 @@ package com.hengde.activity.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.hengde.activity.constant.ActivityStatus;
+import com.hengde.activity.constant.EnrollmentStatus;
 import com.hengde.activity.dao.ActivityAttendanceMapper;
 import com.hengde.activity.dao.ActivityEnrollmentMapper;
 import com.hengde.activity.dao.ActivityMapper;
@@ -52,13 +54,13 @@ import java.util.stream.Collectors;
 public class EnrollmentService {
 
     /** 已发布 */
-    private static final int STATUS_ACTIVITY_PUBLISHED = 1;
+    private static final int STATUS_ACTIVITY_PUBLISHED = ActivityStatus.PUBLISHED;
     /** 报名：待审核 */
-    private static final int ENROLL_PENDING = 0;
+    private static final int ENROLL_PENDING = EnrollmentStatus.PENDING;
     /** 报名：已通过 */
-    private static final int ENROLL_APPROVED = 1;
+    private static final int ENROLL_APPROVED = EnrollmentStatus.APPROVED;
     /** 报名：已取消 */
-    private static final int ENROLL_CANCELLED = 3;
+    private static final int ENROLL_CANCELLED = EnrollmentStatus.CANCELLED;
 
     /** 账号正常状态（com.hengde.common.constant.UserStatus.NORMAL） */
     private static final int USER_STATUS_NORMAL = 0;

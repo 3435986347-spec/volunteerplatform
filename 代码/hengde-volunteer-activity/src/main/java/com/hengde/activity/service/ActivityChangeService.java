@@ -2,6 +2,9 @@ package com.hengde.activity.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.hengde.activity.constant.AttendStatus;
+import com.hengde.activity.constant.AuditStatus;
+import com.hengde.activity.constant.PointsStatus;
 import com.hengde.activity.dao.ActivityAttendanceChangeMapper;
 import com.hengde.activity.dao.ActivityAttendanceMapper;
 import com.hengde.activity.entity.ActivityAttendance;
@@ -45,15 +48,15 @@ public class ActivityChangeService {
     private static final int CHANGE_CHECKOUT = 2;
     private static final int CHANGE_POINTS = 3;
 
-    private static final int STATUS_PENDING = 0;
-    private static final int STATUS_APPROVED = 1;
-    private static final int STATUS_REJECTED = 2;
+    private static final int STATUS_PENDING = AuditStatus.PENDING;
+    private static final int STATUS_APPROVED = AuditStatus.APPROVED;
+    private static final int STATUS_REJECTED = AuditStatus.REJECTED;
 
-    private static final int ATTEND_LEAVE = 2;
-    private static final int ATTEND_ABSENT = 4;
+    private static final int ATTEND_LEAVE = AttendStatus.LEAVE;
+    private static final int ATTEND_ABSENT = AttendStatus.ABSENT;
 
     /** 积分发放状态：已发放（与 {@code ServiceRecordService.POINTS_GRANTED} 对齐）。 */
-    private static final int POINTS_GRANTED = 1;
+    private static final int POINTS_GRANTED = PointsStatus.GRANTED;
 
     private ActivityAttendanceChangeMapper changeMapper;
     private ActivityAttendanceMapper attendanceMapper;

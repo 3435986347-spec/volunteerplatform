@@ -2,6 +2,7 @@ package com.hengde.organization.biz.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.hengde.common.exception.BusinessException;
+import com.hengde.organization.biz.constant.MemberStatus;
 import com.hengde.organization.biz.dao.VolunteerGroupMemberMapper;
 import com.hengde.organization.biz.entity.VolunteerGroupMember;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,8 +23,8 @@ import java.util.Set;
 @Service
 public class GroupQueryService {
 
-    /** ACTIVE 成员状态（与 GroupService 内部常量保持一致） */
-    private static final int MEMBER_ACTIVE = 1;
+    /** ACTIVE 成员状态（与 GroupService 共用同一来源） */
+    private static final int MEMBER_ACTIVE = MemberStatus.ACTIVE;
 
     private VolunteerGroupMemberMapper memberMapper;
 

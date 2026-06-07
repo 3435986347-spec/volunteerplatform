@@ -2,6 +2,8 @@ package com.hengde.activity.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.hengde.activity.constant.ActivityStatus;
+import com.hengde.activity.constant.EnrollmentStatus;
+import com.hengde.activity.constant.LeaderType;
 import com.hengde.activity.dao.ActivityEnrollmentMapper;
 import com.hengde.activity.dao.ActivityLeaderMapper;
 import com.hengde.activity.dao.ActivityMapper;
@@ -32,12 +34,12 @@ import java.util.Map;
 @Service
 public class ActivityLeaderService {
 
-    private static final int LEADER_TYPE_VOLUNTEER = 1;
-    private static final int LEADER_TYPE_ADMIN = 2;
+    private static final int LEADER_TYPE_VOLUNTEER = LeaderType.VOLUNTEER;
+    private static final int LEADER_TYPE_ADMIN = LeaderType.ADMIN;
 
-    private static final int ACTIVITY_PUBLISHED = 1;
-    private static final int ENROLL_PENDING = 0;
-    private static final int ENROLL_APPROVED = 1;
+    private static final int ACTIVITY_PUBLISHED = ActivityStatus.PUBLISHED;
+    private static final int ENROLL_PENDING = EnrollmentStatus.PENDING;
+    private static final int ENROLL_APPROVED = EnrollmentStatus.APPROVED;
 
     private ActivityLeaderMapper leaderMapper;
     private ActivityMapper activityMapper;

@@ -13,6 +13,9 @@ import com.hengde.common.exception.BusinessException;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
 import com.hengde.common.search.SearchItemVO;
+import com.hengde.organization.biz.constant.GroupStatus;
+import com.hengde.organization.biz.constant.MemberRole;
+import com.hengde.organization.biz.constant.MemberStatus;
 import com.hengde.organization.biz.dao.VolunteerGroupLeaderHistoryMapper;
 import com.hengde.organization.biz.dao.VolunteerGroupMapper;
 import com.hengde.organization.biz.dao.VolunteerGroupMemberMapper;
@@ -50,19 +53,19 @@ import java.util.stream.Collectors;
 @Service
 public class GroupService {
 
-    private static final int GROUP_PENDING = 0;
-    private static final int GROUP_ACTIVE = 1;
-    private static final int GROUP_REJECTED = 2;
-    private static final int GROUP_DISSOLVED = 3;
-    private static final int MEMBER_PENDING = 0;
-    private static final int MEMBER_ACTIVE = 1;
-    private static final int MEMBER_REJECTED = 2;
-    private static final int MEMBER_LEFT = 3;
-    private static final int MEMBER_REMOVED = 4;
-    private static final int ROLE_MEMBER = 0;
-    private static final int ROLE_LEADER = 1;
+    private static final int GROUP_PENDING = GroupStatus.PENDING;
+    private static final int GROUP_ACTIVE = GroupStatus.ACTIVE;
+    private static final int GROUP_REJECTED = GroupStatus.REJECTED;
+    private static final int GROUP_DISSOLVED = GroupStatus.DISSOLVED;
+    private static final int MEMBER_PENDING = MemberStatus.PENDING;
+    private static final int MEMBER_ACTIVE = MemberStatus.ACTIVE;
+    private static final int MEMBER_REJECTED = MemberStatus.REJECTED;
+    private static final int MEMBER_LEFT = MemberStatus.LEFT;
+    private static final int MEMBER_REMOVED = MemberStatus.REMOVED;
+    private static final int ROLE_MEMBER = MemberRole.MEMBER;
+    private static final int ROLE_LEADER = MemberRole.LEADER;
     /** 管理员（V7 起接口启用），承担日常审批/移除，与组长协同；不参与组长转移 */
-    private static final int ROLE_ADMIN = 2;
+    private static final int ROLE_ADMIN = MemberRole.ADMIN;
     /** 管理员人数上限（不含组长） */
     private static final int MAX_ADMIN_COUNT = 3;
 

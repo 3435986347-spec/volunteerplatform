@@ -6,6 +6,7 @@ import com.hengde.activity.dao.ActivityEnrollmentMapper;
 import com.hengde.activity.dao.ActivityMapper;
 import com.hengde.activity.dao.ActivitySlotMapper;
 import com.hengde.activity.constant.ActivityStatus;
+import com.hengde.activity.constant.RunStatus;
 import com.hengde.activity.dto.ActivityCreateDTO;
 import com.hengde.activity.dto.ActivitySlotDTO;
 import com.hengde.activity.dto.ActivityUpdateDTO;
@@ -50,20 +51,20 @@ import java.util.TreeSet;
 public class ActivityService {
 
     /** 已发布 */
-    private static final int STATUS_PUBLISHED = 1;
+    private static final int STATUS_PUBLISHED = ActivityStatus.PUBLISHED;
     /** 已结束 */
-    private static final int STATUS_FINISHED = 2;
+    private static final int STATUS_FINISHED = ActivityStatus.FINISHED;
     /** 已取消 */
-    private static final int STATUS_CANCELLED = 3;
+    private static final int STATUS_CANCELLED = ActivityStatus.CANCELLED;
     /** 待审核发布（小程序/志愿者端提交，需后台审核才上线；V19。审核流转见 {@link ActivityReviewService}） */
-    private static final int STATUS_PENDING_REVIEW = 4;
+    private static final int STATUS_PENDING_REVIEW = ActivityStatus.PENDING_REVIEW;
     /** 发布被驳回（V19）。与待审核一道属「审核域」，常规活动列表/详情排除、仅审核侧可见 */
-    private static final int STATUS_REJECTED = 5;
+    private static final int STATUS_REJECTED = ActivityStatus.REJECTED;
 
     /** 现场运行状态：未开始（复制活动重置为此） */
-    private static final int RUN_NOT_STARTED = 0;
+    private static final int RUN_NOT_STARTED = RunStatus.NOT_STARTED;
     /** 现场运行状态：已结束（历史活动直接置此） */
-    private static final int RUN_ENDED = 2;
+    private static final int RUN_ENDED = RunStatus.ENDED;
 
     private static final BigDecimal DEFAULT_LEADER_MULTIPLIER = new BigDecimal("1.4");
     private static final BigDecimal DEFAULT_MANAGER_MULTIPLIER = new BigDecimal("1.2");

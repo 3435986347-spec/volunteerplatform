@@ -3,6 +3,10 @@ package com.hengde.activity.service;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.hengde.activity.config.ActivityProperties;
 import com.hengde.activity.constant.ActivityStatus;
+import com.hengde.activity.constant.AttendStatus;
+import com.hengde.activity.constant.EnrollmentStatus;
+import com.hengde.activity.constant.LeaderType;
+import com.hengde.activity.constant.RunStatus;
 import com.hengde.activity.dao.ActivityAttendanceMapper;
 import com.hengde.activity.dao.ActivityEnrollmentMapper;
 import com.hengde.activity.dao.ActivityLeaderMapper;
@@ -50,17 +54,17 @@ import java.util.stream.Collectors;
 @Service
 public class AttendanceService {
 
-    private static final int ACTIVITY_PUBLISHED = 1;
-    private static final int ENROLL_APPROVED = 1;
+    private static final int ACTIVITY_PUBLISHED = ActivityStatus.PUBLISHED;
+    private static final int ENROLL_APPROVED = EnrollmentStatus.APPROVED;
 
-    private static final int RUN_NOT_STARTED = 0;
-    private static final int RUN_RUNNING = 1;
-    private static final int RUN_ENDED = 2;
+    private static final int RUN_NOT_STARTED = RunStatus.NOT_STARTED;
+    private static final int RUN_RUNNING = RunStatus.RUNNING;
+    private static final int RUN_ENDED = RunStatus.ENDED;
 
-    private static final int ATTEND_NORMAL = 1;
-    private static final int ATTEND_LEAVE = 2;
-    private static final int ATTEND_LATE = 3;
-    private static final int ATTEND_ABSENT = 4;
+    private static final int ATTEND_NORMAL = AttendStatus.NORMAL;
+    private static final int ATTEND_LEAVE = AttendStatus.LEAVE;
+    private static final int ATTEND_LATE = AttendStatus.LATE;
+    private static final int ATTEND_ABSENT = AttendStatus.ABSENT;
 
     private static final int CHECKIN_SCAN = 1;
     private static final int CHECKIN_AUTO = 2;
@@ -73,7 +77,7 @@ public class AttendanceService {
 
     private static final double EARTH_RADIUS_M = 6_371_000;
 
-    private static final int LEADER_TYPE_VOLUNTEER = 1;
+    private static final int LEADER_TYPE_VOLUNTEER = LeaderType.VOLUNTEER;
 
     private ActivityMapper activityMapper;
     private ActivityAttendanceMapper attendanceMapper;

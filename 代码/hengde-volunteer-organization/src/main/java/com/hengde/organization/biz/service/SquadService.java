@@ -11,6 +11,7 @@ import com.hengde.common.exception.BusinessException;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
 import com.hengde.common.search.SearchItemVO;
+import com.hengde.organization.biz.constant.SquadApplyStatus;
 import com.hengde.organization.biz.dao.SquadApplicationMapper;
 import com.hengde.organization.biz.dao.VolunteerSquadMapper;
 import com.hengde.organization.biz.dto.SquadApplyDTO;
@@ -39,9 +40,9 @@ import java.util.stream.Collectors;
 public class SquadService {
 
     private static final int SQUAD_ENABLED = 1;
-    private static final int APPLY_PENDING = 0;
-    private static final int APPLY_APPROVED = 1;
-    private static final int APPLY_REJECTED = 2;
+    private static final int APPLY_PENDING = SquadApplyStatus.PENDING;
+    private static final int APPLY_APPROVED = SquadApplyStatus.APPROVED;
+    private static final int APPLY_REJECTED = SquadApplyStatus.REJECTED;
 
     /** visibleFields 为空时的默认可见字段：仅姓名 */
     private static final Set<String> DEFAULT_VISIBLE_FIELDS = Set.of("realName");

@@ -7,6 +7,11 @@ import com.hengde.activity.dao.ActivityBackfillMapper;
 import com.hengde.activity.dao.ActivityMapper;
 import com.hengde.activity.dao.ActivitySlotMapper;
 import com.hengde.activity.constant.ActivityStatus;
+import com.hengde.activity.constant.AttendStatus;
+import com.hengde.activity.constant.AuditStatus;
+import com.hengde.activity.constant.PointsFactor;
+import com.hengde.activity.constant.PointsStatus;
+import com.hengde.activity.constant.SecretaryStatus;
 import com.hengde.activity.dto.BackfillRequestDTO;
 import com.hengde.activity.entity.Activity;
 import com.hengde.activity.entity.ActivityAttendance;
@@ -48,18 +53,18 @@ import java.util.stream.Collectors;
 @Service
 public class ActivityBackfillService {
 
-    private static final int STATUS_PENDING = 0;
-    private static final int STATUS_APPROVED = 1;
-    private static final int STATUS_REJECTED = 2;
+    private static final int STATUS_PENDING = AuditStatus.PENDING;
+    private static final int STATUS_APPROVED = AuditStatus.APPROVED;
+    private static final int STATUS_REJECTED = AuditStatus.REJECTED;
 
     private static final int GRANT_POINTS = 1;
     private static final int NO_POINTS = 0;
 
-    private static final int ATTEND_NORMAL = 1;
+    private static final int ATTEND_NORMAL = AttendStatus.NORMAL;
     private static final int CHECKIN_METHOD_BACKEND = 3;
-    private static final int SECRETARY_CONFIRMED = 1;
-    private static final int POINTS_GRANTED = 1;
-    private static final int FACTOR_NORMAL = 0;
+    private static final int SECRETARY_CONFIRMED = SecretaryStatus.CONFIRMED;
+    private static final int POINTS_GRANTED = PointsStatus.GRANTED;
+    private static final int FACTOR_NORMAL = PointsFactor.NORMAL;
 
     private ActivityBackfillMapper backfillMapper;
     private ActivityAttendanceMapper attendanceMapper;
