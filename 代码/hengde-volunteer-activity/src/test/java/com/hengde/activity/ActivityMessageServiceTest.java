@@ -106,6 +106,39 @@ class ActivityMessageServiceTest {
         assertTrue(ex.getMessage().contains("活动不存在"));
     }
 
+    @Test
+    void listForAdmin_endedActivity_stillReturnsMessages() {
+        Long aid = insertActivity(1);   // 先已发布以便发表留言
+        Long vid = insertVolunteer("留言人庚");
+        messageService.post(aid, vid, "结束前的留言");
+        setStatus(aid, 2);              // 活动转已结束：志愿者端 list 会拒，但管理端应可审阅
+        List<ActivityMessageVO> records = messageService.listForAdmin(aid, new PageQuery()).getRecords();
+        assertTrue(records.stream().anyMatch(m -> "结束前的留言".equals(m.getContent())), "管理端应能看到已结束活动的留言");
+    }
+
+    @Test
+    void listForAdmin_draftActivity_returnsEmptyNotRejected() {
+        Long aid = insertActivity(0);   // 草稿：menu 域可见，留言列表应返回（空）而非拒绝
+        assertTrue(messageService.listForAdmin(aid, new PageQuery()).getRecords().isEmpty(), "草稿活动无留言，应返回空列表");
+    }
+
+    @Test
+    void listForAdmin_underReview_rejected() {
+        for (int status : new int[]{4, 5}) {   // 审核域：与 activity:menu 边界一致须排除
+            Long aid = insertActivity(status);
+            BusinessException ex = assertThrows(BusinessException.class,
+                    () -> messageService.listForAdmin(aid, new PageQuery()));
+            assertTrue(ex.getMessage().contains("活动不存在"), "status=" + status + " 应按活动不存在拒绝");
+        }
+    }
+
+    @Test
+    void listForAdmin_activityNotExist_rejected() {
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> messageService.listForAdmin(88888888L, new PageQuery()));
+        assertTrue(ex.getMessage().contains("活动不存在"));
+    }
+
     // ---------- helpers ----------
 
     private Long insertActivity() {
@@ -122,6 +155,12 @@ class ActivityMessageServiceTest {
         a.setSerialNo(a.getId());
         activityMapper.updateById(a);
         return a.getId();
+    }
+
+    private void setStatus(Long activityId, int status) {
+        Activity a = activityMapper.selectById(activityId);
+        a.setStatus(status);
+        activityMapper.updateById(a);
     }
 
     private Long insertVolunteer(String name) {

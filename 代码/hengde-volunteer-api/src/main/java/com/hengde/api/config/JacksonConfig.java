@@ -5,28 +5,58 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateDeserializer;
+import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateTimeDeserializer;
+import com.fasterxml.jackson.datatype.jsr310.deser.LocalTimeDeserializer;
+import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateSerializer;
+import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer;
+import com.fasterxml.jackson.datatype.jsr310.ser.LocalTimeSerializer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 
 import java.text.SimpleDateFormat;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.TimeZone;
 
 @Configuration
 public class JacksonConfig {
+
+    private static final String DATE_TIME = "yyyy-MM-dd HH:mm:ss";
+    private static final String DATE = "yyyy-MM-dd";
+    private static final String TIME = "HH:mm:ss";
 
     @Bean
     @Primary
     public ObjectMapper objectMapper() {
         ObjectMapper mapper = new ObjectMapper();
 
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        SimpleDateFormat sdf = new SimpleDateFormat(DATE_TIME);
         sdf.setTimeZone(TimeZone.getTimeZone("Asia/Shanghai"));
         mapper.setDateFormat(sdf);
         mapper.setTimeZone(TimeZone.getTimeZone("Asia/Shanghai"));
         mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         mapper.setDefaultPropertyInclusion(JsonInclude.Include.NON_NULL);
 
+        // Java 8 时间类型（LocalDateTime/LocalDate/LocalTime）：手建 ObjectMapper 不会自动注册 jsr310 模块，
+        // 必须显式注册，否则 VO 里的 LocalDateTime 序列化会在运行期抛异常。格式与上面的 Date 对齐。
+        DateTimeFormatter dt = DateTimeFormatter.ofPattern(DATE_TIME);
+        DateTimeFormatter d = DateTimeFormatter.ofPattern(DATE);
+        DateTimeFormatter t = DateTimeFormatter.ofPattern(TIME);
+        JavaTimeModule javaTime = new JavaTimeModule();
+        javaTime.addSerializer(LocalDateTime.class, new LocalDateTimeSerializer(dt));
+        javaTime.addDeserializer(LocalDateTime.class, new LocalDateTimeDeserializer(dt));
+        javaTime.addSerializer(LocalDate.class, new LocalDateSerializer(d));
+        javaTime.addDeserializer(LocalDate.class, new LocalDateDeserializer(d));
+        javaTime.addSerializer(LocalTime.class, new LocalTimeSerializer(t));
+        javaTime.addDeserializer(LocalTime.class, new LocalTimeDeserializer(t));
+        mapper.registerModule(javaTime);
+
+        // 大整型（Long）序列化为字符串，避免前端 JS Number 丢精度（id 在前端按字符串处理）
         SimpleModule module = new SimpleModule();
         module.addSerializer(Long.class, ToStringSerializer.instance);
         module.addSerializer(Long.TYPE, ToStringSerializer.instance);

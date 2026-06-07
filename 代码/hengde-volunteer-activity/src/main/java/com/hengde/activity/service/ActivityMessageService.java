@@ -2,6 +2,7 @@ package com.hengde.activity.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.hengde.activity.constant.ActivityStatus;
 import com.hengde.activity.dao.ActivityMapper;
 import com.hengde.activity.dao.ActivityMessageMapper;
 import com.hengde.activity.entity.Activity;
@@ -76,9 +77,27 @@ public class ActivityMessageService {
         return msg.getId();
     }
 
-    /** 活动留言列表：仅已发布活动、仅正常项，按 id 倒序，带发表人姓名。 */
+    /** 活动留言列表：仅已发布活动、仅正常项，按 id 倒序，带发表人姓名（志愿者端）。 */
     public PageResult<ActivityMessageVO> list(Long activityId, PageQuery query) {
         requirePublishedActivity(activityId);
+        return pageMessages(activityId, query);
+    }
+
+    /**
+     * 管理端留言列表：不限发布状态（含已结束/历史/草稿，供后台审阅、下架），但<b>排除审核域 4/5</b>，
+     * 与常规 {@code activity:menu} 的可见边界一致——审核域活动只能经 {@code activity:publish-audit} 路径触达，
+     * 不允许「有 menu 权 + 知道 id」从这里读到待审/驳回活动的留言。
+     */
+    public PageResult<ActivityMessageVO> listForAdmin(Long activityId, PageQuery query) {
+        Activity a = activityMapper.selectById(activityId);
+        if (a == null || ActivityStatus.isUnderReview(a.getStatus())) {
+            throw new BusinessException("活动不存在");
+        }
+        return pageMessages(activityId, query);
+    }
+
+    /** 留言分页 + 发表人姓名映射（list / listForAdmin 共用）。 */
+    private PageResult<ActivityMessageVO> pageMessages(Long activityId, PageQuery query) {
         Page<ActivityMessage> page = query.toPage();
         messageMapper.selectPage(page, Wrappers.<ActivityMessage>lambdaQuery()
                 .eq(ActivityMessage::getActivityId, activityId)

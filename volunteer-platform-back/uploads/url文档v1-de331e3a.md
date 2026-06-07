@@ -183,7 +183,6 @@
 |---|---|---|---|
 | GET | /v/activity/activities/{id}/messages | 活动留言列表 | 需登录 |
 | POST | /v/activity/activities/{id}/messages | 发表活动留言 | 需登录 |
-| GET | /a/activity/activities/{id}/messages | 管理端活动留言列表（后台详情抽屉审阅；不限发布状态含已结束/历史/草稿，但排除审核域 4/5，与 activity:menu 可见边界一致） | 需登录（activity:menu） |
 | DELETE | /a/activity/messages/{id} | 删除活动留言 | 需登录（activity:manage） |
 | POST | /a/activity/activities/recurring | 固定日期周期批量发布多场活动（body: `template` 活动模板 + `dates` 显式日期列表 ∪ `recurStart`/`recurEnd`/`weekdays`(1周一…7周日)周期规则；模板时刻按目标日整体平移，并集去重、上限 60 场、整批单事务） | 需登录（activity:publish） |
 | POST | /a/activity/activities/historical | 发布历史活动（之前未发布过的已发生活动；置 `is_historical=1`、已结束态，志愿者端不可见，仅作补录载体） | 需登录（activity:publish） |
