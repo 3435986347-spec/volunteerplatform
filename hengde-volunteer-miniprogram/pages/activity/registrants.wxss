@@ -1,0 +1,113 @@
+.registrants-page {
+  min-height: 100vh;
+  padding: 0 34rpx 60rpx;
+  background: linear-gradient(180deg, #ff8fa8 0%, #ffd3dc 36%, #fff7f7 100%);
+  box-sizing: border-box;
+}
+
+.top-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 116rpx;
+  border-bottom: 1rpx solid rgba(49, 49, 49, 0.32);
+}
+
+.back {
+  position: absolute;
+  left: 0;
+  top: 18rpx;
+  width: 70rpx;
+  height: 70rpx;
+  color: #222222;
+  font-size: 74rpx;
+  line-height: 58rpx;
+  font-weight: 700;
+}
+
+.page-title {
+  color: #111111;
+  font-size: 38rpx;
+  font-weight: 700;
+}
+
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 22rpx;
+  margin-top: 28rpx;
+}
+
+.search-input {
+  flex: 1;
+  height: 72rpx;
+  padding: 0 34rpx;
+  border: 4rpx solid #ffffff;
+  border-radius: 38rpx;
+  color: #ffffff;
+  font-size: 30rpx;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.search-placeholder {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.filter-icon {
+  position: relative;
+  width: 56rpx;
+  height: 52rpx;
+  border: 6rpx solid #ee7181;
+  border-bottom: 0;
+  border-radius: 12rpx 12rpx 4rpx 4rpx;
+  transform: skewX(-10deg);
+}
+
+.filter-icon::after {
+  content: "";
+  position: absolute;
+  right: -14rpx;
+  bottom: -16rpx;
+  width: 34rpx;
+  height: 8rpx;
+  border-radius: 8rpx;
+  background: #ee7181;
+  box-shadow: 0 16rpx 0 #ee7181;
+}
+
+.registrant-card {
+  display: flex;
+  align-items: center;
+  gap: 34rpx;
+  margin-top: 28rpx;
+  padding: 28rpx 30rpx;
+  border: 1rpx solid #e8e8e8;
+  border-radius: 26rpx;
+  background: #ffffff;
+  box-shadow: 0 10rpx 24rpx rgba(231, 87, 106, 0.08);
+  box-sizing: border-box;
+}
+
+.avatar {
+  flex: none;
+  width: 128rpx;
+  height: 128rpx;
+  border-radius: 50%;
+}
+
+.person-info {
+  flex: 1;
+  min-width: 0;
+  color: #111111;
+  font-size: 27rpx;
+  line-height: 1.52;
+}
+
+.empty {
+  margin-top: 560rpx;
+  color: #111111;
+  font-size: 28rpx;
+  text-align: center;
+}

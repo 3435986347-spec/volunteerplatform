@@ -1,0 +1,121 @@
+<view class="page register-page">
+  <view class="register-shell">
+    <view class="register-header">
+      <image class="back-icon" src="/assets/login/back-transparent.png" mode="aspectFit" bindtap="goBack"></image>
+      <view class="register-title">志愿者注册</view>
+    </view>
+
+    <view class="stepper">
+      <view class="step active">
+        <view class="step-circle">1</view>
+        <view class="step-text">注册</view>
+      </view>
+      <view class="step-line"></view>
+      <view class="step">
+        <view class="step-circle">2</view>
+        <view class="step-text">完成</view>
+      </view>
+    </view>
+
+    <view class="register-form">
+      <view class="form-row">
+        <view class="form-label required">姓名：</view>
+        <input class="form-input" data-field="realName" value="{{realName}}" placeholder="请输入名字" bindinput="updateField" />
+      </view>
+
+      <view class="form-row picker-row">
+        <view class="form-label required">身份证类型：</view>
+        <picker class="form-input picker-input" mode="selector" range="{{idTypes}}" bindchange="onPickIdType">
+          <view class="picker-content">
+            <view class="picker-value {{idType ? '' : 'placeholder'}}">{{idType || '请选择身份证类型'}}</view>
+            <view class="row-arrow">›</view>
+          </view>
+        </picker>
+      </view>
+
+      <view class="form-row">
+        <view class="form-label required">身份证号码：</view>
+        <input class="form-input" maxlength="{{idMaxLength}}" data-field="idNo" value="{{idNo}}" placeholder="请输入身份证号码" bindinput="updateField" />
+      </view>
+
+      <view class="form-row action-row">
+        <view class="form-label required">手机号：</view>
+        <input class="form-input" type="number" maxlength="11" data-field="phone" value="{{phone}}" placeholder="请输入手机号" bindinput="updateField" />
+        <button class="pill-btn" loading="{{smsSending}}" disabled="{{smsSending}}" bindtap="sendSmsCode">获取验证码</button>
+      </view>
+
+      <view class="form-row action-row">
+        <view class="form-label">验证码：</view>
+        <input class="form-input" type="number" data-field="smsCode" value="{{smsCode}}" placeholder="请输入验证码" bindinput="updateField" />
+        <button class="pill-btn confirm-btn" bindtap="confirmSmsCode">确认</button>
+      </view>
+
+      <view class="form-row">
+        <view class="form-label">紧急联系方式：</view>
+        <input class="form-input" type="number" maxlength="11" data-field="emergencyPhone" value="{{emergencyPhone}}" placeholder="请输入手机号" bindinput="updateField" />
+      </view>
+
+      <view class="form-row picker-row">
+        <view class="form-label required">政治面貌：</view>
+        <picker class="form-input picker-input" mode="selector" range="{{politics}}" bindchange="onPickPolitical">
+          <view class="picker-content">
+            <view class="picker-value {{politicalStatus ? '' : 'placeholder'}}">{{politicalStatus || '请选择政治面貌'}}</view>
+            <view class="row-arrow">›</view>
+          </view>
+        </picker>
+      </view>
+
+      <view class="form-row">
+        <view class="form-label required">学校：</view>
+        <input class="form-input" data-field="school" value="{{school}}" placeholder="请输入学校" bindinput="updateField" />
+      </view>
+
+      <view class="form-row picker-row">
+        <view class="form-label required">年级：</view>
+        <picker class="form-input picker-input" mode="selector" range="{{grades}}" bindchange="onPickGrade">
+          <view class="picker-content">
+            <view class="picker-value {{grade ? '' : 'placeholder'}}">{{grade || '请选择年级'}}</view>
+            <view class="row-arrow">›</view>
+          </view>
+        </picker>
+      </view>
+
+      <view class="form-row address-row">
+        <view class="form-label required">通讯地址：</view>
+        <input class="form-input" data-field="addressText" value="{{addressText}}" placeholder="请输入通讯地址" bindinput="updateField" />
+        <button class="locate-btn" bindtap="chooseAddressLocation">定位</button>
+      </view>
+
+      <view class="upload-row">
+        <view class="form-label required">i志愿者码</view>
+        <view class="upload-box" bindtap="chooseVolunteerCode">
+          <image wx:if="{{volunteerCodeImage}}" class="upload-preview" src="{{volunteerCodeImage}}" mode="aspectFill"></image>
+          <view wx:else class="plus-icon"></view>
+        </view>
+      </view>
+
+      <view class="agreement-card">
+        <view class="agreement-head">
+          <view class="agreement-title">{{agreementTitle}}</view>
+          <view class="agreement-link" bindtap="previewAgreement">查看全文</view>
+        </view>
+        <view class="agreement-summary">{{agreementContent}}</view>
+        <checkbox-group bindchange="onAgreementChange">
+          <label class="agreement-check">
+            <checkbox value="accepted" checked="{{agreementAccepted}}" color="#f58ca8" />
+            <text>我已阅读并同意志愿者服务协议</text>
+          </label>
+        </checkbox-group>
+        <view class="signature-row">
+          <view class="signature-label required">手写签名图</view>
+          <view class="signature-box" bindtap="chooseSignatureImage">
+            <image wx:if="{{agreementSignatureUrl}}" class="signature-preview" src="{{agreementSignatureUrl}}" mode="aspectFill"></image>
+            <view wx:else class="signature-placeholder">上传签名</view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <button class="next-btn" bindtap="nextStep">下一步</button>
+  </view>
+</view>

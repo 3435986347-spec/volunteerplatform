@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>恒德志愿者后台管理端</title>
+    <link rel="stylesheet" href="assets/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">恒</div>
+          <div>
+            <div class="brand-name">恒德公益</div>
+            <div class="brand-meta">管理后台 V1.1</div>
+          </div>
+        </div>
+        <nav class="nav" id="nav"></nav>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <div class="page-kicker">雷州市恒德爱心公益协会</div>
+            <h1 id="page-title">首页看板</h1>
+          </div>
+          <div class="operator">
+            <span class="watermark" id="operator-label">未登录</span>
+            <button class="icon-button" title="刷新">↻</button>
+          </div>
+        </header>
+
+        <section class="panel auth-test">
+          <div>
+            <h2 class="panel-title">管理端接口登录</h2>
+            <div class="endpoint-line" id="admin-login-url"></div>
+          </div>
+          <div class="auth-form">
+            <input id="admin-account" placeholder="账号" />
+            <input id="admin-password" type="password" placeholder="密码" />
+            <button class="button primary" id="admin-login-btn">登录</button>
+            <button class="button" id="admin-logout-btn">退出</button>
+            <button class="button" id="api-mode-btn">Mock 数据</button>
+          </div>
+          <div class="muted" id="admin-login-status">未登录</div>
+        </section>
+
+        <section id="content"></section>
+      </main>
+    </div>
+    <div id="modal-root"></div>
+    <div id="toast" class="toast"></div>
+
+    <script src="assets/api-endpoints.js"></script>
+    <script src="assets/app.js"></script>
+  </body>
+</html>

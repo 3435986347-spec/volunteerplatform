@@ -1,0 +1,153 @@
+<view class="security-page">
+  <view class="security-nav">
+    <image class="back-icon" src="/assets/login/back-transparent.png" mode="aspectFit" bindtap="goBack"></image>
+    <view class="nav-title">{{navTitle}}</view>
+  </view>
+
+  <block wx:if="{{mode === 'main'}}">
+    <view class="security-list">
+      <view class="security-item" data-action="password" bindtap="tapItem">密码修改<text>›</text></view>
+      <view class="security-item" data-action="phone" bindtap="tapItem">手机绑定<text>›</text></view>
+      <view class="security-item" data-action="about" bindtap="tapItem">关于我们<text>›</text></view>
+      <view class="security-item" data-action="contact" bindtap="tapItem">联系我们<text>›</text></view>
+      <view class="security-item" data-action="signature" bindtap="tapItem">手写签名板<text>›</text></view>
+      <view class="security-item" data-action="protocol" bindtap="tapItem">协议中心<text>›</text></view>
+      <view class="security-item" data-action="suggest" bindtap="tapItem">建议与投诉<text>›</text></view>
+      <view class="security-item danger" data-action="logout" bindtap="tapItem">切换账号<text>›</text></view>
+    </view>
+  </block>
+
+  <block wx:elif="{{mode === 'password'}}">
+    <view class="form-card">
+      <view class="field">密码修改</view>
+      <input class="input" placeholder="请输入新密码" />
+      <button class="primary-btn" bindtap="savePassword">保存</button>
+    </view>
+  </block>
+
+  <block wx:elif="{{mode === 'phone'}}">
+    <view class="form-card">
+      <view class="field">手机号修改</view>
+      <input class="input" placeholder="请输入手机号" />
+      <button class="primary-btn" bindtap="savePhone">保存</button>
+    </view>
+  </block>
+
+  <block wx:elif="{{mode === 'about'}}">
+    <view class="form-card">
+      <view class="field">关于我们</view>
+      <view class="about-text">阿八八八</view>
+      <button class="primary-btn" bindtap="confirmAbout">确定</button>
+    </view>
+  </block>
+
+  <block wx:elif="{{mode === 'contact'}}">
+    <view class="form-card">
+      <view class="field">联系我们</view>
+      <view class="contact-card" wx:for="{{contacts}}" wx:key="name">
+        <view>姓名：{{item.name}}</view>
+        <view>职位：{{item.job}}</view>
+        <view bindtap="callPhone" data-phone="{{item.phone}}">电话：{{item.phone}}</view>
+      </view>
+      <view class="contact-card">
+        <view>雷州市恒德爱心公益协会</view>
+        <view>地址：雷州市西湖街道西湖新村17号</view>
+      </view>
+    </view>
+  </block>
+
+  <block wx:elif="{{mode === 'signature'}}">
+    <view class="form-card">
+      <view class="field">手写签名板</view>
+      <view class="signature-name">{{signatureName}}</view>
+      <view class="signature-board">签名板</view>
+      <view class="action-row">
+        <button class="secondary-btn" bindtap="chooseSignature">修改</button>
+        <button class="primary-btn" bindtap="saveSignature">保存</button>
+      </view>
+    </view>
+  </block>
+
+  <block wx:elif="{{mode === 'protocol'}}">
+    <view class="form-card">
+      <view class="field">协议中心</view>
+      <view class="protocol-item" wx:for="{{protocols}}" wx:key="id" data-id="{{item.id}}" bindtap="chooseProtocol">{{item.title}}</view>
+    </view>
+  </block>
+
+  <block wx:elif="{{mode === 'protocolDetail'}}">
+    <view class="form-card">
+      <view class="field">协议详情</view>
+      <view class="protocol-detail">{{protocolDetail.content}}</view>
+      <button class="primary-btn" bindtap="confirmProtocol">确定</button>
+    </view>
+  </block>
+
+  <block wx:elif="{{mode === 'suggestList'}}">
+    <view class="list-head">
+      <button class="small-btn" bindtap="goBack">返回</button>
+      <button class="small-btn" bindtap="openSuggestionAdd">新增</button>
+    </view>
+    <view class="suggest-card" wx:for="{{suggestions}}" wx:key="id" data-id="{{item.id}}" bindtap="chooseSuggestion">
+      <view class="suggest-title">【{{item.type}}】{{item.title}}</view>
+      <view>提交编号：{{item.submitNo}}</view>
+      <view>提交时间：{{item.submitTime}}</view>
+      <view wx:if="{{item.acceptTime}}">受理时间：{{item.acceptTime}}</view>
+      <view wx:if="{{item.replyTime}}">答复时间：{{item.replyTime}}</view>
+      <view class="suggest-status">{{item.result}}</view>
+      <view class="view-link">查看</view>
+    </view>
+  </block>
+
+  <block wx:elif="{{mode === 'suggestDetail'}}">
+    <view class="form-card">
+      <view class="field">投诉建议详情</view>
+      <view class="detail-line">提交编号：{{suggestionDetail.submitNo}}</view>
+      <view class="detail-line">受理状态：{{suggestionDetail.status}}</view>
+      <view class="detail-line">提交时间：{{suggestionDetail.submitTime}}</view>
+      <view class="detail-line">受理时间：{{suggestionDetail.acceptTime}}</view>
+      <view class="detail-line">答复时间：{{suggestionDetail.replyTime}}</view>
+      <view class="detail-line">答复部门：{{suggestionDetail.replyDept}}</view>
+      <view class="detail-line">{{suggestionDetail.title}}</view>
+      <view class="detail-line">投诉内容</view>
+      <view class="detail-line">答复内容</view>
+      <view class="detail-line">答复部门：组织部</view>
+      <view class="detail-line">{{suggestionDetail.content}}</view>
+      <button class="small-btn" bindtap="goBack">返回</button>
+      <button class="small-btn" bindtap="openMaterialAdd">新增材料</button>
+      <button class="small-btn" bindtap="cancelSuggestion">撤销</button>
+    </view>
+  </block>
+
+  <block wx:elif="{{mode === 'suggestAdd'}}">
+    <view class="form-card">
+      <view class="field">建议与投诉</view>
+      <view class="type-row">
+        <text>投诉</text>
+        <text>建议</text>
+      </view>
+      <textarea class="textarea" placeholder="请详细描述您的问题"></textarea>
+      <button class="primary-btn">提交</button>
+    </view>
+  </block>
+
+  <block wx:elif="{{mode === 'materialAdd'}}">
+    <view class="form-card">
+      <view class="field">新增材料</view>
+      <view class="detail-line">提交编号</view>
+      <button class="small-btn" bindtap="goBack">返回</button>
+      <textarea class="textarea" placeholder="请详细描述您的问题"></textarea>
+      <button class="primary-btn">提交</button>
+    </view>
+  </block>
+
+  <view class="cancel-mask" wx:if="{{showCancelModal}}"></view>
+  <view class="cancel-dialog" wx:if="{{showCancelModal}}">
+    <view class="dialog-title">申请取消</view>
+    <view class="dialog-text">是否申请取消，每个活动只有一次申请纸质证书的机会</view>
+    <view class="dialog-actions">
+      <button class="small-btn" bindtap="confirmCancel">是</button>
+      <button class="small-btn" bindtap="cancelCancel">否</button>
+    </view>
+  </view>
+</view>

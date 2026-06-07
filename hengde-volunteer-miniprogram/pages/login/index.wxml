@@ -1,0 +1,81 @@
+<view class="login-page">
+  <view class="login-nav">
+    <image class="back-icon" src="{{icons.back}}" mode="aspectFit" bindtap="goBack"></image>
+    <view class="nav-title">粤志愿</view>
+  </view>
+
+  <image class="login-hero" src="{{icons.hero}}" mode="aspectFit"></image>
+
+  <view class="mode-tabs">
+    <view class="mode-tab {{loginMode == 'account' ? 'active' : ''}}" data-mode="account" bindtap="switchMode">账号登录</view>
+    <view class="mode-tab {{loginMode == 'sms' ? 'active' : ''}}" data-mode="sms" bindtap="switchMode">短信登录</view>
+  </view>
+
+  <view class="login-card">
+    <block wx:if="{{loginMode == 'account'}}">
+      <view class="field-label">
+        <image class="field-icon account-icon" src="{{icons.account}}" mode="aspectFit"></image>
+        <text>账号</text>
+      </view>
+      <input class="login-input" data-field="account" bindinput="updateField" />
+
+      <view class="field-label">
+        <image class="field-icon password-icon" src="{{icons.password}}" mode="aspectFit"></image>
+        <text>密码</text>
+      </view>
+      <input class="login-input" password data-field="password" bindinput="updateField" />
+
+      <view class="field-label">
+        <image class="field-icon shield-icon" src="{{icons.shield}}" mode="aspectFit"></image>
+        <text>验证码</text>
+      </view>
+      <view class="captcha-row">
+        <input class="login-input captcha-input" data-field="captchaCode" bindinput="updateField" />
+        <image class="captcha-image" src="{{icons.captcha}}" mode="aspectFit"></image>
+      </view>
+    </block>
+
+    <block wx:else>
+      <view class="field-label">
+        <image class="field-icon phone-icon" src="{{icons.phone}}" mode="aspectFit"></image>
+        <text>手机号</text>
+      </view>
+      <input class="login-input" type="number" maxlength="11" data-field="phone" bindinput="updateField" />
+
+      <view class="field-label">
+        <image class="field-icon shield-icon" src="{{icons.shield}}" mode="aspectFit"></image>
+        <text>图标验证码</text>
+      </view>
+      <view class="captcha-row">
+        <input class="login-input captcha-input" data-field="captchaCode" bindinput="updateField" />
+        <image class="captcha-image" src="{{icons.captcha}}" mode="aspectFit"></image>
+      </view>
+
+      <view class="field-label">
+        <image class="field-icon message-icon" src="{{icons.message}}" mode="aspectFit"></image>
+        <text>短信验证码</text>
+      </view>
+      <view class="sms-row">
+        <input class="login-input sms-input" type="number" data-field="smsCode" bindinput="updateField" />
+        <view class="sms-divider"></view>
+        <view class="code-btn" style="width:120rpx;min-width:120rpx;max-width:120rpx;flex-basis:120rpx;" bindtap="mockGetCode">获取</view>
+      </view>
+    </block>
+
+    <view class="forgot" bindtap="goForgotPassword">忘记密码</view>
+    <view class="login-actions">
+      <button class="login-btn" loading="{{submitting}}" bindtap="login">志愿者登录</button>
+    </view>
+  </view>
+
+  <view class="login-links">
+    <view bindtap="quickLogin">快捷登录</view>
+    <view class="enterprise-link" bindtap="enterpriseLogin">企业登录</view>
+  </view>
+
+  <view class="agreement" bindtap="toggleAgreement">
+    <view class="radio {{agreed ? 'checked' : ''}}"></view>
+    <text>我已阅读并同意</text>
+    <text class="agreement-link">《“粤志愿”系统许可及服务协议》</text>
+  </view>
+</view>

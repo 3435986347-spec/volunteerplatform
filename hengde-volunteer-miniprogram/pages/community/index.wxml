@@ -1,0 +1,46 @@
+<view class="page community-page">
+  <view class="community-header">
+    <view class="community-title">恒德交流社区</view>
+  </view>
+
+  <view class="community-search-row">
+    <image class="community-logo" src="{{logoIcon}}" mode="aspectFit"></image>
+    <view class="community-search">输入关键字搜索</view>
+  </view>
+
+  <view class="community-tabs">
+    <view wx:for="{{tabs}}" wx:key="*this" class="community-tab {{activeTab === item ? 'active' : ''}}" data-tab="{{item}}" bindtap="switchTab">{{item}}</view>
+  </view>
+
+  <view class="post-card" wx:for="{{posts}}" wx:key="id" data-id="{{item.id}}" bindtap="goDetail">
+    <view class="post-more">•••</view>
+    <view class="post-head">
+      <image class="avatar" src="{{logoIcon}}" mode="aspectFit"></image>
+      <view class="post-user">
+        <view class="nickname-line">
+          <text class="nickname">{{item.nickname}}</text>
+          <text class="follow-btn">{{item.followed ? '取消关注' : '关注'}}</text>
+        </view>
+        <view class="post-time">{{item.time}}</view>
+      </view>
+    </view>
+    <view class="post-content">{{item.content}}</view>
+    <view wx:if="{{item.mediaType === 'image'}}" class="media-image">
+      <image class="media-image-icon" src="{{imageIcon}}" mode="aspectFit"></image>
+    </view>
+    <view wx:elif="{{item.mediaType === 'phone-grid'}}" class="phone-grid">
+      <view class="phone-dot">☎</view>
+      <view class="phone-dot">☎</view>
+      <view class="phone-dot">☎</view>
+      <view class="phone-dot">☎</view>
+    </view>
+    <view class="post-actions">
+      <text class="action">◎{{item.views}}</text>
+      <text class="action">⌯{{item.shares}}</text>
+      <text class="action">▰{{item.likes}}</text>
+      <text class="action">▢{{item.comments}}</text>
+    </view>
+  </view>
+
+  <view class="publish-btn">⌁</view>
+</view>

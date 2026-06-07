@@ -1,0 +1,32 @@
+<view class="page service-page">
+  <view class="section-title">服务记录</view>
+
+  <view class="record-card" wx:for="{{records}}" wx:key="id" data-id="{{item.activityId}}" bindtap="goActivity">
+    <view class="record-head">
+      <view class="record-title">{{item.activityTitle}}</view>
+      <view class="record-status">{{item.confirmStatus}}</view>
+    </view>
+    <view class="record-meta">{{item.date}} {{item.time}}</view>
+    <view class="record-grid">
+      <view class="record-cell">
+        <view class="cell-label">签到</view>
+        <view class="cell-value">{{item.checkInTime || '未签到'}}</view>
+      </view>
+      <view class="record-cell">
+        <view class="cell-label">签退</view>
+        <view class="cell-value">{{item.checkOutTime || '待负责人签退'}}</view>
+      </view>
+      <view class="record-cell">
+        <view class="cell-label">服务时长</view>
+        <view class="cell-value strong">{{item.serviceText}}</view>
+      </view>
+      <view class="record-cell">
+        <view class="cell-label">积分</view>
+        <view class="cell-value strong">{{item.points}} 分</view>
+      </view>
+    </view>
+    <view class="points-line">{{item.pointsStatus}}</view>
+  </view>
+
+  <view class="empty-text" wx:if="{{!records.length}}">暂无服务记录</view>
+</view>

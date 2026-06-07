@@ -1,0 +1,271 @@
+.squad-page {
+  min-height: 100vh;
+  padding-bottom: 48rpx;
+  background: linear-gradient(180deg, #ff91ad 0%, #ffe0e5 28%, #fbf4f1 100%);
+  color: #111111;
+  font-family: "KaiTi", "STKaiti", "Songti SC", serif;
+}
+
+.topbar {
+  position: relative;
+  height: calc(env(safe-area-inset-top) + 104rpx);
+  padding-top: env(safe-area-inset-top);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1rpx solid rgba(0, 0, 0, 0.24);
+  background: linear-gradient(180deg, #ff86a7 0%, #ffa5b7 100%);
+}
+
+.back-icon {
+  position: absolute;
+  left: 32rpx;
+  bottom: 22rpx;
+  width: 60rpx;
+  height: 60rpx;
+}
+
+.top-title {
+  font-size: 38rpx;
+  font-weight: 700;
+}
+
+.tab-bar {
+  width: 86%;
+  margin: 18rpx auto 0;
+  display: flex;
+  gap: 18rpx;
+}
+
+.tab {
+  padding: 0 16rpx;
+  height: 62rpx;
+  line-height: 62rpx;
+  color: #111111;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.tab.active {
+  color: #d83b3b;
+  border-bottom: 4rpx solid #d83b3b;
+}
+
+.team-list,
+.my-status-card,
+.detail-card,
+.member-card {
+  width: 86%;
+  margin: 18rpx auto 0;
+}
+
+.team-list,
+.my-status-card,
+.detail-card,
+.member-card {
+  border: 3rpx solid #e7e7e7;
+  border-radius: 24rpx;
+  background: #ffffff;
+  box-shadow: 0 4rpx 10rpx rgba(0, 0, 0, 0.04);
+  box-sizing: border-box;
+}
+
+.team-list {
+  padding: 0 22rpx;
+}
+
+.team-row {
+  position: relative;
+  padding: 22rpx 100rpx 22rpx 0;
+  border-bottom: 2rpx solid #d6d6d6;
+}
+
+.team-row:last-child {
+  border-bottom: 0;
+}
+
+.team-name,
+.detail-name,
+.member-name,
+.my-name {
+  font-size: 30rpx;
+  font-weight: 800;
+}
+
+.team-line,
+.detail-line,
+.member-sub,
+.my-state {
+  margin-top: 8rpx;
+  font-size: 25rpx;
+  line-height: 1.4;
+}
+
+.team-meta {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  margin-top: 10rpx;
+  color: #2d2d2d;
+  font-size: 25rpx;
+  line-height: 1.35;
+}
+
+.team-meta image {
+  width: 34rpx;
+  height: 34rpx;
+  flex: none;
+}
+
+.apply-btn {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: 86rpx;
+  min-width: 0;
+  height: 40rpx;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 8rpx;
+  background: #ffe4eb;
+  color: #e84f68;
+  font-size: 24rpx;
+  line-height: 40rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(-50%);
+}
+
+.exit-btn {
+  width: 160rpx;
+  height: 42rpx;
+  margin-top: 18rpx;
+  padding: 0;
+  border: 0;
+  border-radius: 8rpx;
+  background: #ffe4eb;
+  color: #000000;
+  font-size: 24rpx;
+  line-height: 42rpx;
+}
+
+.exit-btn::after {
+  border: 0;
+}
+
+.member-title {
+  width: 86%;
+  margin: 24rpx auto 12rpx;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.my-status-card {
+  padding: 16rpx 22rpx;
+}
+
+.my-status-title {
+  font-size: 30rpx;
+  font-weight: 800;
+}
+
+.my-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18rpx;
+  padding: 16rpx 0;
+  border-bottom: 2rpx solid #9b9b9b;
+}
+
+.my-status-row:last-child {
+  border-bottom: 0;
+}
+
+.my-status-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.my-type-tag {
+  min-width: 130rpx;
+  height: 44rpx;
+  padding: 0 12rpx;
+  box-sizing: border-box;
+  border: 3rpx solid #ff1f1f;
+  border-radius: 8rpx;
+  color: #ff1f1f;
+  font-size: 28rpx;
+  font-weight: 800;
+  line-height: 38rpx;
+  text-align: center;
+  flex: none;
+}
+
+.my-action-stack {
+  width: 104rpx;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 6rpx;
+  flex: none;
+}
+
+.my-action-btn {
+  width: 100rpx;
+  height: 36rpx;
+  box-sizing: border-box;
+  border-radius: 6rpx;
+  font-size: 24rpx;
+  line-height: 32rpx;
+  text-align: center;
+}
+
+.my-action-btn.cancel-btn {
+  border: 3rpx solid #ff1f1f;
+  color: #ff1f1f;
+}
+
+.my-action-btn.view-btn {
+  border: 3rpx solid #111111;
+  color: #111111;
+}
+
+.detail-card {
+  padding: 20rpx 22rpx;
+}
+
+.member-card {
+  padding: 18rpx 22rpx;
+  margin-top: 14rpx;
+}
+
+.apply-success-toast {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 50;
+  min-width: 270rpx;
+  height: 92rpx;
+  padding: 0 28rpx 0 20rpx;
+  border-radius: 18rpx;
+  background: rgba(0, 0, 0, 0.72);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+  font-size: 34rpx;
+  font-weight: 700;
+}
+
+.apply-success-icon {
+  width: 72rpx;
+  height: 72rpx;
+  flex: none;
+}

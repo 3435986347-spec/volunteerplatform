@@ -1,0 +1,114 @@
+.org-page {
+  min-height: 100vh;
+  padding-bottom: 52rpx;
+  background: linear-gradient(180deg, #ff8fac 0%, #ffd6dd 36%, #fbf5f1 100%);
+  color: #111111;
+  font-family: "KaiTi", "STKaiti", "Songti SC", serif;
+  box-sizing: border-box;
+}
+
+.org-nav {
+  position: relative;
+  min-height: calc(env(safe-area-inset-top) + 104rpx);
+  padding-top: env(safe-area-inset-top);
+  border-bottom: 2rpx solid rgba(0, 0, 0, 0.28);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  background: linear-gradient(180deg, #ff86a6 0%, #ffa3b7 100%);
+}
+
+.back-icon {
+  position: absolute;
+  left: 32rpx;
+  bottom: 18rpx;
+  width: 68rpx;
+  height: 68rpx;
+}
+
+.nav-title {
+  max-width: 430rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 38rpx;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.search-wrap {
+  width: 86%;
+  height: 66rpx;
+  margin: 24rpx auto 16rpx;
+  border: 4rpx solid #ffffff;
+  border-radius: 999rpx;
+  box-sizing: border-box;
+}
+
+.search-input {
+  width: 100%;
+  height: 100%;
+  padding: 0 28rpx;
+  text-align: center;
+  color: #ffffff;
+  font-size: 32rpx;
+  box-sizing: border-box;
+}
+
+.search-placeholder {
+  color: #ffffff;
+}
+
+.org-card {
+  width: 88%;
+  min-height: 1040rpx;
+  margin: 0 auto;
+  padding: 24rpx 40rpx;
+  border: 3rpx solid #eeeeee;
+  border-radius: 30rpx;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.breadcrumb {
+  padding: 2rpx 0 18rpx;
+  font-size: 30rpx;
+  line-height: 1.35;
+}
+
+.crumb-red {
+  color: #f71925;
+}
+
+.org-row {
+  height: 88rpx;
+  border-bottom: 2rpx solid #909090;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+}
+
+.row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 31rpx;
+  line-height: 1.2;
+}
+
+.row-right {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  font-size: 30rpx;
+}
+
+.arrow {
+  font-size: 46rpx;
+  line-height: 1;
+}

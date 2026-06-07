@@ -1,0 +1,184 @@
+<view class="activity-page">
+  <view class="topbar">
+    <image class="back-icon" src="/assets/login/back-transparent.png" mode="aspectFit" bindtap="goBack"></image>
+    <view class="top-title">{{navTitle}}</view>
+  </view>
+
+  <block wx:if="{{mode === 'list'}}">
+    <view class="tab-bar">
+      <view class="tab {{activeTab === index ? 'active' : ''}}" wx:for="{{tabs}}" wx:key="*this" data-index="{{index}}" bindtap="switchTab">{{item}}</view>
+    </view>
+
+    <view class="list-wrap" wx:if="{{filteredActivities.length}}">
+      <view class="activity-card" wx:for="{{filteredActivities}}" wx:key="id" data-id="{{item.id}}" bindtap="openDetail">
+        <view class="activity-info">
+          <view class="list-status {{item.statusClass}}">
+            <view class="status-mark"></view>
+            <text>{{item.statusText}}</text>
+          </view>
+          <view class="activity-title">{{item.title}}</view>
+          <view class="activity-line">{{item.timeText}}</view>
+          <view class="activity-line">活动地址：{{item.address}}</view>
+          <view class="activity-line">岗位名称：{{item.postName}}</view>
+        </view>
+        <view class="activity-action" catchtap="handleListAction" data-id="{{item.id}}" data-type="{{item.actionType}}">
+          <block wx:if="{{item.finishInfoType === 'score'}}">
+            <view class="finish-info">
+              <view class="finish-label">志愿时长</view>
+              <view class="finish-value">{{item.serviceDuration}}</view>
+              <view class="finish-label score-label">获得积分</view>
+              <view class="finish-value">{{item.pointsAward}}</view>
+            </view>
+          </block>
+          <block wx:elif="{{item.finishInfoType === 'abnormal'}}">
+            <view class="finish-abnormal">
+              <view>签到签退</view>
+              <view>异常</view>
+            </view>
+          </block>
+          <block wx:else>
+            <view class="action-sub" wx:if="{{item.distanceText}}">
+              <view class="distance-label">{{item.distanceLabel}}</view>
+              <view class="distance-value">{{item.distanceText}}</view>
+            </view>
+            <image class="action-icon" wx:if="{{item.actionIcon}}" src="{{item.actionIcon}}" mode="aspectFit"></image>
+            <view class="action-text" wx:if="{{item.actionText}}">{{item.actionText}}</view>
+          </block>
+        </view>
+      </view>
+    </view>
+    <view class="empty-text" wx:else>暂无数据</view>
+    <view class="end-text">没有更多了</view>
+  </block>
+
+  <block wx:elif="{{mode === 'detail'}}">
+    <view class="content-wrap">
+      <view class="section-card">
+        <view class="card-title">活动信息</view>
+        <view class="detail-line">活动名称：{{selectedActivity.title}}</view>
+        <view class="detail-line">活动地点：{{selectedActivity.address}}</view>
+        <view class="detail-line">活动时间：{{selectedActivity.timeText}}</view>
+        <view class="detail-line">岗位名称：{{selectedActivity.postName}}</view>
+        <view class="detail-line">报名时间：{{selectedActivity.signupTime}}</view>
+        <view class="detail-line">考勤时长：{{selectedActivity.attendanceDuration}}</view>
+        <view class="detail-line">记录积分：{{selectedActivity.recordPoints}}</view>
+      </view>
+
+      <view class="section-card attendance-section">
+        <view class="card-title-row">
+          <view class="card-title">考勤信息</view>
+          <view wx:if="{{selectedActivity.detailMode === 'abnormal'}}" class="attendance-alert">签到/签退异常</view>
+        </view>
+        <block wx:if="{{selectedActivity.detailMode === 'attendance'}}">
+          <view class="attendance-line">签到时间：{{selectedActivity.checkInTimeText || '待签到'}}</view>
+          <view class="attendance-line">签到地址：{{selectedActivity.address || '待记录'}}</view>
+          <view class="attendance-line">签到方式：{{selectedActivity.checkInMethod || '待记录'}}</view>
+          <view class="attendance-divider"></view>
+          <view class="attendance-line">签退时间：{{selectedActivity.checkOutTimeText || '待负责人签退'}}</view>
+          <view class="attendance-line">签退地址：{{selectedActivity.address || '待记录'}}</view>
+          <view class="attendance-line">签退方式：负责人统一签退</view>
+        </block>
+        <block wx:elif="{{selectedActivity.detailMode === 'abnormal'}}">
+          <view class="attendance-line">签到时间：{{selectedActivity.checkInTimeText || '待签到'}}</view>
+          <view class="attendance-line">签到地址：{{selectedActivity.address || '待记录'}}</view>
+          <view class="attendance-line">签到方式：{{selectedActivity.checkInMethod || '待记录'}}</view>
+        </block>
+        <view wx:else class="no-attendance">暂无考勤信息</view>
+      </view>
+
+      <view class="detail-action-grid">
+        <view class="grid-action {{item.danger ? 'danger' : ''}}" wx:for="{{detailActionButtons}}" wx:key="text" data-action="{{item.action}}" bindtap="handleDetailAction">{{item.text}}</view>
+      </view>
+    </view>
+  </block>
+
+  <block wx:elif="{{mode === 'leave'}}">
+    <view class="content-wrap">
+      <view class="section-card">
+        <view class="card-title">活动信息</view>
+        <view class="detail-line">活动名称：{{selectedActivity.title}}</view>
+        <view class="detail-line">活动地点：{{selectedActivity.address}}</view>
+        <view class="detail-line">活动时间：{{selectedActivity.timeText}}</view>
+        <view class="detail-line">岗位名称：{{selectedActivity.postName}}</view>
+        <view class="detail-line">报名时间：{{selectedActivity.signupTime}}</view>
+        <view class="detail-line">考勤时长：0</view>
+        <view class="detail-line">记录积分：0</view>
+      </view>
+      <view class="reason-title">请假原因</view>
+      <view class="input-pill">
+        <input placeholder="请输入原因" bindinput="updateField" data-field="leaveText" />
+        <view class="upload-symbol">＋</view>
+      </view>
+      <button class="submit-btn" bindtap="submitForm">提交</button>
+    </view>
+  </block>
+
+  <block wx:elif="{{mode === 'complaint'}}">
+    <view class="content-wrap">
+      <view class="section-card">
+        <view class="card-title">活动信息</view>
+        <view class="detail-line">活动名称：{{selectedActivity.title}}</view>
+        <view class="detail-line">活动地点：{{selectedActivity.address}}</view>
+        <view class="detail-line">活动时间：{{selectedActivity.timeText}}</view>
+        <view class="detail-line">岗位名称：{{selectedActivity.postName}}</view>
+        <view class="detail-line">报名时间：{{selectedActivity.signupTime}}</view>
+        <view class="detail-line">考勤时长：0</view>
+        <view class="detail-line">记录积分：0</view>
+      </view>
+      <view class="section-card complaint-card">
+        <view class="card-title">活动投诉</view>
+        <view class="complaint-object-row">
+          <view>投诉对象：</view>
+          <view class="round-tool" bindtap="addComplaintTarget">＋</view>
+        </view>
+        <view class="complaint-target" wx:for="{{complaintTargets}}" wx:key="id">
+          <view class="complaint-object-line">
+            <view class="round-tool minus-tool" data-index="{{index}}" bindtap="removeComplaintTarget">－</view>
+            <input class="complaint-object-input" placeholder="请输入投诉对象" value="{{item.target}}" data-index="{{index}}" data-field="target" bindinput="updateComplaintTarget" />
+          </view>
+          <view class="input-pill complaint-content-pill">
+            <input placeholder="请输入内容" value="{{item.content}}" data-index="{{index}}" data-field="content" bindinput="updateComplaintTarget" />
+            <view class="upload-symbol">＋</view>
+          </view>
+        </view>
+      </view>
+      <button class="submit-btn" bindtap="submitForm">提交</button>
+    </view>
+  </block>
+
+  <block wx:elif="{{mode === 'upload' || mode === 'evaluate'}}">
+    <view class="content-wrap">
+      <view class="section-card" wx:if="{{mode === 'upload'}}">
+        <view class="card-title">活动信息</view>
+        <view class="detail-line">活动名称：{{selectedActivity.title}}</view>
+        <view class="detail-line">活动地点：{{selectedActivity.address}}</view>
+        <view class="detail-line">活动时间：{{selectedActivity.timeText}}</view>
+        <view class="detail-line">岗位名称：{{selectedActivity.postName}}</view>
+        <view class="detail-line">报名时间：{{selectedActivity.signupTime}}</view>
+      </view>
+      <view class="publish-card">
+        <view class="publish-text">这是一条文字</view>
+        <view class="media-tools">
+          <view class="media-tool image-tool" bindtap="chooseUploadImage">＋</view>
+          <view class="media-tool video-tool" bindtap="chooseUploadVideo">▶</view>
+        </view>
+        <button class="publish-btn" bindtap="submitForm">发布</button>
+      </view>
+      <label wx:if="{{mode === 'evaluate'}}" class="sync-check" bindtap="toggleSyncCommunity">
+        <view class="circle-check {{syncCommunity ? 'checked' : ''}}"></view>
+        <text>是否同步发表至社区交流频道</text>
+      </label>
+    </view>
+  </block>
+
+  <view class="modal-mask" wx:if="{{showConfirmModal}}"></view>
+  <view class="confirm-dialog" wx:if="{{showConfirmModal}}">
+    <view class="dialog-title">{{confirmTitle}}</view>
+    <view class="dialog-divider"></view>
+    <view class="dialog-text">是否确认</view>
+    <view class="dialog-actions">
+      <button class="dialog-btn" bindtap="confirmDialogYes">是</button>
+      <button class="dialog-btn" bindtap="closeConfirmDialog">否</button>
+    </view>
+  </view>
+</view>

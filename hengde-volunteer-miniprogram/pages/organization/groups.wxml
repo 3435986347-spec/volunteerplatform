@@ -1,0 +1,39 @@
+<view class="group-page">
+  <view class="topbar">
+    <image class="back-icon" src="/assets/login/back-transparent.png" mode="aspectFit" bindtap="goBack"></image>
+    <view class="top-title">志愿服务小组</view>
+  </view>
+
+  <view class="search-wrap">
+    <input
+      class="search-input"
+      value="{{keyword}}"
+      placeholder="输入关键字搜索"
+      placeholder-class="search-placeholder"
+      bindinput="onSearchInput"
+      confirm-type="search"
+    />
+  </view>
+
+  <view class="group-list">
+    <view class="group-card" wx:for="{{groups}}" wx:key="id" data-id="{{item.id}}" bindtap="goDetail">
+      <view class="card-left">
+        <view class="group-no">{{item.no}}</view>
+        <image class="group-logo" src="{{item.logo}}" mode="aspectFit"></image>
+      </view>
+      <view class="card-main">
+        <view class="group-name">{{item.name}}</view>
+        <view class="group-line">组长：{{item.leader}}</view>
+        <view class="group-line">组建时间：{{item.createdAt}}</view>
+        <view class="group-line">成员人数：{{item.members}}人</view>
+      </view>
+      <button class="apply-btn" catchtap="goApply" data-id="{{item.id}}">申请</button>
+    </view>
+  </view>
+
+  <view class="empty-text" wx:if="{{!groups.length}}">暂无匹配小组</view>
+
+  <view class="bottom-action">
+    <button class="create-btn" bindtap="goCreate">发起小组</button>
+  </view>
+</view>

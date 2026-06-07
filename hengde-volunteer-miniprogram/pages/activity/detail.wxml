@@ -1,0 +1,134 @@
+<view class="detail-page">
+  <swiper class="cover-swiper" indicator-dots circular autoplay interval="4500">
+    <swiper-item wx:for="{{activity.covers}}" wx:key="*this">
+      <image class="cover-image" src="{{item}}" mode="aspectFill" bindtap="previewImage" data-src="{{item}}" />
+    </swiper-item>
+  </swiper>
+
+  <view class="summary-panel">
+    <view class="title-row">
+      <view class="activity-title">{{activity.title}}</view>
+      <view class="activity-type">
+        <image class="activity-type-icon" src="/assets/activity/activity-type.png" mode="aspectFit" />
+        <text>志愿服务活动</text>
+      </view>
+    </view>
+    <view class="meta-line">
+      <image class="meta-icon people-icon" src="/assets/activity/meta-people.png" mode="aspectFit" />
+      <text>已报名</text>
+      <text class="accent">{{activity.joined}}</text>
+      <text>/{{activity.quota}}</text>
+      <text class="activity-no">{{activity.activityNo}}</text>
+    </view>
+    <view class="location-line">
+      <image class="meta-icon location-icon" src="/assets/activity/meta-location.png" mode="aspectFit" />
+      <text class="location-text">{{activity.place}}</text>
+      <text class="distance">| {{activity.distanceText}}</text>
+    </view>
+  </view>
+
+  <view class="section-block">
+    <view class="section-heading">报名时间</view>
+    <view class="heading-line"></view>
+    <view class="role-list">
+      <view class="role-row" wx:for="{{activity.signupRows}}" wx:key="role">
+        <text class="role-label">{{item.role}}：</text>
+        <text class="role-value">{{item.value}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="section-block">
+    <view class="section-heading">活动积分</view>
+    <view class="heading-line"></view>
+    <view class="role-list compact">
+      <view class="role-row" wx:for="{{activity.pointRows}}" wx:key="role">
+        <text class="role-label">{{item.role}}：</text>
+        <text class="role-value">{{item.value}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="contact-card" bindtap="callContact">
+    <image class="contact-logo" src="/assets/icons/activity-logo.png" mode="aspectFit" />
+    <view class="contact-main">
+      <view class="contact-org">{{activity.contactOrg}}</view>
+      <view>联系人姓名：{{activity.contactName}}</view>
+      <view>联系人电话：{{activity.contactPhone}}</view>
+    </view>
+    <view class="phone-dot">☎</view>
+  </view>
+
+  <view class="section-block">
+    <view class="section-heading">活动信息</view>
+    <view class="heading-line"></view>
+    <view class="info-subtitle">
+      <text class="clock-dot">●</text>
+      <text>活动时间段</text>
+    </view>
+    <view class="time-row" wx:for="{{activity.timeRows}}" wx:key="name">
+      <text>{{item.name}}：</text>
+      <text>{{item.text}}</text>
+    </view>
+    <view class="info-subtitle content-title">
+      <text class="fire-dot">●</text>
+      <text>活动内容</text>
+    </view>
+    <view class="paragraph">{{activity.content}}</view>
+  </view>
+
+  <view class="divider"></view>
+
+  <view class="section-block">
+    <view class="section-heading">招募信息</view>
+    <view class="heading-line"></view>
+    <view class="recruit-row" wx:for="{{activity.recruitRows}}" wx:key="label">
+      <view class="recruit-label">{{item.label}}</view>
+      <view class="recruit-value">{{item.value}}</view>
+    </view>
+  </view>
+
+  <view class="divider"></view>
+
+  <view class="section-block">
+    <view class="section-heading">服务保障</view>
+    <view class="heading-line"></view>
+    <view class="guarantee-grid">
+      <view class="guarantee-item {{item.enabled ? 'enabled' : ''}}" wx:for="{{activity.guarantees}}" wx:key="key">
+        <image class="guarantee-icon" src="{{item.iconUrl}}" mode="aspectFit" />
+        <text>{{item.label}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="divider"></view>
+
+  <view class="section-block registrant-section">
+    <view class="registrant-head">
+      <view>
+        <view class="section-heading">报名详情</view>
+        <view class="heading-line"></view>
+      </view>
+      <view class="more-link" bindtap="viewRegistrants">查看更多 ></view>
+    </view>
+    <view class="registrant-list">
+      <view class="registrant-item" wx:for="{{activity.registrants}}" wx:key="id">
+        <image class="registrant-avatar" src="{{item.avatar}}" mode="aspectFill" />
+        <view class="registrant-name">{{item.name}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="signup-service-tail"></view>
+
+  <view class="bottom-bar">
+    <button class="share-button" open-type="share">
+      <image class="share-icon" src="/assets/activity/share.png" mode="aspectFit" />
+      <text>分享</text>
+    </button>
+    <button class="signup-button {{activity.buttonDisabled ? 'disabled' : ''}} {{activity.buttonSubtitle ? '' : 'no-subtitle'}}" bindtap="goSignup">
+      <text class="signup-title">{{activity.buttonTitle}}</text>
+      <text class="signup-countdown" wx:if="{{activity.buttonSubtitle}}">{{activity.buttonSubtitle}}</text>
+    </button>
+  </view>
+</view>

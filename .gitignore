@@ -62,3 +62,8 @@ secrets/
 # --- Claude Code 本地化配置 ---
 # settings.local.json 含本机授权/路径，不应共享；其他 .claude/ 文件（如 hooks）想共享可单独 allow
 .claude/settings.local.json
+
+# --- 前端源码压缩包 ---
+# 解压后的目录（hengde-volunteer-admin-mock/、hengde-volunteer-miniprogram/）已入库，
+# 原始下载 zip 与其重复，不入库
+*.zip

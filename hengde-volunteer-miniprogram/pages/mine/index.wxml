@@ -1,0 +1,59 @@
+<view class="page mine-page">
+  <view class="profile-card card">
+    <image class="avatar-img" src="{{profileLogo}}" mode="aspectFit"></image>
+    <view class="profile-info">
+      <view class="profile-name-row">
+        <view class="profile-name">{{profile.name}}</view>
+        <view class="profile-badges">
+          <view wx:if="{{profile.realNameVerified}}" class="badge-mini badge-verify">✓</view>
+          <view wx:if="{{profile.honorMedal}}" class="badge-mini badge-medal">★</view>
+          <view class="badge-mini badge-role">{{profile.role}}</view>
+        </view>
+      </view>
+      <view class="profile-line">编号：{{profile.no}}</view>
+      <view class="profile-line">职务：{{profile.title}}</view>
+    </view>
+    <view class="profile-qr">
+      <view class="qr-grid">
+        <view class="qr-cell"></view><view class="qr-cell"></view><view class="qr-cell"></view>
+        <view class="qr-cell"></view><view class="qr-cell off"></view><view class="qr-cell"></view>
+        <view class="qr-cell"></view><view class="qr-cell"></view><view class="qr-cell"></view>
+      </view>
+    </view>
+  </view>
+
+  <view class="stats card">
+    <view class="stat">
+      <view class="stat-value">{{profile.activities}}</view>
+      <view class="stat-label">活动次数</view>
+    </view>
+    <view class="stat-divider"></view>
+    <view class="stat">
+      <view class="stat-value">{{profile.hours}}</view>
+      <view class="stat-label">活动时长</view>
+    </view>
+    <view class="stat-divider"></view>
+    <view class="stat">
+      <view class="stat-value">{{profile.points}}</view>
+      <view class="stat-label">积分</view>
+    </view>
+  </view>
+
+  <view class="section-card card" wx:for="{{sections}}" wx:for-item="section" wx:key="title">
+    <view class="section-title">{{section.title}}</view>
+    <view class="icon-grid">
+      <view
+        class="icon-item"
+        wx:for="{{section.items}}"
+        wx:for-item="item"
+        wx:key="label"
+        data-url="{{item.url}}"
+        data-action="{{item.action}}"
+        bindtap="goPage"
+      >
+        <image class="icon-img" src="{{item.icon}}" mode="aspectFit"></image>
+        <view class="icon-label">{{item.label}}</view>
+      </view>
+    </view>
+  </view>
+</view>

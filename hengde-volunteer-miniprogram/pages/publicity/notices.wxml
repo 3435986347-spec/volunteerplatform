@@ -1,0 +1,12 @@
+<view class="page">
+  <view class="section-title">公告栏</view>
+  <view class="notice-card card" wx:for="{{notices}}" wx:key="id" data-id="{{item.id}}" bindtap="goDetail">
+    <image class="notice-cover" wx:if="{{item.coverImageUrl}}" src="{{item.coverImageUrl}}" mode="aspectFill" bindtap="previewImage" data-src="{{item.coverImageUrl}}" />
+    <view class="between">
+      <view class="notice-title">{{item.title}}</view>
+      <view class="tag">{{item.type}}</view>
+    </view>
+    <view class="notice-summary">{{item.summary}}</view>
+    <view class="muted">{{item.date}}</view>
+  </view>
+</view>

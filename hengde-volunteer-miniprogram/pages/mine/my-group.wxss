@@ -1,0 +1,18 @@
+.group-card {
+  padding: 24rpx;
+  margin-top: 22rpx;
+}
+
+.group-name {
+  font-size: 36rpx;
+  font-weight: 800;
+}
+
+.rule {
+  margin-top: 18rpx;
+  padding: 18rpx;
+  border-radius: 10rpx;
+  background: #eef7f1;
+  color: #177245;
+  line-height: 1.6;
+}

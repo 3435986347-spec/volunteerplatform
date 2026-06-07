@@ -1,0 +1,10 @@
+<view class="forgot-page">
+  <view class="forgot-nav">
+    <image class="forgot-back" src="{{icons.back}}" mode="aspectFit" bindtap="goBack"></image>
+    <view class="forgot-title">忘记密码</view>
+  </view>
+
+  <image class="contact-card" src="{{icons.contactCard}}" mode="widthFix"></image>
+
+  <button class="confirm-btn" bindtap="confirm">确认</button>
+</view>

@@ -1,0 +1,9 @@
+<view class="page">
+  <view class="section-title">我的小组</view>
+  <view class="card group-card">
+    <view class="group-name">{{group.name}}</view>
+    <view class="muted">编号 {{group.no}}</view>
+    <view class="muted">负责人 {{group.leader}}</view>
+    <view class="rule">同组成员可互相代报名活动，成员间仅可查看姓名、学校和电话。</view>
+  </view>
+</view>

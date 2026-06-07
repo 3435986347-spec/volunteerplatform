@@ -1,0 +1,269 @@
+page {
+  background: #fff4f5;
+}
+
+.signup-page {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #f58ca8 0%, #ffd6df 42%, #f8f4f2 100%);
+  color: #0f0f0f;
+}
+
+.topbar {
+  position: relative;
+  height: 104rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f58ca8;
+  border-bottom: 2rpx solid rgba(55, 55, 55, 0.24);
+  box-sizing: border-box;
+}
+
+.back-icon {
+  position: absolute;
+  left: 28rpx;
+  top: 18rpx;
+  width: 62rpx;
+  height: 62rpx;
+  color: #202020;
+  font-size: 70rpx;
+  font-weight: 800;
+  line-height: 54rpx;
+}
+
+.topbar-title {
+  font-size: 34rpx;
+  font-weight: 700;
+}
+
+.content {
+  height: calc(100vh - 104rpx);
+  padding: 16rpx 28rpx 28rpx;
+  box-sizing: border-box;
+}
+
+.info-card,
+.session-card {
+  background: #ffffff;
+  border-radius: 18rpx;
+  border: 1rpx solid rgba(210, 210, 210, 0.75);
+  box-shadow: 0 6rpx 14rpx rgba(116, 57, 72, 0.08);
+  box-sizing: border-box;
+}
+
+.info-card {
+  padding: 22rpx 28rpx;
+  font-size: 27rpx;
+  line-height: 1.5;
+}
+
+.activity-card {
+  margin-bottom: 22rpx;
+}
+
+.activity-name {
+  font-weight: 800;
+}
+
+.person-card {
+  position: relative;
+  min-height: 150rpx;
+  margin-bottom: 26rpx;
+}
+
+.choose-classmate {
+  position: absolute;
+  right: 24rpx;
+  bottom: 16rpx;
+  color: #111111;
+  font-size: 25rpx;
+  text-decoration: underline;
+}
+
+.date-group {
+  margin-top: 18rpx;
+}
+
+.date-title {
+  margin: 0 0 14rpx 4rpx;
+  font-size: 29rpx;
+}
+
+.session-card {
+  position: relative;
+  min-height: 128rpx;
+  display: flex;
+  justify-content: space-between;
+  gap: 18rpx;
+  margin-bottom: 18rpx;
+  padding: 22rpx 22rpx 18rpx;
+}
+
+.session-card.disabled {
+  color: #111111;
+}
+
+.session-copy {
+  flex: 1;
+  font-size: 26rpx;
+  line-height: 1.45;
+}
+
+.joined {
+  color: #e0283f;
+  font-weight: 800;
+}
+
+.session-side {
+  flex: none;
+  width: 132rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.status-pill {
+  min-width: 100rpx;
+  height: 32rpx;
+  padding: 0 14rpx;
+  border-radius: 6rpx;
+  background: #f6a9bb;
+  color: #61121f;
+  font-size: 22rpx;
+  line-height: 32rpx;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.checkbox {
+  position: relative;
+  width: 36rpx;
+  height: 36rpx;
+  border: 4rpx solid #f6b0c0;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.checkbox.checked::after {
+  content: "";
+  position: absolute;
+  left: 6rpx;
+  top: 0;
+  width: 12rpx;
+  height: 22rpx;
+  border-right: 5rpx solid #f16c8a;
+  border-bottom: 5rpx solid #f16c8a;
+  transform: rotate(45deg);
+}
+
+.confirm-btn {
+  width: 420rpx;
+  height: 62rpx;
+  margin: 22rpx auto 0;
+  border: 0;
+  border-radius: 999rpx;
+  background: #ffd0da;
+  color: #121212;
+  font-size: 27rpx;
+  line-height: 62rpx;
+}
+
+.confirm-btn::after {
+  border: 0;
+}
+
+.popup-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 30;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.classmate-popup {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: -620rpx;
+  z-index: 31;
+  min-height: 560rpx;
+  padding: 18rpx 36rpx 46rpx;
+  border-radius: 34rpx 34rpx 0 0;
+  background: #ffffff;
+  box-shadow: 0 -8rpx 24rpx rgba(31, 41, 55, 0.12);
+  box-sizing: border-box;
+  transition: bottom 0.18s ease;
+}
+
+.classmate-popup.show {
+  bottom: 0;
+}
+
+.popup-actions {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr 1fr;
+  align-items: center;
+  height: 56rpx;
+  color: #111111;
+  font-size: 27rpx;
+  text-align: center;
+}
+
+.popup-actions > view:first-child {
+  text-align: left;
+}
+
+.popup-actions > view:last-child {
+  text-align: right;
+}
+
+.popup-title {
+  font-weight: 700;
+}
+
+.confirm-text {
+  color: #3366d6;
+}
+
+.classmate-search {
+  height: 52rpx;
+  margin: 14rpx 0 18rpx;
+  border: 3rpx solid #111111;
+  border-radius: 999rpx;
+  color: #111111;
+  font-size: 27rpx;
+  line-height: 52rpx;
+  text-align: center;
+}
+
+.search-placeholder {
+  color: #111111;
+}
+
+.classmate-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14rpx;
+  min-height: 82rpx;
+  margin-bottom: 18rpx;
+  padding: 12rpx 20rpx;
+  border: 3rpx solid #111111;
+  border-radius: 12rpx;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.classmate-card.selected {
+  border-color: #f58ca8;
+}
+
+.classmate-info {
+  flex: 1;
+  min-width: 0;
+  font-size: 24rpx;
+  line-height: 1.35;
+}

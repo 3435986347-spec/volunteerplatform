@@ -1,0 +1,397 @@
+<view class="mine-page">
+  <view class="topbar">
+    <image class="back-icon" src="/assets/login/back-transparent.png" mode="aspectFit" bindtap="goBack"></image>
+    <view class="top-title">{{navTitle}}</view>
+  </view>
+
+  <block wx:if="{{mode === 'main'}}">
+    <view class="profile-card">
+      <view class="profile-left">
+        <image class="avatar" src="/assets/icons/activity-logo.png" mode="aspectFit"></image>
+        <view class="badge-row">
+          <view wx:if="{{profile.realNameVerified}}" class="mini-badge">实名</view>
+          <view wx:if="{{profile.honorMedal}}" class="mini-badge medal">勋章</view>
+          <view wx:if="{{profile.volunteerCard}}" class="mini-badge card">志愿者证</view>
+        </view>
+      </view>
+      <view class="profile-main">
+        <view class="profile-name">{{profile.realName}}</view>
+        <view class="profile-line">编号：{{profile.no}}</view>
+        <view class="profile-line">职务：{{profile.title}}</view>
+      </view>
+      <view class="profile-qr"></view>
+    </view>
+
+    <view class="stats-card">
+      <view class="stat">
+        <view class="stat-value">{{profile.activities}}</view>
+        <view class="stat-label">活动次数</view>
+      </view>
+      <view class="stat">
+        <view class="stat-value">{{profile.hours}}</view>
+        <view class="stat-label">活动时长</view>
+      </view>
+      <view class="stat">
+        <view class="stat-value">{{profile.points}}</view>
+        <view class="stat-label">积分</view>
+      </view>
+    </view>
+
+    <view class="section-title">我的资料</view>
+    <view class="menu-card">
+      <view class="menu-item" bindtap="openBasic">基本信息</view>
+      <view class="menu-item" bindtap="openVolunteerCard">志愿者证</view>
+      <view class="menu-item" bindtap="openCertificateList">协会证书</view>
+      <view class="menu-item" data-action="group" bindtap="toggleMainAction">归属组织</view>
+    </view>
+  </block>
+
+  <block wx:elif="{{mode === 'basic'}}">
+    <view class="info-card">
+      <view class="info-row readonly"><text>姓名：</text><text>{{info.name}}</text></view>
+      <view class="info-row readonly"><text>身份证类型：</text><text>{{info.idType}}</text></view>
+      <view class="info-row readonly"><text>身份证号码：</text><text>{{info.idNo}}</text></view>
+
+      <view class="info-row editable">
+        <text class="info-label">手机号：</text>
+        <input class="info-input" value="{{info.phone}}" data-field="phone" bindinput="updateInfoField" />
+        <image class="edit-feather" src="/assets/mine-v2/edit-feather.png" mode="aspectFit"></image>
+      </view>
+      <view class="info-row editable">
+        <text class="info-label">紧急联系方式：</text>
+        <input class="info-input" value="{{info.emergencyPhone}}" data-field="emergencyPhone" bindinput="updateInfoField" />
+        <image class="edit-feather" src="/assets/mine-v2/edit-feather.png" mode="aspectFit"></image>
+      </view>
+      <view class="info-row selectable" bindtap="openPoliticsPicker">
+        <text>政治面貌：</text>
+        <view class="select-value">
+          <text>{{info.politics}}</text>
+          <text class="right-arrow"></text>
+        </view>
+      </view>
+      <view class="info-row editable">
+        <text class="info-label">学校：</text>
+        <input class="info-input" value="{{info.school}}" data-field="school" bindinput="updateInfoField" />
+        <image class="edit-feather" src="/assets/mine-v2/edit-feather.png" mode="aspectFit"></image>
+      </view>
+      <view class="info-row selectable" bindtap="openGradePicker">
+        <text>年级：</text>
+        <view class="select-value">
+          <text>{{info.grade}}</text>
+          <text class="right-arrow"></text>
+        </view>
+      </view>
+      <view class="info-row editable">
+        <text class="info-label">通讯地址：</text>
+        <input class="info-input" value="{{info.address}}" data-field="address" bindinput="updateInfoField" />
+        <image class="edit-feather" src="/assets/mine-v2/edit-feather.png" mode="aspectFit"></image>
+      </view>
+      <view class="info-row editable">
+        <text class="info-label">昵称：</text>
+        <input class="info-input" value="{{info.nickName}}" data-field="nickName" bindinput="updateInfoField" />
+        <image class="edit-feather" src="/assets/mine-v2/edit-feather.png" mode="aspectFit"></image>
+      </view>
+      <view class="info-row editable" bindtap="chooseVolunteerCode">
+        <text class="info-label">i志愿者码</text>
+        <text class="info-input text-value">{{info.volunteerCode ? '已上传' : '点击上传'}}</text>
+        <image class="edit-feather" src="/assets/mine-v2/edit-feather.png" mode="aspectFit"></image>
+      </view>
+      <view class="info-row avatar-row" bindtap="chooseAvatar">
+        <text class="info-label">修改头像</text>
+        <view class="avatar-preview">
+          <image wx:if="{{editAvatarUrl}}" src="{{editAvatarUrl}}" mode="aspectFill"></image>
+          <image wx:else src="/assets/icons/activity-logo.png" mode="aspectFit"></image>
+        </view>
+        <image class="edit-feather" src="/assets/mine-v2/edit-feather.png" mode="aspectFit"></image>
+      </view>
+    </view>
+    <button class="primary-btn" bindtap="saveBasic">保存修改</button>
+  </block>
+
+  <block wx:elif="{{mode === 'volunteerCard'}}">
+    <view class="vol-preview-card">
+      <view class="vol-preview front">
+        <view class="vol-preview-head">雷州市恒德爱心公益协会</view>
+        <view class="vol-preview-title">志愿者证</view>
+        <view class="vol-preview-body">
+          <image class="vol-logo" src="/assets/icons/activity-logo.png" mode="aspectFit"></image>
+          <view class="vol-lines">
+            <view>邝大程</view>
+            <view>编号：3156353651</view>
+            <view>职务：宣传部部长</view>
+          </view>
+        </view>
+      </view>
+      <view class="vol-preview back">
+        <view class="vol-preview-title">志愿者证背面</view>
+        <view class="vol-back-lines">
+          <view>雷州市恒德爱心公益协会志愿者</view>
+          <view>请妥善保管，使用时请遵守相关规定和章程。</view>
+        </view>
+      </view>
+    </view>
+
+    <view class="card volunteer-card">
+      <view class="notice-title">志愿者须知</view>
+      <view class="notice-text">1、志愿者电子证是由雷州市恒德爱心公益协会提供的志愿者身份识别电子产品。
+2、所有者须为雷州市恒德爱心公益协会志愿者。
+3、志愿者电子证只对雷州市恒德爱心公益协会志愿者身份认证提供帮助。
+4、请妥善保管，使用时请遵守相关规定和章程，如有违法违规等行为，雷州市恒德爱心公益协会不承担法律后果。
+5、本志愿者电子证最终解释权归雷州市恒德爱心公益协会所有。</view>
+    </view>
+    <view class="fixed-two-actions">
+      <button class="secondary-btn" bindtap="openEdit">修改</button>
+      <button class="secondary-btn" bindtap="downloadPDF">下载</button>
+    </view>
+  </block>
+
+  <block wx:elif="{{mode === 'edit'}}">
+    <view class="edit-card">
+      <view class="edit-title">修改一寸证件照：</view>
+      <view class="upload-big" bindtap="chooseAvatar">
+        <image wx:if="{{editAvatarUrl}}" src="{{editAvatarUrl}}" mode="aspectFill"></image>
+        <view wx:else class="upload-icon big"></view>
+      </view>
+      <button class="primary-btn" bindtap="saveEdit">确认</button>
+    </view>
+  </block>
+
+  <block wx:elif="{{mode === 'certList'}}">
+    <view class="search-wrap">
+      <input value="{{searchKeyword}}" placeholder="输入关键字搜索" placeholder-class="search-placeholder" bindinput="searchCertificate" />
+    </view>
+    <view class="cert-card cert-layout-card" wx:for="{{filteredCertificates}}" wx:key="id" data-id="{{item.id}}" bindtap="openCertificateDetail">
+      <view class="cert-no">证书编号：{{item.no}}</view>
+      <view class="cert-content-row">
+        <view class="cert-image-box">
+          <image src="/assets/icons/activity-logo.png" mode="aspectFit"></image>
+          <text class="cert-tag {{item.tagClass}}">{{item.type}}</text>
+        </view>
+        <view class="cert-info">
+          <view class="cert-title">{{item.title}}</view>
+          <view class="cert-line">活动日期：{{item.date}}</view>
+          <view wx:if="{{item.time}}" class="cert-line">活动时间：{{item.time}}</view>
+          <view wx:if="{{item.post}}" class="cert-line">活动岗位：{{item.post}}</view>
+          <view wx:if="{{item.object}}" class="cert-line">捐赠对象：{{item.object}}</view>
+          <view wx:if="{{item.donate}}" class="cert-line">捐赠金额：{{item.donate}}</view>
+          <view wx:if="{{item.number}}" class="cert-line">心愿编号：{{item.number}}</view>
+          <view class="cert-cost">{{item.amount}}</view>
+        </view>
+      </view>
+    </view>
+    <view class="fixed-two-actions">
+      <button class="secondary-btn" bindtap="applyPaper">申请纸质版</button>
+      <button class="secondary-btn" bindtap="openPaperRecord">纸质版申请记录</button>
+    </view>
+  </block>
+
+  <block wx:elif="{{mode === 'certDetail'}}">
+    <view class="cert-detail-card cert-layout-card">
+      <view class="cert-no">证书编号：{{selectedCertificate.no}}</view>
+      <view class="cert-content-row">
+        <view class="cert-image-box">
+          <image src="/assets/icons/activity-logo.png" mode="aspectFit"></image>
+          <text class="cert-tag {{selectedCertificate.tagClass}}">{{selectedCertificate.type}}</text>
+        </view>
+        <view class="cert-info">
+          <view class="cert-title">{{selectedCertificate.title}}</view>
+          <view class="cert-line">活动日期：{{selectedCertificate.date}}</view>
+          <view wx:if="{{selectedCertificate.time}}" class="cert-line">活动时间：{{selectedCertificate.time}}</view>
+          <view wx:if="{{selectedCertificate.post}}" class="cert-line">活动岗位：{{selectedCertificate.post}}</view>
+          <view wx:if="{{selectedCertificate.object}}" class="cert-line">捐赠对象：{{selectedCertificate.object}}</view>
+          <view wx:if="{{selectedCertificate.donate}}" class="cert-line">捐赠金额：{{selectedCertificate.donate}}</view>
+        </view>
+      </view>
+    </view>
+    <view class="cert-file-preview">
+      <view class="cert-file-title">雷州市恒德爱心公益协会</view>
+      <view class="cert-file-subtitle">协会证书</view>
+      <view class="cert-file-line">这是一个活动名称</view>
+      <view class="cert-file-grid">
+        <text>活动日期</text><text>{{selectedCertificate.date}}</text>
+        <text>活动时间</text><text>{{selectedCertificate.time}}</text>
+        <text>证书编号</text><text>{{selectedCertificate.no}}</text>
+      </view>
+    </view>
+    <view class="bottom-actions">
+      <button class="secondary-btn" bindtap="downloadPDF">下载PDF</button>
+    </view>
+  </block>
+
+  <block wx:elif="{{mode === 'paperApply'}}">
+    <view class="paper-apply-card" wx:for="{{certificates}}" wx:key="id" data-id="{{item.id}}" bindtap="togglePaperCertificate">
+      <view class="check-box {{item.selected ? 'checked' : ''}}"></view>
+      <view class="paper-cert-main">
+        <view class="cert-no">证书编号：{{item.no}}</view>
+        <view class="paper-cert-row">
+          <view class="cert-image-box small">
+            <image src="/assets/icons/activity-logo.png" mode="aspectFit"></image>
+            <text class="cert-tag {{item.tagClass}}">{{item.type}}</text>
+          </view>
+          <view class="cert-info">
+            <view class="cert-title">{{item.title}}</view>
+            <view class="cert-line">活动日期：{{item.date}}</view>
+            <view wx:if="{{item.time}}" class="cert-line">活动时间：{{item.time}}</view>
+          </view>
+          <view class="paper-price">{{item.amount}}</view>
+        </view>
+      </view>
+    </view>
+    <view class="paper-submit-bar">
+      <view>全选</view>
+      <view>已选{{paperApplyCount}}件</view>
+      <button bindtap="submitPaperApply">提交</button>
+    </view>
+  </block>
+
+  <block wx:elif="{{mode === 'addressFill'}}">
+    <view class="delivery-card {{selectedDelivery === 'express' ? 'active' : ''}}" data-type="express" bindtap="selectDelivery">
+      <view class="delivery-title">邮寄</view>
+      <view>邝大程 15766508094</view>
+      <view>雷州市西湖街道西湖新村17号</view>
+    </view>
+    <view class="delivery-card {{selectedDelivery === 'pickup' ? 'active' : ''}}" data-type="pickup" bindtap="selectDelivery">
+      <view class="delivery-title">自提</view>
+      <view>雷州市恒德爱心公益协会</view>
+      <view>雷州市西湖街道西湖新村17号</view>
+    </view>
+    <view class="paper-section-title">证书信息</view>
+    <view class="paper-apply-card compact" wx:for="{{selectedPaperCertificates}}" wx:key="id">
+      <view class="paper-cert-main">
+        <view class="cert-no">证书编号：{{item.no}}</view>
+        <view class="paper-cert-row">
+          <view class="cert-image-box small">
+            <image src="/assets/icons/activity-logo.png" mode="aspectFit"></image>
+            <text class="cert-tag {{item.tagClass}}">{{item.type}}</text>
+          </view>
+          <view class="cert-info">
+            <view class="cert-title">{{item.title}}</view>
+            <view class="cert-line">活动日期：{{item.date}}</view>
+          </view>
+        </view>
+      </view>
+    </view>
+    <view class="paper-submit-bar pay">
+      <view>￥22</view>
+      <button bindtap="submitAddress">提交并支付</button>
+    </view>
+  </block>
+
+  <block wx:elif="{{mode === 'paperManage'}}">
+    <view class="paper-manage-card" bindtap="openOrderDetail">
+      <view class="paper-manage-head">
+        <text>记录编号：JC202504156154</text>
+        <text class="state">待领取</text>
+      </view>
+      <view class="paper-line">申请时间：2025/02/06 22:30</view>
+      <view class="paper-line">审核时间：2025/02/06 22:36</view>
+      <view class="paper-line">领取方式：自提</view>
+      <view class="paper-code">自提码15616554848964</view>
+    </view>
+    <view class="paper-manage-card" bindtap="openOrderDetail">
+      <view class="paper-manage-head">
+        <text>记录编号：JC202504156155</text>
+        <text class="state">已寄出</text>
+      </view>
+      <view class="paper-line">申请时间：2025/02/06 22:30</view>
+      <view class="paper-line">审核时间：2025/02/06 22:36</view>
+      <view class="paper-line">京东快递 JD202504156154</view>
+    </view>
+  </block>
+
+  <block wx:elif="{{mode === 'orderDetail'}}">
+    <view class="order-status-card">
+      <view class="order-status">{{orderDetail.status}}</view>
+      <view>{{orderDetail.addressTitle}}</view>
+      <view>{{orderDetail.contact}} {{orderDetail.phone}}</view>
+      <view>{{orderDetail.address}}</view>
+    </view>
+    <view class="paper-section-title">证书信息</view>
+    <view class="paper-apply-card compact" wx:for="{{selectedPaperCertificates}}" wx:key="id">
+      <view class="paper-cert-main">
+        <view class="cert-no">证书编号：{{item.no}}</view>
+        <view class="paper-cert-row">
+          <view class="cert-image-box small">
+            <image src="/assets/icons/activity-logo.png" mode="aspectFit"></image>
+            <text class="cert-tag {{item.tagClass}}">{{item.type}}</text>
+          </view>
+          <view class="cert-info">
+            <view class="cert-title">{{item.title}}</view>
+            <view class="cert-line">活动日期：{{item.date}}</view>
+          </view>
+        </view>
+      </view>
+    </view>
+    <view class="paper-card">
+      <view class="paper-line">记录编号：{{orderDetail.recordNo}}</view>
+      <view class="paper-line">支付金额：{{orderDetail.payAmount}}</view>
+      <view class="paper-line">支付单号：{{orderDetail.payNo}}</view>
+      <view class="paper-code">自提码{{orderDetail.pickupCode}}</view>
+    </view>
+    <view class="fixed-two-actions">
+      <button class="secondary-btn" bindtap="rushPaper">加急</button>
+      <button class="secondary-btn" bindtap="cancelPaper">取消</button>
+    </view>
+  </block>
+
+  <block wx:elif="{{mode === 'paperRecord'}}">
+    <view class="paper-card">
+      <view class="paper-line">记录编号：{{paperRecord.recordNo}}</view>
+      <view class="paper-line">申请时间：{{paperRecord.applyTime}}</view>
+      <view class="paper-line">审核时间：{{paperRecord.auditTime}}</view>
+      <view class="paper-line">领取时间：{{paperRecord.receiveTime}}</view>
+      <view class="paper-line">支付金额：{{paperRecord.payAmount}}</view>
+      <view class="paper-line">支付单号：{{paperRecord.payNo}}</view>
+      <view class="paper-line">{{paperRecord.urgent}}</view>
+      <view class="paper-actions">
+        <text bindtap="cancelPaper">取消</text>
+        <text bindtap="copyPaperCode">复制</text>
+      </view>
+      <view class="paper-code">自提码{{paperRecord.pickupCode}}</view>
+    </view>
+  </block>
+
+  <view class="picker-mask" wx:if="{{showPoliticsPicker || showGradePicker || showPaperCancel || showRushModal}}" catchtap="closeAllSheets"></view>
+
+  <view class="picker-sheet" wx:if="{{showPoliticsPicker}}">
+    <view class="sheet-head">
+      <text bindtap="closePoliticsPicker">取消</text>
+      <text>确认</text>
+    </view>
+    <view class="sheet-option" wx:for="{{politicsOptions}}" wx:key="*this" data-index="{{index}}" bindtap="pickPolitics">{{item}}</view>
+    <button class="primary-btn" bindtap="confirmPolitics">确认</button>
+  </view>
+
+  <view class="picker-sheet" wx:if="{{showGradePicker}}">
+    <view class="sheet-head">
+      <text bindtap="closeGradePicker">取消</text>
+      <text>确认</text>
+    </view>
+    <view class="sheet-option" wx:for="{{gradeOptions}}" wx:key="*this" data-index="{{index}}" bindtap="pickGrade">{{item}}</view>
+    <button class="primary-btn" bindtap="confirmGrade">确认</button>
+  </view>
+
+  <view class="picker-sheet" wx:if="{{showPaperCancel}}">
+    <view class="sheet-head">
+      <text>申请取消</text>
+      <text></text>
+    </view>
+    <view class="sheet-text">是否申请取消，每个活动只有一次申请纸质证书的机会</view>
+    <view class="sheet-buttons">
+      <button class="primary-btn" bindtap="confirmPaperCancel">是</button>
+      <button class="secondary-btn" bindtap="confirmPaperCancel">否</button>
+    </view>
+  </view>
+
+  <view class="picker-sheet" wx:if="{{showRushModal}}">
+    <view class="sheet-head">
+      <text>申请加急</text>
+      <text></text>
+    </view>
+    <view class="sheet-text">是否申请加急，每个订单只有一次加急机会</view>
+    <view class="sheet-buttons">
+      <button class="primary-btn" bindtap="confirmPaperCancel">是</button>
+      <button class="secondary-btn" bindtap="cancelRush">否</button>
+    </view>
+  </view>
+</view>

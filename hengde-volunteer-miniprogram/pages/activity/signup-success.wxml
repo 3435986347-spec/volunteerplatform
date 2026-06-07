@@ -1,0 +1,36 @@
+<view class="success-page">
+  <view class="topbar">
+    <view class="back-icon" bindtap="goBack">‹</view>
+    <view class="topbar-title">报名成功</view>
+  </view>
+
+  <scroll-view class="content" scroll-y enhanced>
+    <view class="info-card activity-card">
+      <view class="activity-name">{{activityInfo.title}}</view>
+      <view>活动日期：{{activityInfo.dateRange}}</view>
+      <view>活动地点：{{activityInfo.place}}</view>
+      <view>姓名：{{person.name}}</view>
+      <view>电话：{{person.phone}}</view>
+      <view>学校：{{person.school}}</view>
+    </view>
+
+    <view class="section-title">报名岗位</view>
+    <view class="post-card" wx:for="{{sessions}}" wx:key="id">
+      <view>日期：{{item.dateShort}}</view>
+      <view>时间：{{item.time}}</view>
+      <view>岗位：{{item.post}}</view>
+    </view>
+
+    <view class="image-placeholder">
+      <view class="image-icon">
+        <view class="mountain"></view>
+        <view class="sun"></view>
+        <view class="plus-h"></view>
+        <view class="plus-v"></view>
+      </view>
+    </view>
+
+    <view class="custom-text">【文本框】自定义文字，上面图片自定义</view>
+    <button class="return-btn" bindtap="returnBack">返回</button>
+  </scroll-view>
+</view>

@@ -1,0 +1,159 @@
+page {
+  min-height: 100%;
+  background: #f5f7fb;
+  color: #1f2937;
+  font-family: "FZDFS--GBK1-0";
+  font-size: 28rpx;
+}
+
+view,
+text,
+button,
+input,
+textarea,
+picker,
+label,
+navigator,
+rich-text,
+scroll-view,
+swiper,
+swiper-item,
+form,
+radio-group,
+checkbox-group,
+cover-view {
+  font-family: "FZDFS--GBK1-0";
+}
+
+button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  box-sizing: border-box;
+  line-height: 1;
+}
+
+.page {
+  min-height: 100vh;
+  padding: 24rpx;
+  box-sizing: border-box;
+}
+
+.section {
+  margin-top: 24rpx;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16rpx;
+}
+
+.section-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #172033;
+}
+
+.section-action {
+  color: #d83b3b;
+  font-size: 26rpx;
+}
+
+.card {
+  background: #ffffff;
+  border: 1rpx solid #edf0f5;
+  border-radius: 12rpx;
+  box-shadow: 0 8rpx 24rpx rgba(37, 55, 91, 0.06);
+  box-sizing: border-box;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+}
+
+.between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.muted {
+  color: #7a8394;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38rpx;
+  padding: 0 14rpx;
+  border-radius: 8rpx;
+  background: #eef7f1;
+  color: #177245;
+  font-size: 22rpx;
+}
+
+.tag.warn {
+  background: #fff4de;
+  color: #9b5b00;
+}
+
+.tag.danger {
+  background: #ffecec;
+  color: #c92a2a;
+}
+
+.primary-btn,
+.ghost-btn {
+  height: 84rpx;
+  line-height: 1;
+  border-radius: 10rpx;
+  font-size: 30rpx;
+}
+
+.primary-btn {
+  background: #d83b3b;
+  color: #ffffff;
+}
+
+.ghost-btn {
+  background: #ffffff;
+  color: #d83b3b;
+  border: 1rpx solid #f0c6c6;
+}
+
+.field {
+  margin-bottom: 18rpx;
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 10rpx;
+  color: #4b5563;
+  font-size: 26rpx;
+}
+
+.input,
+.textarea,
+.picker-like {
+  width: 100%;
+  min-height: 78rpx;
+  padding: 0 22rpx;
+  border: 1rpx solid #dfe5ef;
+  border-radius: 10rpx;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.textarea {
+  min-height: 160rpx;
+  padding-top: 18rpx;
+}
+
+.list-item {
+  padding: 22rpx;
+  margin-bottom: 18rpx;
+}

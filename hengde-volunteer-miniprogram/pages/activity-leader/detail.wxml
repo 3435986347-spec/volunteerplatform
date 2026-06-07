@@ -1,0 +1,45 @@
+<view class="leader-page">
+  <view class="leader-nav">
+    <image class="back-icon" src="/assets/login/back-transparent.png" mode="aspectFit" bindtap="goBack"></image>
+    <view class="nav-title">活动负责人</view>
+  </view>
+
+  <view class="content-wrap">
+    <view class="section-card">
+      <view class="card-title">活动信息</view>
+      <view class="info-line">活动名称：{{activity.name}}</view>
+      <view class="info-line">活动地点：{{activity.location}}</view>
+      <view class="info-line">活动时间：{{activity.time}}</view>
+      <view class="info-line">开始时间：</view>
+      <view class="info-line">结束时间：</view>
+      <view class="info-line">参加人数：{{activity.joined}}</view>
+      <view class="info-line">签到人数：{{activity.signed}}</view>
+      <view class="info-line">签退人数：{{activity.checkedOut}}</view>
+      <view class="info-line">到家人数：{{activity.home}}</view>
+    </view>
+
+    <view class="section-card roster-card">
+      <view class="center-title">志愿者名单</view>
+      <view class="table-head roster-grid">
+        <view>名字</view><view>电话</view><view>学校</view><view>备注</view>
+      </view>
+      <view class="table-row roster-grid" wx:for="{{volunteers}}" wx:key="index">
+        <view>{{item.name}}</view>
+        <view>{{item.phone}}<text class="phone-dot">●</text></view>
+        <view>{{item.school}}</view>
+        <view><text wx:if="{{item.remark}}" class="role-tag">{{item.remark}}</text></view>
+      </view>
+    </view>
+
+    <view class="leader-grid">
+      <view bindtap="openActivityDetail">活动详情</view>
+      <view bindtap="startActivity">开始活动</view>
+      <view bindtap="finishActivity">结束活动</view>
+      <view bindtap="openSign">活动签到</view>
+      <view class="danger" bindtap="emergencyReport">紧急上报</view>
+      <view bindtap="openViolation">违规记录</view>
+      <view bindtap="uploadPhoto">上传照片</view>
+      <view bindtap="evaluateActivity">活动评价</view>
+    </view>
+  </view>
+</view>

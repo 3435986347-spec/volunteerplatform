@@ -1,0 +1,177 @@
+.mine-page {
+  background: linear-gradient(180deg, #ff8cab 0%, #fbecea 32%, #fff8f6 100%);
+  padding-bottom: calc(160rpx + env(safe-area-inset-bottom));
+}
+
+.profile-card {
+  display: flex;
+  gap: 22rpx;
+  padding: 26rpx;
+  align-items: flex-start;
+}
+
+.avatar-img {
+  width: 104rpx;
+  height: 104rpx;
+  flex: none;
+}
+
+.profile-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-name-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  flex-wrap: wrap;
+}
+
+.profile-name {
+  font-size: 36rpx;
+  font-weight: 800;
+  color: #172033;
+}
+
+.profile-badges {
+  display: flex;
+  gap: 6rpx;
+}
+
+.badge-mini {
+  height: 34rpx;
+  min-width: 34rpx;
+  padding: 0 8rpx;
+  border-radius: 999rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.badge-verify {
+  background: #fce4ec;
+  color: #d83b3b;
+}
+
+.badge-medal {
+  background: #fff3cd;
+  color: #e0a800;
+}
+
+.badge-role {
+  background: #fbecea;
+  color: #d83b3b;
+}
+
+.profile-line {
+  margin-top: 10rpx;
+  color: #596273;
+  font-size: 26rpx;
+}
+
+.profile-qr {
+  flex: none;
+  width: 76rpx;
+  height: 76rpx;
+  padding: 6rpx;
+  border: 2rpx solid #d83b3b;
+  border-radius: 8rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qr-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 4rpx;
+  width: 100%;
+  height: 100%;
+}
+
+.qr-cell {
+  background: #d83b3b;
+  border-radius: 2rpx;
+}
+
+.qr-cell.off {
+  background: transparent;
+}
+
+.stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  margin-top: 0;
+  padding: 22rpx 0;
+  text-align: center;
+}
+
+.stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6rpx;
+}
+
+.stat-value {
+  color: #172033;
+  font-size: 32rpx;
+  font-weight: 800;
+}
+
+.stat-label {
+  color: #7a8394;
+  font-size: 24rpx;
+}
+
+.stat-divider {
+  width: 2rpx;
+  height: 50rpx;
+  background: #edf0f5;
+}
+
+.section-card {
+  margin-top: 20rpx;
+  padding: 22rpx 18rpx 12rpx;
+}
+
+.section-title {
+  padding: 6rpx 8rpx 16rpx;
+  color: #172033;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.icon-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  row-gap: 18rpx;
+}
+
+.icon-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8rpx;
+  padding: 8rpx 0;
+}
+
+.icon-img {
+  width: 72rpx;
+  height: 72rpx;
+}
+
+.icon-label {
+  color: #596273;
+  font-size: 24rpx;
+  text-align: center;
+  line-height: 1.3;
+  white-space: nowrap;
+}

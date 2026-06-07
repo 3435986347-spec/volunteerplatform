@@ -1,0 +1,97 @@
+<view class="squad-page">
+  <view class="topbar">
+    <image class="back-icon" src="/assets/login/back-transparent.png" mode="aspectFit" bindtap="goBack"></image>
+    <view class="top-title">{{navTitle}}</view>
+  </view>
+
+  <block wx:if="{{mode === 'list'}}">
+    <view class="my-status-card">
+      <view class="my-status-row">
+        <view class="my-type-tag">{{mySchoolTeam.type}}</view>
+        <view class="my-status-main">
+          <view class="my-name">{{mySchoolTeam.name}}</view>
+        </view>
+        <view class="my-action-stack">
+          <view class="my-state">{{mySchoolTeam.state}}</view>
+          <view class="my-action-btn view-btn" data-type="school" data-action="{{mySchoolTeam.actionText}}" bindtap="handleMyAction">{{mySchoolTeam.actionText}}</view>
+        </view>
+      </view>
+      <view class="my-status-row">
+        <view class="my-type-tag">{{myTownTeam.type}}</view>
+        <view class="my-status-main">
+          <view class="my-name">{{myTownTeam.name}}</view>
+        </view>
+        <view class="my-action-stack">
+          <view class="my-state">{{myTownTeam.state}}</view>
+          <view class="my-action-btn cancel-btn" data-type="town" data-action="{{myTownTeam.actionText}}" bindtap="handleMyAction">{{myTownTeam.actionText}}</view>
+        </view>
+      </view>
+    </view>
+
+    <view class="tab-bar">
+      <view class="tab {{activeTab === 0 ? 'active' : ''}}" data-index="0" bindtap="switchTab">中学分队</view>
+      <view class="tab {{activeTab === 1 ? 'active' : ''}}" data-index="1" bindtap="switchTab">乡镇分队</view>
+    </view>
+
+    <view class="team-list" wx:if="{{activeTab === 0}}">
+      <view class="team-row" wx:for="{{schoolTeams}}" wx:key="id">
+        <view class="team-name">{{item.name}}</view>
+        <view class="team-meta">
+          <image src="/assets/organization/team-people.png" mode="aspectFit"></image>
+          <text>志愿者数：{{item.volunteerCount}}人</text>
+        </view>
+        <view class="team-meta">
+          <image src="/assets/organization/team-contact.png" mode="aspectFit"></image>
+          <text>联系人：{{item.contact}}</text>
+        </view>
+        <view class="team-meta">
+          <image src="/assets/organization/team-phone.png" mode="aspectFit"></image>
+          <text>联系方式：{{item.phone}}</text>
+        </view>
+        <view class="apply-btn" data-id="{{item.id}}" data-type="{{item.type}}" bindtap="applyTeam">{{item.joinText}}</view>
+      </view>
+    </view>
+
+    <view class="team-list" wx:else>
+      <view class="team-row" wx:for="{{townTeams}}" wx:key="id">
+        <view class="team-name">{{item.name}}</view>
+        <view class="team-meta">
+          <image src="/assets/organization/team-people.png" mode="aspectFit"></image>
+          <text>志愿者数：{{item.volunteerCount}}人</text>
+        </view>
+        <view class="team-meta">
+          <image src="/assets/organization/team-contact.png" mode="aspectFit"></image>
+          <text>联系人：{{item.contact}}</text>
+        </view>
+        <view class="team-meta">
+          <image src="/assets/organization/team-phone.png" mode="aspectFit"></image>
+          <text>联系方式：{{item.phone}}</text>
+        </view>
+        <view class="apply-btn" data-id="{{item.id}}" data-type="{{item.type}}" bindtap="applyTeam">{{item.joinText}}</view>
+      </view>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view class="detail-card">
+      <view class="detail-name">{{selectedTeam.name}}</view>
+      <view class="detail-line">联系人：{{selectedTeam.contact}}</view>
+      <view class="detail-line">联系方式：{{selectedTeam.phone}}</view>
+      <view class="detail-line">志愿者数：{{selectedTeam.volunteerCount}}人</view>
+      <view class="detail-line">活动发布：23场</view>
+      <button class="exit-btn" bindtap="exitTeam">退出</button>
+    </view>
+
+    <view class="member-title">志愿者明细</view>
+    <view class="member-card" wx:for="{{detailMembers}}" wx:key="name">
+      <view class="member-name">志愿者{{item.name}}</view>
+      <view class="member-sub">{{item.extra}}</view>
+      <view class="member-sub">{{item.date}}</view>
+    </view>
+  </block>
+
+  <view wx:if="{{showApplySuccess}}" class="apply-success-toast">
+    <image class="apply-success-icon" src="/assets/organization/apply-success.png" mode="aspectFit"></image>
+    <text>申请成功</text>
+  </view>
+</view>

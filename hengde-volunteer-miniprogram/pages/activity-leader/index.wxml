@@ -1,0 +1,22 @@
+<view class="leader-page">
+  <view class="leader-nav">
+    <image class="back-icon" src="/assets/login/back-transparent.png" mode="aspectFit" bindtap="goBack"></image>
+    <view class="nav-title">活动负责人</view>
+  </view>
+
+  <view class="content-wrap">
+    <view class="empty-text" wx:if="{{loading}}">加载中</view>
+    <block wx:elif="{{activities.length}}">
+      <view class="leader-list-card" wx:for="{{activities}}" wx:key="id">
+        <view class="leader-activity-title">{{item.name}}</view>
+        <view class="info-line">活动编号：{{item.id}}</view>
+        <view class="info-line">活动地点：{{item.location}}</view>
+        <view class="info-line">活动时间：{{item.time}}</view>
+        <view class="manage-btn" data-id="{{item.id}}" bindtap="manageActivity">管理活动</view>
+      </view>
+    </block>
+    <view class="empty-text" wx:else>{{emptyText}}</view>
+  </view>
+
+  <button wx:if="{{canPublish}}" class="bottom-publish" bindtap="publishActivity">发布活动</button>
+</view>

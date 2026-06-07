@@ -1,0 +1,82 @@
+<view class="leader-page">
+  <view class="leader-nav">
+    <image class="back-icon" src="/assets/login/back-transparent.png" mode="aspectFit" bindtap="goBack"></image>
+    <view class="nav-title">活动负责人</view>
+  </view>
+
+  <view class="content-wrap publish-wrap">
+    <view class="section-card">
+      <view class="card-title">发布活动</view>
+      <view class="form-row">
+        <text class="form-label">活动名称：</text>
+        <input class="form-input" value="{{form.title}}" data-field="title" bindinput="updateField" placeholder="请输入活动名称" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">封面图：</text>
+        <input class="form-input" value="{{form.coverImageUrl}}" data-field="coverImageUrl" bindinput="updateField" placeholder="可填写图片 URL" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">活动地点：</text>
+        <input class="form-input" value="{{form.location}}" data-field="location" bindinput="updateField" placeholder="请输入活动地点" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">开始时间：</text>
+        <input class="form-input" value="{{form.startTime}}" data-field="startTime" bindinput="updateField" placeholder="2026-06-10 09:00" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">结束时间：</text>
+        <input class="form-input" value="{{form.endTime}}" data-field="endTime" bindinput="updateField" placeholder="2026-06-10 12:00" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">截止报名：</text>
+        <input class="form-input" value="{{form.enrollDeadline}}" data-field="enrollDeadline" bindinput="updateField" placeholder="2026-06-09 18:00" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">管理开放：</text>
+        <input class="form-input" value="{{form.enrollOpenManager}}" data-field="enrollOpenManager" bindinput="updateField" placeholder="2026-06-09 08:00" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">负责人开放：</text>
+        <input class="form-input" value="{{form.enrollOpenLeader}}" data-field="enrollOpenLeader" bindinput="updateField" placeholder="2026-06-09 08:00" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">志愿者开放：</text>
+        <input class="form-input" value="{{form.enrollOpenVolunteer}}" data-field="enrollOpenVolunteer" bindinput="updateField" placeholder="2026-06-09 08:00" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">岗位名称：</text>
+        <input class="form-input" value="{{form.slotProjectName}}" data-field="slotProjectName" bindinput="updateField" placeholder="志愿者" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">岗位人数：</text>
+        <input class="form-input" type="number" value="{{form.slotNeedCount}}" data-field="slotNeedCount" bindinput="updateField" placeholder="20" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">基础积分：</text>
+        <input class="form-input" type="digit" value="{{form.pointsBase}}" data-field="pointsBase" bindinput="updateField" placeholder="10" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">联系人：</text>
+        <input class="form-input" value="{{form.contactName}}" data-field="contactName" bindinput="updateField" placeholder="请输入联系人" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">联系电话：</text>
+        <input class="form-input" type="number" value="{{form.contactPhone}}" data-field="contactPhone" bindinput="updateField" placeholder="请输入联系电话" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">发布部门：</text>
+        <input class="form-input" value="{{form.publisherDeptName}}" data-field="publisherDeptName" bindinput="updateField" placeholder="组织部" />
+      </view>
+      <view class="form-row form-row-textarea">
+        <text class="form-label">活动内容：</text>
+        <textarea class="form-textarea" value="{{form.content}}" data-field="content" bindinput="updateField" placeholder="请输入活动内容"></textarea>
+      </view>
+      <view class="form-row form-row-textarea">
+        <text class="form-label">报名要求：</text>
+        <textarea class="form-textarea" value="{{form.requirement}}" data-field="requirement" bindinput="updateField" placeholder="请输入报名要求"></textarea>
+      </view>
+    </view>
+
+    <button class="submit-publish" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submitPublish">发布活动</button>
+  </view>
+</view>

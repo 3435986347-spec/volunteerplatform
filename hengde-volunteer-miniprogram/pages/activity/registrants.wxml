@@ -1,0 +1,24 @@
+<view class="registrants-page">
+  <view class="top-bar">
+    <view class="back" bindtap="goBack">‹</view>
+    <view class="page-title">报名详情</view>
+  </view>
+
+  <view class="search-row">
+    <input class="search-input" placeholder="输入关键字搜索" placeholder-class="search-placeholder" value="{{keyword}}" bindinput="onKeywordInput" />
+    <view class="filter-icon"></view>
+  </view>
+
+  <view class="registrant-card" wx:for="{{rows}}" wx:key="id">
+    <image class="avatar" src="{{item.avatar}}" mode="aspectFill" />
+    <view class="person-info">
+      <view>姓　　名：{{item.name}}</view>
+      <view>报名时间：{{item.signupTime}}</view>
+      <view>岗位时间：{{item.postTime}}</view>
+      <view>签到时间：{{item.checkinTime}}</view>
+      <view>签退时间：{{item.checkoutTime}}</view>
+    </view>
+  </view>
+
+  <view class="empty" wx:if="{{!rows.length}}">没有更多了</view>
+</view>

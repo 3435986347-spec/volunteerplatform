@@ -1,0 +1,134 @@
+<view class="detail-page">
+  <view class="topbar">
+    <image class="back-icon" src="/assets/login/back-transparent.png" mode="aspectFit" bindtap="goBack"></image>
+    <view class="top-title">{{isJoined ? '志愿服务小组' : '加入小组'}}</view>
+  </view>
+
+  <block wx:if="{{!isJoined}}">
+    <image class="join-banner" src="{{group.banner}}" mode="aspectFill"></image>
+
+    <view class="join-card">
+      <image class="join-logo" src="{{group.logo}}" mode="aspectFit"></image>
+      <view class="join-info">
+        <view class="join-name">{{group.name}}</view>
+        <view>小组组长：{{group.leader}}</view>
+        <view>小组人数：{{group.members}}人</view>
+        <view class="no-row">小组编号：{{group.no}} <text class="copy-btn" bindtap="copyNo">复制</text></view>
+        <view>建立时间：{{group.createdAt}}</view>
+      </view>
+      <view class="qr-icon">
+        <view></view><view></view><view></view><view></view>
+      </view>
+      <view class="join-intro">{{group.intro}}</view>
+    </view>
+
+    <view class="more-actions">
+      <text bindtap="reportGroup">••• 举报</text>
+      <text bindtap="shareGroup">分享</text>
+    </view>
+
+    <button class="join-btn" bindtap="applyJoin">申请加入</button>
+  </block>
+
+  <block wx:else>
+    <view class="summary-card">
+      <view class="summary-left">
+        <view class="summary-no">编号</view>
+        <image class="summary-logo" src="{{group.logo}}" mode="aspectFit"></image>
+      </view>
+      <view class="summary-info">
+        <view class="summary-name" bindtap="openEdit">{{group.name}} <text class="edit-icon">□</text></view>
+        <view>组长：{{group.leader}}</view>
+        <view>组建时间：{{group.createdAt}}</view>
+        <view>成员人数：{{group.members}}</view>
+      </view>
+    </view>
+
+    <view class="tabbar">
+      <view
+        class="tab-item {{activeTab === index ? 'active' : ''}}"
+        wx:for="{{tabs}}"
+        wx:key="*this"
+        data-index="{{index}}"
+        bindtap="switchTab"
+      >{{item}}</view>
+    </view>
+
+    <view class="tab-panel" wx:if="{{activeTab === 0}}">
+      <view class="member-card" wx:for="{{members}}" wx:key="id">
+        <view class="member-line">
+          <text>{{item.role === '成员' ? '姓名' : item.role}}：{{item.name}}</text>
+          <text>电话：{{item.phone}}</text>
+        </view>
+        <view>学校：{{item.school}}</view>
+      </view>
+      <view class="pager"><button>上一页</button><text wx:for="{{pages}}" wx:key="*this" class="{{item === currentPage ? 'current' : ''}}">{{item}}</text><button>下一页</button></view>
+    </view>
+
+    <view class="tab-panel" wx:if="{{activeTab === 1}}">
+      <view class="manage-action" wx:for="{{visibleActions}}" wx:key="id" data-id="{{item.id}}" bindtap="handleAction">{{item.label}}</view>
+    </view>
+
+    <view class="tab-panel approval-panel" wx:if="{{activeTab === 2}}">
+      <view class="application-card" wx:for="{{applications}}" wx:key="id" data-id="{{item.id}}" bindtap="toggleApplication">
+        <view class="fake-check {{item.checked ? 'checked' : ''}}"></view>
+        <view>
+          <view>姓名：{{item.name}}</view>
+          <view>学校：{{item.school}}</view>
+        </view>
+      </view>
+      <view class="approval-actions">
+        <button bindtap="approveApplications">通过</button>
+        <button bindtap="rejectApplications">拒绝</button>
+      </view>
+      <view class="pager"><button>上一页</button><text wx:for="{{pages}}" wx:key="*this" class="{{item === currentPage ? 'current' : ''}}">{{item}}</text><button>下一页</button></view>
+    </view>
+
+    <view class="tab-panel" wx:if="{{activeTab === 3}}">
+      <view class="log-card">
+        <view class="log-row" wx:for="{{logs}}" wx:key="id">
+          <text>{{item.time}} </text>
+          <text class="hot">{{item.actor}}</text>
+          <text>{{item.action}}</text>
+          <text class="hot">{{item.target}}</text>
+          <text>{{item.suffix}}</text>
+          <text wx:if="{{item.activityName}}" class="activity-link" data-id="{{item.activityId}}" bindtap="goActivity">【{{item.activityName}}】</text>
+        </view>
+      </view>
+      <view class="pager"><button>上一页</button><text wx:for="{{pages}}" wx:key="*this" class="{{item === currentPage ? 'current' : ''}}">{{item}}</text><button>下一页</button></view>
+    </view>
+  </block>
+
+  <view class="popup-mask" wx:if="{{pickerVisible}}" catchtap="closePicker"></view>
+  <view class="member-popup" wx:if="{{pickerVisible}}">
+    <view class="popup-head">
+      <view bindtap="closePicker">取消</view>
+      <view>{{pickerTitle}}</view>
+      <view class="confirm" bindtap="confirmPicker">确认</view>
+    </view>
+    <input class="popup-search" value="{{pickerKeyword}}" placeholder="输入名字搜索" placeholder-class="dark-placeholder" bindinput="onPickerSearch" />
+    <view class="picker-member {{item.selected ? 'selected' : ''}}" wx:for="{{pickerMembers}}" wx:key="id" data-id="{{item.id}}" bindtap="toggleMember">
+      <view>
+        <view>姓名：{{item.name}}　　电话：{{item.phone}}</view>
+        <view>学校：{{item.school}}</view>
+      </view>
+      <view class="popup-check {{item.selected ? 'checked' : ''}}"></view>
+    </view>
+  </view>
+
+  <view class="popup-mask" wx:if="{{editVisible}}" catchtap="closeEdit"></view>
+  <view class="edit-popup" wx:if="{{editVisible}}">
+    <view class="popup-head">
+      <view bindtap="closeEdit">取消</view>
+      <view>修改信息</view>
+      <view></view>
+    </view>
+    <view class="cooldown">修改名字有7天冷却时间</view>
+    <view class="upload-icon" bindtap="chooseGroupImage">
+      <image wx:if="{{newLogo}}" src="{{newLogo}}" mode="aspectFill"></image>
+      <text wx:else>▧＋</text>
+    </view>
+    <input class="edit-input" value="{{newName}}" placeholder="请输入新组名" placeholder-class="dark-placeholder" bindinput="updateNewName" />
+    <button class="edit-submit" bindtap="submitEdit">修改资料（-50积分）</button>
+  </view>
+</view>

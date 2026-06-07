@@ -1,0 +1,79 @@
+{
+  "pages": [
+    "pages/login/index",
+    "pages/login/forgot",
+    "pages/home/index",
+    "pages/community/index",
+    "pages/community/detail",
+    "pages/mine/index",
+    "pages/register/index",
+    "pages/search/index",
+    "pages/activity/list",
+    "pages/activity/detail",
+    "pages/activity/registrants",
+    "pages/activity/signup",
+    "pages/activity/signup-success",
+    "pages/activity-leader/index",
+    "pages/activity-leader/detail",
+    "pages/activity-leader/publish",
+    "pages/activity-leader/sign",
+    "pages/activity-leader/sign-records",
+    "pages/activity-leader/violation",
+    "pages/organization/groups",
+    "pages/organization/group-detail",
+    "pages/organization/group-create",
+    "pages/organization/squads",
+    "pages/organization/squad-detail",
+    "pages/publicity/notices",
+    "pages/publicity/notice-detail",
+    "pages/mine/profile",
+    "pages/mine/my-activities",
+    "pages/mine/service-records",
+    "pages/mine/my-group",
+    "pages/mine/my-squad",
+    "pages/mine/security"
+  ],
+  "window": {
+    "navigationBarTitleText": "恒德志愿者",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f5f7fb"
+  },
+  "permission": {
+    "scope.userLocation": {
+      "desc": "用于计算当前位置与活动地点的距离"
+    }
+  },
+  "requiredPrivateInfos": [
+    "chooseLocation",
+    "getLocation"
+  ],
+  "tabBar": {
+    "custom": true,
+    "color": "#7a8394",
+    "selectedColor": "#d83b3b",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/home/index",
+        "text": "首页",
+        "iconPath": "assets/tabbar/home.png",
+        "selectedIconPath": "assets/tabbar/home-active.png"
+      },
+      {
+        "pagePath": "pages/community/index",
+        "text": "社区",
+        "iconPath": "assets/tabbar/community.png",
+        "selectedIconPath": "assets/tabbar/community-active.png"
+      },
+      {
+        "pagePath": "pages/mine/index",
+        "text": "我的",
+        "iconPath": "assets/tabbar/mine.png",
+        "selectedIconPath": "assets/tabbar/mine-active.png"
+      }
+    ]
+  },
+  "style": "v2"
+}

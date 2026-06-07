@@ -1,0 +1,82 @@
+.service-page {
+  min-height: 100vh;
+  padding-bottom: 48rpx;
+  background: linear-gradient(180deg, #fff0f4 0%, #f7f8fb 42%, #ffffff 100%);
+}
+
+.record-card {
+  margin: 18rpx 24rpx 0;
+  padding: 24rpx;
+  border-radius: 18rpx;
+  background: #ffffff;
+  box-shadow: 0 10rpx 26rpx rgba(216, 59, 59, 0.08);
+}
+
+.record-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14rpx;
+}
+
+.record-title {
+  flex: 1;
+  min-width: 0;
+  color: #172033;
+  font-size: 31rpx;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.record-status {
+  flex: none;
+  padding: 8rpx 14rpx;
+  border-radius: 999rpx;
+  background: #ffe3ea;
+  color: #d83b3b;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.record-meta {
+  margin-top: 10rpx;
+  color: #7a8394;
+  font-size: 24rpx;
+}
+
+.record-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14rpx;
+  margin-top: 20rpx;
+}
+
+.record-cell {
+  min-height: 92rpx;
+  padding: 14rpx;
+  border-radius: 14rpx;
+  background: #fff8fa;
+  box-sizing: border-box;
+}
+
+.cell-label {
+  color: #9aa1ad;
+  font-size: 22rpx;
+}
+
+.cell-value {
+  margin-top: 8rpx;
+  color: #172033;
+  font-size: 24rpx;
+  line-height: 1.35;
+}
+
+.cell-value.strong {
+  color: #d83b3b;
+  font-weight: 800;
+}
+
+.points-line {
+  margin-top: 18rpx;
+  color: #596273;
+  font-size: 24rpx;
+}

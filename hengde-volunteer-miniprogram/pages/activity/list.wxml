@@ -1,0 +1,52 @@
+<view class="activity-page">
+  <view class="activity-header">
+    <image class="back-icon" src="/assets/login/back-transparent.png" mode="aspectFit" bindtap="goBack"></image>
+    <view class="activity-page-title">寻找活动</view>
+  </view>
+
+  <view class="search-box">
+    <input
+      class="search-input"
+      value="{{keyword}}"
+      placeholder="输入关键字搜索"
+      placeholder-class="search-placeholder"
+      bindinput="onKeywordInput"
+      confirm-type="search"
+    />
+  </view>
+
+  <view class="filter-bar">
+    <picker mode="selector" range="{{statusOptions}}" value="{{statusIndex}}" bindchange="onStatusChange">
+      <view class="filter-item">活动状态<text class="filter-arrow">⌄</text></view>
+    </picker>
+    <picker mode="date" value="{{dateValue}}" bindchange="onDateChange">
+      <view class="filter-item">活动日期<text class="filter-arrow">⌄</text></view>
+    </picker>
+    <picker mode="selector" range="{{sortOptions}}" value="{{sortIndex}}" bindchange="onSortChange">
+      <view class="filter-item">智能排序<text class="filter-arrow">⌄</text></view>
+    </picker>
+  </view>
+
+  <view class="active-filter-row" wx:if="{{activeStatusText || dateValue || activeSortText}}">
+    <view class="active-filter" wx:if="{{activeStatusText}}">{{activeStatusText}}</view>
+    <view class="active-filter" wx:if="{{dateValue}}">{{dateValue}}</view>
+    <view class="active-filter" wx:if="{{activeSortText}}">{{activeSortText}}</view>
+    <view class="clear-filter" bindtap="clearFilters">清除</view>
+  </view>
+
+  <view class="activity-list">
+    <view class="activity-card" wx:for="{{activities}}" wx:key="id" data-id="{{item.id}}" bindtap="goDetail">
+      <view class="status-ribbon status-{{item.statusKey}}">{{item.status}}</view>
+      <image class="activity-image" src="{{item.listImage}}" mode="aspectFit"></image>
+      <view class="activity-info">
+        <view class="activity-title">{{item.title}}</view>
+        <view class="activity-line">活动时间：{{item.date}}{{item.timeText}}</view>
+        <view class="activity-line">报名截止：{{item.enrollDeadline}}</view>
+        <view class="activity-line">报名人数：<text class="joined-count">{{item.joined}}</text>/{{item.quota}}人</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="empty-text" wx:if="{{!activities.length}}">没有更多了</view>
+  <view class="end-text" wx:else>没有更多了</view>
+</view>

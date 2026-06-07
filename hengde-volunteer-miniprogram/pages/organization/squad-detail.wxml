@@ -1,0 +1,34 @@
+<view class="org-page">
+  <view class="org-nav">
+    <image class="back-icon" src="/assets/login/back-transparent.png" mode="aspectFit" bindtap="goBack"></image>
+    <view class="nav-title">组织架构</view>
+  </view>
+
+  <view class="search-wrap">
+    <input class="search-input" value="{{keyword}}" placeholder="输入关键字搜索" placeholder-class="search-placeholder" bindinput="updateKeyword" />
+  </view>
+
+  <view class="detail-card">
+    <view class="breadcrumb">
+      <text class="crumb-red">全部</text>
+      <text> ＞ </text>
+      <text class="crumb-red">{{teamName}}</text>
+      <text> ＞ </text>
+      <text>{{departmentName}}</text>
+    </view>
+
+    <view class="member-row" wx:for="{{displayMembers}}" wx:key="id">
+      <image class="member-logo" src="{{logo}}" mode="aspectFit"></image>
+      <view class="member-info">
+        <view>姓名：{{item.name}}</view>
+        <view>职位：{{item.position}}</view>
+        <view>电话：{{item.phone}}</view>
+        <view>学校：{{item.school}}</view>
+      </view>
+      <view class="member-actions">
+        <view class="round-action" bindtap="messageMember">•••</view>
+        <view class="round-action phone-action" data-phone="{{item.phone}}" bindtap="callMember">☎</view>
+      </view>
+    </view>
+  </view>
+</view>

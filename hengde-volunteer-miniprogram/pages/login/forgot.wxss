@@ -1,0 +1,59 @@
+.forgot-page {
+  min-height: 100vh;
+  padding-bottom: 60rpx;
+  background: linear-gradient(180deg, #ff8eaa 0%, #f8c4cf 24%, #f7efed 100%);
+  box-sizing: border-box;
+  color: #000000;
+  font-family: "FZDFS--GBK1-0";
+}
+
+.forgot-nav {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 86rpx;
+  border-bottom: 2rpx solid rgba(80, 80, 80, 0.36);
+}
+
+.forgot-back {
+  position: absolute;
+  left: 38rpx;
+  top: 16rpx;
+  width: 54rpx;
+  height: 54rpx;
+}
+
+.forgot-title {
+  font-size: 38rpx;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.contact-card {
+  display: block;
+  width: calc(100% - 112rpx);
+  margin: 48rpx auto 0;
+  border-radius: 28rpx;
+}
+
+.confirm-btn {
+  width: calc(100% - 220rpx);
+  height: 72rpx;
+  margin: 34rpx auto 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3rpx solid #ff1e2a;
+  border-radius: 999rpx;
+  background: #f8d7dd;
+  color: #ff1e2a;
+  line-height: 1;
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.confirm-btn::after {
+  border: 0;
+}

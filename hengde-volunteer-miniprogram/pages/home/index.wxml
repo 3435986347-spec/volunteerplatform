@@ -1,0 +1,112 @@
+<view class="page home-page">
+  <view class="brand">
+    <view>
+      <view class="brand-name">雷州市恒德爱心公益协会</view>
+      <view class="brand-subtitle">志愿者服务平台 V1</view>
+    </view>
+    <view class="role-pill">{{roleLabel}}</view>
+  </view>
+
+  <view class="search-box" bindtap="goSearch">
+    <text class="search-placeholder">输入关键字搜索</text>
+    <image class="search-scan-icon" src="{{scanIcon}}" mode="aspectFit"></image>
+  </view>
+
+  <block wx:if="{{banners && banners.length}}">
+    <swiper class="banner-swiper" autoplay circular="{{banners.length > 1}}" bindchange="onBannerChange">
+      <block wx:for="{{banners}}" wx:key="id">
+        <swiper-item>
+          <view class="banner" style="background: {{item.color}};" data-id="{{item.id}}" bindtap="openBanner">
+            <image class="banner-image" wx:if="{{item.imageUrl}}" src="{{item.imageUrl}}" mode="aspectFill" />
+            <view class="banner-overlay">
+              <view class="banner-title">{{item.title}}</view>
+              <view class="banner-subtitle">{{item.subtitle}}</view>
+            </view>
+          </view>
+        </swiper-item>
+      </block>
+    </swiper>
+    <view class="banner-dots" wx:if="{{banners.length > 1}}">
+      <view
+        class="banner-dot {{bannerCurrent == index ? 'active' : ''}}"
+        wx:for="{{banners}}"
+        wx:key="id"
+      ></view>
+    </view>
+  </block>
+  <view wx:else class="banner banner-empty">
+    <view class="banner-overlay">
+      <view class="banner-title">轮播图</view>
+      <view class="banner-subtitle">后台发布后展示</view>
+    </view>
+  </view>
+
+  <view class="quick-panel section">
+    <swiper class="quick-swiper" indicator-dots circular>
+      <block wx:for="{{quickActionPages}}" wx:key="index">
+        <swiper-item>
+          <view class="quick-grid">
+            <view class="quick-item" wx:for="{{item}}" wx:key="label" data-url="{{item.url}}" bindtap="goPage">
+              <image class="quick-icon" src="{{item.icon}}" mode="aspectFit"></image>
+              <view class="quick-label">{{item.label}}</view>
+            </view>
+          </view>
+        </swiper-item>
+      </block>
+    </swiper>
+  </view>
+
+  <view class="section notice-section">
+    <view class="section-header">
+      <view class="section-title">公告栏</view>
+      <view class="section-action" data-url="/pages/publicity/notices" bindtap="goPage">全部</view>
+    </view>
+    <view class="home-notice-image-card card" wx:if="{{homeNotice}}" bindtap="openHomeNotice">
+      <image class="home-notice-image" wx:if="{{homeNotice.coverImageUrl}}" src="{{homeNotice.coverImageUrl}}" mode="aspectFill" />
+      <view class="home-notice-placeholder" wx:if="{{!homeNotice.coverImageUrl}}">
+        <view>公告图片</view>
+        <view class="placeholder-sub">发布者上传后展示</view>
+      </view>
+      <view class="home-notice-caption">
+        <view class="home-notice-title">{{homeNotice.title}}</view>
+        <view class="home-notice-tip">点击图片跳转推文 / 小程序</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="section activity-section">
+    <view class="section-header">
+      <view class="section-title">推荐活动</view>
+      <view class="section-action" data-url="/pages/activity/list" bindtap="goPage">更多</view>
+    </view>
+    <view class="activity-card card" wx:for="{{activities}}" wx:key="id" data-id="{{item.id}}" bindtap="goActivity">
+      <view class="activity-layout">
+        <view class="activity-left-col">
+          <view class="activity-status-badge {{item.statusClass}}">{{item.status}}</view>
+          <image class="activity-logo" src="{{activityLogo}}" mode="aspectFit"></image>
+        </view>
+        <view class="activity-content">
+          <view class="activity-title">{{item.title}}</view>
+          <view class="activity-meta">活动时间：{{item.date}}</view>
+          <view class="activity-meta">报名截止：{{item.enrollDeadline}}</view>
+          <view class="activity-meta">报名人数：{{item.joined}}/{{item.quota}} 人</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="section dashboard-section">
+    <view class="section-header dashboard-header">
+      <view class="dashboard-title-wrap">
+        <image class="dashboard-icon" src="{{dashboardIcon}}" mode="aspectFit"></image>
+        <view class="section-title">数据看板</view>
+      </view>
+    </view>
+    <view class="dashboard-grid">
+      <view class="metric" wx:for="{{dashboard}}" wx:key="label">
+        <view class="metric-label">{{item.label}}</view>
+        <view class="metric-value">{{item.value}}<text class="metric-unit">{{item.unit}}</text></view>
+      </view>
+    </view>
+  </view>
+</view>

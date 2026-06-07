@@ -1,0 +1,35 @@
+<view class="global-search-page">
+  <view class="search-nav">
+    <image class="back-icon" src="/assets/login/back-transparent.png" mode="aspectFit" bindtap="goBack"></image>
+    <view class="search-title">全局搜索</view>
+  </view>
+
+  <view class="search-input-card">
+    <input
+      class="search-input"
+      value="{{keyword}}"
+      placeholder="输入关键字搜索"
+      placeholder-class="search-placeholder"
+      confirm-type="search"
+      bindinput="onKeywordInput"
+      bindconfirm="onSearchConfirm"
+    />
+  </view>
+
+  <view class="result-list">
+    <view class="result-card" wx:for="{{results}}" wx:key="key" data-id="{{item.id}}" data-type="{{item.type}}" bindtap="goResult">
+      <view class="cover-slot {{item.imageUrl ? '' : 'empty-cover'}}">
+        <image wx:if="{{item.imageUrl}}" class="cover-image" src="{{item.imageUrl}}" mode="aspectFill"></image>
+        <text wx:else>{{item.typeLabel}}</text>
+      </view>
+      <view class="result-content">
+        <view class="result-title">{{item.title}}</view>
+        <view class="result-summary" wx:if="{{item.summary}}">{{item.summary}}</view>
+        <view class="result-tag">{{item.typeLabel}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="empty-state" wx:if="{{searched && !results.length}}">没有找到相关内容</view>
+  <view class="load-more" wx:if="{{hasMore && results.length}}" bindtap="loadMore">加载更多</view>
+</view>

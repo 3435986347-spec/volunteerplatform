@@ -1,0 +1,32 @@
+<view class="create-page">
+  <view class="topbar">
+    <image class="back-icon" src="/assets/login/back-transparent.png" mode="aspectFit" bindtap="goBack"></image>
+    <view class="top-title">志愿服务小组</view>
+  </view>
+
+  <view class="hero-space"></view>
+
+  <view class="create-card">
+    <view class="upload-box" bindtap="chooseLogo">
+      <image wx:if="{{logo}}" src="{{logo}}" mode="aspectFill"></image>
+      <text wx:else>▧＋</text>
+    </view>
+    <view class="form-line">
+      <text>小组名称：</text>
+      <input value="{{name}}" data-field="name" placeholder="请输入小组名称" placeholder-class="dark-placeholder" bindinput="updateField" />
+    </view>
+    <view class="form-line intro-line">
+      <text>小组简介：</text>
+      <textarea value="{{intro}}" data-field="intro" placeholder="请输入小组简介" placeholder-class="dark-placeholder" bindinput="updateField"></textarea>
+    </view>
+  </view>
+
+  <view class="sponsor-card">
+    <view class="sponsor-title">发起人资料</view>
+    <view>姓名：{{sponsor.name}}</view>
+    <view>电话：{{sponsor.phone}}</view>
+    <view>学校：{{sponsor.school}}</view>
+  </view>
+
+  <button class="submit-btn" bindtap="submitGroup">发起小组（-50积分）</button>
+</view>

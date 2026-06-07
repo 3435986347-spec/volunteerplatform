@@ -1,0 +1,81 @@
+<view class="signup-page">
+  <view class="topbar">
+    <view class="back-icon" bindtap="goBack">‹</view>
+    <view class="topbar-title">活动场次</view>
+  </view>
+
+  <scroll-view class="content" scroll-y enhanced>
+    <view class="info-card activity-card">
+      <view class="activity-name">{{activityInfo.title}}</view>
+      <view>活动日期：{{activityInfo.dateRange}}</view>
+      <view>活动地点：{{activityInfo.place}}</view>
+    </view>
+
+    <view class="info-card person-card">
+      <view>姓名：{{person.name}}</view>
+      <view>电话：{{person.phone}}</view>
+      <view>学校：{{person.school}}</view>
+      <view class="choose-classmate" bindtap="openClassmatePopup">选择小组其他同学</view>
+    </view>
+
+    <view class="date-group" wx:for="{{sessionGroups}}" wx:key="date">
+      <view class="date-title">{{item.date}}</view>
+      <view
+        class="session-card {{slot.selectable ? '' : 'disabled'}}"
+        wx:for="{{item.items}}"
+        wx:for-item="slot"
+        wx:key="id"
+        data-id="{{slot.id}}"
+        data-selectable="{{slot.selectable}}"
+        bindtap="toggleSession"
+      >
+        <view class="session-copy">
+          <view>时间段：{{slot.time}}</view>
+          <view>岗　位：{{slot.post}}</view>
+          <view>
+            已报名：
+            <text class="joined">{{slot.joined}}</text>
+            /{{slot.quota}}人
+          </view>
+        </view>
+        <view class="session-side">
+          <view class="status-pill">{{slot.status}}</view>
+          <view class="checkbox {{slot.checked ? 'checked' : ''}}"></view>
+        </view>
+      </view>
+    </view>
+
+    <button class="confirm-btn" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submitSignup">确认报名</button>
+  </scroll-view>
+
+  <view class="popup-mask" wx:if="{{showClassmatePopup}}" bindtap="closeClassmatePopup"></view>
+  <view class="classmate-popup {{showClassmatePopup ? 'show' : ''}}">
+    <view class="popup-actions">
+      <view bindtap="closeClassmatePopup">取消</view>
+      <view class="popup-title">选择小组同学</view>
+      <view class="confirm-text" bindtap="confirmClassmate">确认</view>
+    </view>
+    <input
+      class="classmate-search"
+      placeholder="输入名字搜索"
+      placeholder-class="search-placeholder"
+      value="{{classmateKeyword}}"
+      bindinput="onClassmateSearch"
+    />
+    <view class="classmate-list">
+      <view
+        class="classmate-card {{selectedClassmateId === item.id ? 'selected' : ''}}"
+        wx:for="{{filteredClassmates}}"
+        wx:key="id"
+        data-id="{{item.id}}"
+        bindtap="chooseClassmate"
+      >
+        <view class="classmate-info">
+          <view>姓名：{{item.name}}　　电话：{{item.phone}}</view>
+          <view>学校：{{item.school}}</view>
+        </view>
+        <view class="checkbox {{selectedClassmateId === item.id ? 'checked' : ''}}"></view>
+      </view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,26 @@
+<view class="org-page">
+  <view class="org-nav">
+    <image class="back-icon" src="/assets/login/back-transparent.png" mode="aspectFit" bindtap="goBack"></image>
+    <view class="nav-title">组织架构</view>
+  </view>
+
+  <view class="search-wrap">
+    <input class="search-input" value="{{keyword}}" placeholder="输入关键字搜索" placeholder-class="search-placeholder" bindinput="updateKeyword" />
+  </view>
+
+  <view class="org-card">
+    <view wx:if="{{selectedTeam}}" class="breadcrumb">
+      <text class="crumb-red">全部</text>
+      <text> ＞ </text>
+      <text>{{selectedTeam.name}}</text>
+    </view>
+
+    <view class="org-row" wx:for="{{displayRows}}" wx:key="id" data-id="{{item.id}}" bindtap="openRow">
+      <view class="row-name">{{item.name}}</view>
+      <view class="row-right">
+        <text>({{item.count}})</text>
+        <text class="arrow">＞</text>
+      </view>
+    </view>
+  </view>
+</view>

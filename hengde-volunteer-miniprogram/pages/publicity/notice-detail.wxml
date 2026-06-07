@@ -1,0 +1,11 @@
+<view class="page">
+  <view class="card notice-detail">
+    <view class="tag">{{notice.type}}</view>
+    <view class="title">{{notice.title}}</view>
+    <view class="muted">{{notice.date}}</view>
+    <image class="notice-image" wx:if="{{notice.coverImageUrl}}" src="{{notice.coverImageUrl}}" mode="aspectFill" bindtap="previewImage" />
+    <view class="mock-image" wx:if="{{!notice.coverImageUrl}}">公告图片 / 跳转位</view>
+    <view class="body">{{notice.content || notice.summary}}</view>
+    <button class="link-btn" wx:if="{{notice.linkUrl}}" bindtap="openLink">查看跳转</button>
+  </view>
+</view>
