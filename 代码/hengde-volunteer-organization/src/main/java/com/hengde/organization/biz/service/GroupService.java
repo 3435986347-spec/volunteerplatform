@@ -10,6 +10,7 @@ import com.hengde.auth.entity.Volunteer;
 import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.auth.vo.VolunteerDisplayView;
 import com.hengde.common.exception.BusinessException;
+import com.hengde.common.lock.DistributedLockSupport;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
 import com.hengde.common.search.SearchItemVO;
@@ -27,7 +28,6 @@ import com.hengde.organization.biz.entity.VolunteerGroupMember;
 import com.hengde.organization.biz.vo.GroupLeaderHistoryVO;
 import com.hengde.organization.biz.vo.GroupMemberVO;
 import com.hengde.organization.biz.vo.GroupVO;
-import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -46,8 +46,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 @Service
@@ -76,8 +74,8 @@ public class GroupService {
     /** 组长变更：建组审批首次任命 */
     private static final int OP_TYPE_INITIAL = 3;
 
-    /** 「志愿者维度」锁等待秒数（与 EnrollmentService 一致） */
-    private static final long LOCK_WAIT_SEC = 5;
+    /** 「志愿者维度」锁 key 前缀，与 EnrollmentService 的 lock:enroll:volunteer: 隔离、互不抢占 */
+    private static final String LOCK_KEY_PREFIX = "lock:group:volunteer:";
 
     private VolunteerGroupMapper groupMapper;
     private VolunteerGroupMemberMapper memberMapper;
@@ -191,7 +189,8 @@ public class GroupService {
      * 业务正常调用仍走 {@link #create(GroupCreateDTO)}——后者从 Sa-Token 取 loginId，对外接口不变。</p>
      */
     public Long createForVolunteer(Long volunteerId, GroupCreateDTO dto) {
-        return runLocked(volunteerId, () -> transactionTemplate.execute(s -> doCreate(dto, volunteerId)));
+        return DistributedLockSupport.runLocked(redissonClient, LOCK_KEY_PREFIX + volunteerId,
+                () -> transactionTemplate.execute(s -> doCreate(dto, volunteerId)));
     }
 
     private Long doCreate(GroupCreateDTO dto, Long volunteerId) {
@@ -322,10 +321,11 @@ public class GroupService {
      */
     public void join(Long groupId) {
         Long volunteerId = currentVolunteerId();
-        runLocked(volunteerId, () -> transactionTemplate.execute(s -> {
-            doJoin(groupId, volunteerId);
-            return null;
-        }));
+        DistributedLockSupport.runLocked(redissonClient, LOCK_KEY_PREFIX + volunteerId,
+                () -> transactionTemplate.execute(s -> {
+                    doJoin(groupId, volunteerId);
+                    return null;
+                }));
     }
 
     private void doJoin(Long groupId, Long volunteerId) {
@@ -863,33 +863,4 @@ public class GroupService {
         return StpUtil.getLoginIdAsLong();
     }
 
-    /**
-     * 在「志愿者维度」分布式锁内执行动作，关闭 create/join 的 read-then-insert 竞态。
-     *
-     * <p>锁前缀 {@code lock:group:volunteer:} 与 EnrollmentService 的 {@code lock:enroll:volunteer:} 隔离，
-     * 二者锁不同领域的操作、互不抢占——同一志愿者可同时被同步报名+建组，但两个建组请求会被串行化。</p>
-     *
-     * <p>不指定 leaseTime：走 Redisson watchdog 自动续期，避免「事务未提交锁已到期」窗口。
-     * 调用约定：supplier 内必须用 TransactionTemplate 包出事务，提交后才会回到 finally 释放锁。</p>
-     */
-    private <T> T runLocked(Long volunteerId, Supplier<T> action) {
-        RLock lock = redissonClient.getLock("lock:group:volunteer:" + volunteerId);
-        boolean locked;
-        try {
-            locked = lock.tryLock(LOCK_WAIT_SEC, TimeUnit.SECONDS);
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            throw new BusinessException("操作被中断，请重试");
-        }
-        if (!locked) {
-            throw new BusinessException("操作太频繁，请稍后再试");
-        }
-        try {
-            return action.get();
-        } finally {
-            if (lock.isHeldByCurrentThread()) {
-                lock.unlock();
-            }
-        }
-    }
 }

@@ -16,10 +16,10 @@ import com.hengde.activity.vo.MyEnrollmentVO;
 import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.auth.vo.VolunteerProfileView;
 import com.hengde.common.exception.BusinessException;
+import com.hengde.common.lock.DistributedLockSupport;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
 import com.hengde.organization.biz.service.GroupQueryService;
-import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -34,7 +34,6 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -65,7 +64,8 @@ public class EnrollmentService {
     /** 账号正常状态（com.hengde.common.constant.UserStatus.NORMAL） */
     private static final int USER_STATUS_NORMAL = 0;
 
-    private static final long LOCK_WAIT_SEC = 5;
+    /** 「志愿者维度」锁 key 前缀（与 organization 的 lock:group:volunteer: 隔离，互不抢占） */
+    private static final String LOCK_KEY_PREFIX = "lock:enroll:volunteer:";
 
     /** 代报名一次最多 batch 上限（含自己）：避免恶意大批量占锁/打表 */
     private static final int PROXY_BATCH_MAX = 20;
@@ -127,7 +127,8 @@ public class EnrollmentService {
     public int enroll(Long activityId, List<Long> slotIds, Long volunteerId) {
         // 去重，保留选择顺序
         List<Long> distinctSlotIds = new ArrayList<>(new LinkedHashSet<>(slotIds));
-        return runLocked(volunteerId, () -> transactionTemplate.execute(s -> doEnroll(activityId, distinctSlotIds, volunteerId)));
+        return DistributedLockSupport.runLocked(redissonClient, LOCK_KEY_PREFIX + volunteerId,
+                () -> transactionTemplate.execute(s -> doEnroll(activityId, distinctSlotIds, volunteerId)));
     }
 
     private int doEnroll(Long activityId, List<Long> slotIds, Long volunteerId) {
@@ -209,7 +210,7 @@ public class EnrollmentService {
      */
     public int manualEnroll(Long activityId, Long volunteerId, List<Long> slotIds, Long adminId) {
         List<Long> distinctSlotIds = new ArrayList<>(new LinkedHashSet<>(slotIds));
-        return runLocked(volunteerId,
+        return DistributedLockSupport.runLocked(redissonClient, LOCK_KEY_PREFIX + volunteerId,
                 () -> transactionTemplate.execute(s -> doManualEnroll(activityId, distinctSlotIds, volunteerId, adminId)));
     }
 
@@ -287,7 +288,8 @@ public class EnrollmentService {
         List<Long> distinctSlotIds = new ArrayList<>(new LinkedHashSet<>(dto.getSlotIds()));
 
         // 2. 同小组校验由 doProxyEnroll 在事务内再做一次：避免「校验通过 → 加锁 → 被移出组」TOCTOU 窗口
-        return runLockedMany(targets,
+        //    DistributedLockSupport.runLockedMany 内部对 targets 升序去重后按序加锁（死锁安全）
+        return DistributedLockSupport.runLockedMany(redissonClient, LOCK_KEY_PREFIX, targets,
                 () -> transactionTemplate.execute(s -> doProxyEnroll(activityId, distinctSlotIds, targets, actorId)));
     }
 
@@ -371,7 +373,8 @@ public class EnrollmentService {
      * @return 取消的报名记录条数
      */
     public int cancel(Long activityId, Long volunteerId) {
-        return runLocked(volunteerId, () -> transactionTemplate.execute(s -> doCancel(activityId, volunteerId)));
+        return DistributedLockSupport.runLocked(redissonClient, LOCK_KEY_PREFIX + volunteerId,
+                () -> transactionTemplate.execute(s -> doCancel(activityId, volunteerId)));
     }
 
     private int doCancel(Long activityId, Long volunteerId) {
@@ -547,60 +550,4 @@ public class EnrollmentService {
                 .collect(Collectors.toMap(ActivitySlot::getId, Function.identity()));
     }
 
-    /**
-     * 同时按多个志愿者 id 取锁（已升序去重），全部拿到后执行；失败/异常时按相反顺序释放所有已持锁。
-     * 用于代报名整批原子提交：多目标同时持锁、单事务批量插入。
-     */
-    private <T> T runLockedMany(List<Long> volunteerIds, java.util.function.Supplier<T> action) {
-        List<RLock> acquired = new ArrayList<>(volunteerIds.size());
-        try {
-            for (Long id : volunteerIds) {
-                RLock lock = redissonClient.getLock("lock:enroll:volunteer:" + id);
-                boolean ok;
-                try {
-                    ok = lock.tryLock(LOCK_WAIT_SEC, TimeUnit.SECONDS);
-                } catch (InterruptedException ex) {
-                    Thread.currentThread().interrupt();
-                    throw new BusinessException("操作被中断，请重试");
-                }
-                if (!ok) {
-                    throw new BusinessException("操作太频繁，请稍后再试");
-                }
-                acquired.add(lock);
-            }
-            return action.get();
-        } finally {
-            // 反向释放（与获取顺序相反）；只解我持有的，避免误解他人锁
-            for (int i = acquired.size() - 1; i >= 0; i--) {
-                RLock l = acquired.get(i);
-                if (l.isHeldByCurrentThread()) {
-                    l.unlock();
-                }
-            }
-        }
-    }
-
-    /** 在「志愿者维度」分布式锁内执行动作；锁在事务之外，确保提交完成后才释放。 */
-    private <T> T runLocked(Long volunteerId, java.util.function.Supplier<T> action) {
-        RLock lock = redissonClient.getLock("lock:enroll:volunteer:" + volunteerId);
-        boolean locked;
-        try {
-            // 不指定 leaseTime：走 Redisson watchdog 自动续期，避免固定租期在慢 SQL/GC/DB 抖动下
-            // 「事务未提交、锁已到期释放」从而被另一请求抢锁读到未提交数据导致重复插入。
-            locked = lock.tryLock(LOCK_WAIT_SEC, TimeUnit.SECONDS);
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            throw new BusinessException("操作被中断，请重试");
-        }
-        if (!locked) {
-            throw new BusinessException("操作太频繁，请稍后再试");
-        }
-        try {
-            return action.get();
-        } finally {
-            if (lock.isHeldByCurrentThread()) {
-                lock.unlock();
-            }
-        }
-    }
 }

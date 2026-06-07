@@ -55,6 +55,17 @@
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
 
+        <!-- Redisson 核心库（仅 API：RLock/RedissonClient），供 DistributedLockSupport 编译。
+             刻意只引核心库、不引 redisson-spring-boot-starter——starter 会在 common 上下文自动装配
+             RedissonClient 从而逼 common 测试连 Redis（破坏「common 测试仅 MySQL」基座）。核心库不含自动配置，
+             不会创建任何 bean；RedissonClient 实例由用锁的领域模块（activity/organization）各自引 starter 提供。
+             dependencyManagement 只管了 starter，故此处显式给核心库版本 ${redisson.version}。 -->
+        <dependency>
+            <groupId>org.redisson</groupId>
+            <artifactId>redisson</artifactId>
+            <version>${redisson.version}</version>
+        </dependency>
+
         <!-- Flyway：迁移脚本（src/main/resources/db/migration）集中放本模块，
              api 运行期与各领域 Testcontainers 测试都经 common 拿到脚本+Flyway 建表。
              spring-boot-flyway 是 Boot 4 拆分出的 Flyway 自动配置模块，缺它迁移不会触发。 -->
