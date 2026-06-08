@@ -116,12 +116,13 @@ function App() {
 
   useEffect(function () { applyPrimary(t.primaryColor); }, [t.primaryColor]);
 
-  // 切换身份后，如当前页无权限，回到概览
+  // 当前页/身份变化时复核：换更低权限账号（真实登录/退出/切身份）后若当前页无权限，回概览。
+  // 依赖 page + 真实权限集（isSuperAdmin + permissionCodes），而非 t.identity——后者在真实登录模式下不变。
   useEffect(function () {
     var navItem = null;
     NAV_GROUPS.forEach(function (g) { g.items.forEach(function (it) { if (it.key === page) navItem = it; }); });
     if (navItem && !HD.hasPerm(identity, navItem.code)) setPage('overview');
-  }, [t.identity]);
+  }, [page, identity.isSuperAdmin, identity.permissionCodes.join('|')]);
 
   // 真实登录：拿 token → /a/auth/me → 用真实权限码驱动菜单/按钮
   function doLogin(account, pwd) {
@@ -152,19 +153,31 @@ function App() {
     }).then(function () { setBooting(false); });
   }, []);
 
-  function nav(key) { setPage(key); document.querySelector('.content-scroll') && (document.querySelector('.content-scroll').scrollTop = 0); }
+  // 中央权限守卫：不完全信任入口侧过滤，任何 nav（含概览卡片 go）都按 NAV_GROUPS 的 code 复核
+  function navAllowed(key) {
+    var item = null;
+    NAV_GROUPS.forEach(function (g) { g.items.forEach(function (it) { if (it.key === key) item = it; }); });
+    return !item || HD.hasPerm(identity, item.code);
+  }
+  function nav(key) {
+    if (!navAllowed(key)) { window.message && window.message.error('无权限访问该页面'); return; }
+    setPage(key); document.querySelector('.content-scroll') && (document.querySelector('.content-scroll').scrollTop = 0);
+  }
   function setIdentity(key) { setTweak('identity', key); window.message.info('已切换身份：' + (HD.IDENTITIES[key] ? HD.IDENTITIES[key].roleLabel : key)); }
 
-  var PageComp = PAGE_COMPONENTS[page] || OverviewPage;
+  // 渲染前派生有效页：当前 page 无权限时直接渲染概览，避免无权页先 mount 一帧（其 load() 会打「登录即可」的列表接口）。
+  // effect 仍会把 page 状态修正为 overview，但渲染不依赖它先跑。
+  var effectivePage = navAllowed(page) ? page : 'overview';
+  var PageComp = PAGE_COMPONENTS[effectivePage] || OverviewPage;
   var pageProps = { identity: identity, onNav: nav, density: t.density === 'compact' ? 'compact' : 'regular', zebra: t.zebra };
 
   return React.createElement(IdentityCtx.Provider, { value: identity },
     booting ? React.createElement(BootSplash, null) :
     !logged ? React.createElement(LoginPage, { onLogin: doLogin }) :
     React.createElement('div', { className: 'app-shell' },
-      React.createElement(Sidebar, { identity: identity, collapsed: t.siderCollapsed, active: page, onNav: nav }),
+      React.createElement(Sidebar, { identity: identity, collapsed: t.siderCollapsed, active: effectivePage, onNav: nav }),
       React.createElement('div', { className: 'main-col' },
-        React.createElement(Topbar, { identity: identity, active: page, collapsed: t.siderCollapsed,
+        React.createElement(Topbar, { identity: identity, active: effectivePage, collapsed: t.siderCollapsed,
           onToggleSider: function () { setTweak('siderCollapsed', !t.siderCollapsed); },
           onIdentity: setIdentity, onChangePwd: function () { setPwdOpen(true); }, onLogout: doLogout, realMode: !!me }),
         React.createElement('div', { className: 'content-scroll' },

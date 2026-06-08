@@ -103,6 +103,28 @@
       if (dir) fd.append('dir', dir);
       return request('POST', '/a/files/upload', { body: fd });
     },
+
+    // 文件下载（导出 Excel 等）：带 Authorization、处理 401、若后端返回 JSON 错误先解析 message 再下载
+    download: async function (path, filename, query) {
+      var resp;
+      try { resp = await fetch(buildUrl(path, query), { headers: { Authorization: getToken() } }); }
+      catch (e) { w.message && w.message.error('网络错误，请检查后端是否启动'); throw e; }
+      if (resp.status === 401) {
+        setToken(''); w.message && w.message.error('登录已失效，请重新登录');
+        w.dispatchEvent(new CustomEvent('hd:unauthorized')); throw new Error('unauthorized');
+      }
+      var ct = resp.headers.get('Content-Type') || '';
+      if (ct.indexOf('application/json') >= 0) {          // 不是文件流而是 Result JSON 错误
+        var json = null; try { json = await resp.json(); } catch (e) {}
+        var emsg = json && (json.message || json.msg);
+        w.message && w.message.error(emsg || '下载失败'); throw new Error(emsg || 'download-failed');
+      }
+      if (!resp.ok) { w.message && w.message.error('下载失败（HTTP ' + resp.status + '）'); throw new Error('http ' + resp.status); }
+      var blob = await resp.blob();
+      var a = document.createElement('a'), objUrl = URL.createObjectURL(blob);
+      a.href = objUrl; a.download = filename || 'download';
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(objUrl);
+    },
   };
 
   w.API = API;

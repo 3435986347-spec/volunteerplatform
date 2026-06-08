@@ -141,12 +141,13 @@
 | PUT | /a/activity/activities/{id} | 修改活动（同发布入参，含 `requireMinJoinCount`/`requireMinJoinMinutes` 报名门槛、GPS 坐标 `lat`/`lng`/`checkInRadiusM`，经纬度须同填或同空；待审核/驳回活动不可改） | 需登录 |
 | DELETE | /a/activity/activities/{id} | 删除活动（待审核/驳回活动不可删，属审核侧处置） | 需登录 |
 | POST | /a/activity/activities/{id}/copy | 复制活动（**待审核/驳回活动不可复制**，否则绕开审核直接发布同内容） | 需登录 |
-| GET | /a/activity/activities/{id}/enrollments | 报名列表（优先展示管理团队/临时负责人） | 需登录 |
-| POST | /a/activity/activities/{id}/enrollments | 手动新增报名 | 需登录 |
-| GET | /a/activity/activities/{id}/enrollments/export | 导出报名名单（Excel） | 需登录 |
-| POST | /a/activity/enrollments/{id}/approve | 审核通过 | 需登录 |
-| POST | /a/activity/enrollments/{id}/reject | 审核拒绝（body 填拒绝原因） | 需登录 |
-| DELETE | /a/activity/enrollments/{id} | 删除报名记录 | 需登录 |
+| GET | /a/activity/activities/{id}/enrollments | 报名列表（优先展示管理团队/临时负责人） | 需登录（activity:enroll-view） |
+| GET | /a/activity/activities/{id}/enrollment-slots | 活动时间段列表（报名域，供手动新增报名选时间段，避免要 activity:menu；仅已发布活动，与手动新增口径一致，否则报「活动不存在」） | 需登录（activity:enroll-view） |
+| POST | /a/activity/activities/{id}/enrollments | 手动新增报名（body: `volunteerId`+`slotIds`） | 需登录（activity:enroll-add） |
+| GET | /a/activity/activities/{id}/enrollments/export | 导出报名名单（Excel） | 需登录（activity:enroll-export） |
+| POST | /a/activity/enrollments/{id}/approve | 审核通过 | 需登录（activity:enroll-audit） |
+| POST | /a/activity/enrollments/{id}/reject | 审核拒绝（body 填拒绝原因） | 需登录（activity:enroll-audit） |
+| DELETE | /a/activity/enrollments/{id} | 删除报名记录 | 需登录（activity:enroll-delete） |
 | POST | /a/activity/activities/{id}/leaders | 指派活动负责人（志愿者或管理团队；不占人数；待审核/驳回活动不可指派） | 需登录（activity:leader-assign，组织部） |
 | GET | /a/activity/activities/{id}/leaders | 负责人列表 | 需登录 |
 | DELETE | /a/activity/activities/{id}/leaders/{leaderId} | 取消指派 | 需登录（activity:leader-assign） |

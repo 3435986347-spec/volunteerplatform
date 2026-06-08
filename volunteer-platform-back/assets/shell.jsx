@@ -15,8 +15,8 @@ var NAV_GROUPS = [
     { key: 'activityReview', label: '活动发布审核', icon: 'checkCircle', code: 'activity:publish-audit', badge: 'publishReview' },
     { key: 'enroll', label: '报名管理', icon: 'users', code: 'activity:enroll-view', badge: 'enroll' },
     { key: 'service', label: '服务记录与积分', icon: 'award', code: ['activity:service-confirm', 'activity:points-grant'], badge: 'service' },
-    { key: 'attendance', label: '考勤变更审核', icon: 'swap', code: ['activity:attendance-edit', 'activity:attendance-audit'], badge: 'attendance' },
-    { key: 'backfill', label: '活动补录审核', icon: 'history', code: ['activity:backfill', 'activity:backfill-audit'], badge: 'backfill' },
+    { key: 'attendance', label: '考勤变更审核', icon: 'swap', code: 'activity:attendance-audit', badge: 'attendance' },
+    { key: 'backfill', label: '活动补录审核', icon: 'history', code: 'activity:backfill-audit', badge: 'backfill' },
   ]},
   { label: '组织管理', items: [
     { key: 'groups', label: '志愿小组', icon: 'team', code: ['org:group-manage', 'org:group-audit'], badge: 'group' },

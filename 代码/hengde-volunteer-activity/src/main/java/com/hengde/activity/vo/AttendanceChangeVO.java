@@ -28,5 +28,7 @@ public class AttendanceChangeVO {
     private String auditReason;
     /** 上下文：所属活动与志愿者（由考勤行带出） */
     private Long activityId;
+    private String activityTitle;
     private Long volunteerId;
+    private String volunteerName;
 }

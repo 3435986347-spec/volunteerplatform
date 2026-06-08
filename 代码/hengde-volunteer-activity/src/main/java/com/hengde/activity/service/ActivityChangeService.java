@@ -7,9 +7,12 @@ import com.hengde.activity.constant.AuditStatus;
 import com.hengde.activity.constant.PointsStatus;
 import com.hengde.activity.dao.ActivityAttendanceChangeMapper;
 import com.hengde.activity.dao.ActivityAttendanceMapper;
+import com.hengde.activity.dao.ActivityMapper;
+import com.hengde.activity.entity.Activity;
 import com.hengde.activity.entity.ActivityAttendance;
 import com.hengde.activity.entity.ActivityAttendanceChange;
 import com.hengde.activity.vo.AttendanceChangeVO;
+import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
@@ -23,6 +26,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -60,6 +64,8 @@ public class ActivityChangeService {
 
     private ActivityAttendanceChangeMapper changeMapper;
     private ActivityAttendanceMapper attendanceMapper;
+    private ActivityMapper activityMapper;
+    private VolunteerQueryService volunteerQueryService;
 
     @Autowired
     public void setChangeMapper(ActivityAttendanceChangeMapper changeMapper) {
@@ -69,6 +75,16 @@ public class ActivityChangeService {
     @Autowired
     public void setAttendanceMapper(ActivityAttendanceMapper attendanceMapper) {
         this.attendanceMapper = attendanceMapper;
+    }
+
+    @Autowired
+    public void setActivityMapper(ActivityMapper activityMapper) {
+        this.activityMapper = activityMapper;
+    }
+
+    @Autowired
+    public void setVolunteerQueryService(VolunteerQueryService volunteerQueryService) {
+        this.volunteerQueryService = volunteerQueryService;
     }
 
     /**
@@ -125,7 +141,17 @@ public class ActivityChangeService {
                 : attendanceMapper.selectBatchIds(attIds).stream()
                 .collect(Collectors.toMap(ActivityAttendance::getId, Function.identity()));
 
-        List<AttendanceChangeVO> vos = page.getRecords().stream().map(ch -> toVo(ch, attById.get(ch.getAttendanceId()))).toList();
+        // 带出活动标题 + 志愿者姓名（供审核者识别，避免只显示 id）
+        List<Long> activityIds = attById.values().stream().map(ActivityAttendance::getActivityId).filter(Objects::nonNull).distinct().toList();
+        List<Long> volunteerIds = attById.values().stream().map(ActivityAttendance::getVolunteerId).filter(Objects::nonNull).distinct().toList();
+        Map<Long, String> titleById = activityIds.isEmpty() ? Map.of()
+                : activityMapper.selectBatchIds(activityIds).stream()
+                .collect(Collectors.toMap(Activity::getId, Activity::getTitle));
+        Map<Long, String> nameById = volunteerIds.isEmpty() ? Map.of()
+                : volunteerQueryService.listNamesByIds(volunteerIds);
+
+        List<AttendanceChangeVO> vos = page.getRecords().stream()
+                .map(ch -> toVo(ch, attById.get(ch.getAttendanceId()), titleById, nameById)).toList();
         return PageResult.of(vos, page.getTotal(), page.getCurrent(), page.getSize());
     }
 
@@ -251,7 +277,8 @@ public class ActivityChangeService {
         }
     }
 
-    private AttendanceChangeVO toVo(ActivityAttendanceChange ch, ActivityAttendance att) {
+    private AttendanceChangeVO toVo(ActivityAttendanceChange ch, ActivityAttendance att,
+                                   Map<Long, String> titleById, Map<Long, String> nameById) {
         AttendanceChangeVO vo = new AttendanceChangeVO();
         vo.setId(ch.getId());
         vo.setAttendanceId(ch.getAttendanceId());
@@ -267,7 +294,9 @@ public class ActivityChangeService {
         vo.setAuditReason(ch.getAuditReason());
         if (att != null) {
             vo.setActivityId(att.getActivityId());
+            vo.setActivityTitle(titleById.get(att.getActivityId()));
             vo.setVolunteerId(att.getVolunteerId());
+            vo.setVolunteerName(nameById.get(att.getVolunteerId()));
         }
         return vo;
     }

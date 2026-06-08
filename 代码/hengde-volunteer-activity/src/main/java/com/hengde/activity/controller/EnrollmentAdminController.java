@@ -5,6 +5,7 @@ import com.hengde.activity.constant.PermissionCode;
 import com.hengde.activity.dto.ManualEnrollDTO;
 import com.hengde.activity.dto.RejectEnrollmentDTO;
 import com.hengde.activity.service.EnrollmentAdminService;
+import com.hengde.activity.vo.ActivitySlotVO;
 import com.hengde.activity.vo.EnrollmentAdminVO;
 import com.hengde.activity.vo.EnrollmentExportRow;
 import com.hengde.auth.config.StpAdminUtil;
@@ -51,6 +52,13 @@ public class EnrollmentAdminController {
     public Result<PageResult<EnrollmentAdminVO>> list(@PathVariable Long id, PageQuery query,
                                                       @RequestParam(required = false) Integer status) {
         return Result.ok(enrollmentAdminService.list(id, query, status));
+    }
+
+    @Operation(summary = "活动时间段列表（报名域，供手动新增报名选时间段；按 enroll-view 鉴权，不需 activity:menu）")
+    @SaCheckPermission(value = PermissionCode.ACTIVITY_ENROLL_VIEW, type = "admin")
+    @GetMapping("/activities/{id}/enrollment-slots")
+    public Result<List<ActivitySlotVO>> enrollmentSlots(@PathVariable Long id) {
+        return Result.ok(enrollmentAdminService.listSlots(id));
     }
 
     @Operation(summary = "手动新增报名（管理员代加，越权补录）")

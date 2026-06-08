@@ -2,11 +2,15 @@ package com.hengde.activity.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.hengde.activity.constant.ActivityStatus;
 import com.hengde.activity.constant.EnrollmentStatus;
 import com.hengde.activity.dao.ActivityEnrollmentMapper;
+import com.hengde.activity.dao.ActivityMapper;
 import com.hengde.activity.dao.ActivitySlotMapper;
+import com.hengde.activity.entity.Activity;
 import com.hengde.activity.entity.ActivityEnrollment;
 import com.hengde.activity.entity.ActivitySlot;
+import com.hengde.activity.vo.ActivitySlotVO;
 import com.hengde.activity.vo.EnrollmentAdminVO;
 import com.hengde.activity.vo.EnrollmentExportRow;
 import com.hengde.auth.service.VolunteerQueryService;
@@ -49,12 +53,18 @@ public class EnrollmentAdminService {
 
     private ActivityEnrollmentMapper enrollmentMapper;
     private ActivitySlotMapper activitySlotMapper;
+    private ActivityMapper activityMapper;
     private VolunteerQueryService volunteerQueryService;
     private EnrollmentService enrollmentService;
 
     @Autowired
     public void setEnrollmentMapper(ActivityEnrollmentMapper enrollmentMapper) {
         this.enrollmentMapper = enrollmentMapper;
+    }
+
+    @Autowired
+    public void setActivityMapper(ActivityMapper activityMapper) {
+        this.activityMapper = activityMapper;
     }
 
     @Autowired
@@ -70,6 +80,30 @@ public class EnrollmentAdminService {
     @Autowired
     public void setEnrollmentService(EnrollmentService enrollmentService) {
         this.enrollmentService = enrollmentService;
+    }
+
+    /**
+     * 报名域读活动时间段：供「手动新增报名」选时间段用，按 {@code enroll-view} 鉴权——
+     * 避免逼报名管理账号去要 {@code activity:menu}（活动详情接口的权限）。按开始时间升序。
+     */
+    public List<ActivitySlotVO> listSlots(Long activityId) {
+        // 与 manualEnroll 口径一致：仅已发布活动可读时间段，避免凭 enroll-view 越界读草稿/待审/驳回活动信息
+        Activity activity = activityMapper.selectById(activityId);
+        if (activity == null || !Integer.valueOf(ActivityStatus.PUBLISHED).equals(activity.getStatus())) {
+            throw new BusinessException("活动不存在");
+        }
+        List<ActivitySlot> slots = activitySlotMapper.selectList(Wrappers.<ActivitySlot>lambdaQuery()
+                .eq(ActivitySlot::getActivityId, activityId)
+                .orderByAsc(ActivitySlot::getStartTime));
+        return slots.stream().map(s -> {
+            ActivitySlotVO vo = new ActivitySlotVO();
+            vo.setId(s.getId());
+            vo.setProjectName(s.getProjectName());
+            vo.setStartTime(s.getStartTime());
+            vo.setEndTime(s.getEndTime());
+            vo.setNeedCount(s.getNeedCount());
+            return vo;
+        }).toList();
     }
 
     /**
