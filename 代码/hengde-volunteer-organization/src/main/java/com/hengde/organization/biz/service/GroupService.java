@@ -360,6 +360,21 @@ public class GroupService {
         requireGroup(groupId);
         // 同组内可见：仅本组在册成员可查看成员名单，防止任意志愿者凭 id 窥探他组成员信息
         currentActiveMember(groupId, currentVolunteerId());
+        return listActiveMembers(groupId);
+    }
+
+    /**
+     * 管理端读在册成员（转移组长选人用）：只做 requireGroup + 查 ACTIVE 成员，<b>不走志愿者同组校验</b>——
+     * 管理端 admin token 下没有志愿者登录态，{@link #members} 的 {@code currentActiveMember(...currentVolunteerId())}
+     * 会在运行时失败。鉴权由 controller 的 {@code org:group-manage} 负责。
+     */
+    public List<GroupMemberVO> membersForAdmin(Long groupId) {
+        requireGroup(groupId);
+        return listActiveMembers(groupId);
+    }
+
+    /** 查某组 ACTIVE 成员并组装 VO（姓名/学校/电话，手机号经 auth 解密）。members / membersForAdmin 共用。 */
+    private List<GroupMemberVO> listActiveMembers(Long groupId) {
         List<VolunteerGroupMember> rows = memberMapper.selectList(Wrappers.<VolunteerGroupMember>lambdaQuery()
                 .eq(VolunteerGroupMember::getGroupId, groupId)
                 .eq(VolunteerGroupMember::getStatus, MEMBER_ACTIVE)
@@ -368,7 +383,7 @@ public class GroupService {
         if (rows.isEmpty()) {
             return List.of();
         }
-        // 同组内展示姓名/学校/电话；手机号经 auth 解密，避免直接读加密字段
+        // 展示姓名/学校/电话；手机号经 auth 解密，避免直接读加密字段
         List<Long> ids = rows.stream().map(VolunteerGroupMember::getVolunteerId).distinct().toList();
         Map<Long, VolunteerDisplayView> displayById = volunteerQueryService.listDisplayByIds(ids);
         return rows.stream().map(m -> toMemberVO(m, displayById)).toList();

@@ -3,6 +3,8 @@ package com.hengde.organization.biz.controller;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.hengde.auth.config.StpAdminUtil;
 import com.hengde.auth.service.VolunteerAdminService;
+import com.hengde.auth.service.VolunteerQueryService;
+import com.hengde.auth.vo.VolunteerFlagInfoView;
 import com.hengde.common.result.Result;
 import com.hengde.organization.constant.PermissionCode;
 import com.hengde.organization.dto.AssignPermissionsDTO;
@@ -38,10 +40,16 @@ public class OrganizationVolunteerController {
 
     private VolunteerAdminService volunteerAdminService;
     private VolunteerPermissionService volunteerPermissionService;
+    private VolunteerQueryService volunteerQueryService;
 
     @Autowired
     public void setVolunteerAdminService(VolunteerAdminService volunteerAdminService) {
         this.volunteerAdminService = volunteerAdminService;
+    }
+
+    @Autowired
+    public void setVolunteerQueryService(VolunteerQueryService volunteerQueryService) {
+        this.volunteerQueryService = volunteerQueryService;
     }
 
     @Autowired
@@ -57,8 +65,14 @@ public class OrganizationVolunteerController {
         return Result.ok();
     }
 
-    @Operation(summary = "志愿者已分配的权限点")
+    @Operation(summary = "志愿者标记/授权页基础信息（姓名+管理团队标记+是否实名）")
     @SaCheckPermission(value = PermissionCode.ORG_MANAGER_FLAG, type = "admin")
+    @GetMapping("/{id}/flag-info")
+    public Result<VolunteerFlagInfoView> flagInfo(@PathVariable Long id) {
+        return Result.ok(volunteerQueryService.getFlagInfo(id));
+    }
+
+    @Operation(summary = "志愿者已分配的权限点（仅超管，与授权写入口同边界；service 层校验超管）")
     @GetMapping("/{id}/permissions")
     public Result<List<PermissionVO>> permissions(@PathVariable Long id) {
         return Result.ok(volunteerPermissionService.listAssigned(id));

@@ -5,6 +5,7 @@ import com.hengde.auth.dao.VolunteerMapper;
 import com.hengde.auth.entity.Volunteer;
 import com.hengde.auth.vo.VolunteerBackfillView;
 import com.hengde.auth.vo.VolunteerDisplayView;
+import com.hengde.auth.vo.VolunteerFlagInfoView;
 import com.hengde.auth.vo.VolunteerProfileView;
 import com.hengde.common.constant.Gender;
 import com.hengde.common.constant.UserStatus;
@@ -135,6 +136,21 @@ public class VolunteerQueryService {
         Integer status = v.getStatus();
         boolean active = status == null || UserStatus.NORMAL.equals(status);
         return active && Integer.valueOf(1).equals(v.getManagerFlag());
+    }
+
+    /**
+     * 志愿者标记/授权页基础信息（按 id 定位）：姓名 + 管理团队标记 + 是否已实名。
+     *
+     * @param volunteerId 志愿者 id
+     * @return 信息视图；志愿者不存在返回 null
+     */
+    public VolunteerFlagInfoView getFlagInfo(Long volunteerId) {
+        Volunteer v = volunteerMapper.selectById(volunteerId);
+        if (v == null) {
+            return null;
+        }
+        return new VolunteerFlagInfoView(v.getId(), v.getRealName(),
+                v.getManagerFlag() == null ? 0 : v.getManagerFlag(), v.getRegisterTime() != null);
     }
 
     /**

@@ -9,6 +9,7 @@ import com.hengde.organization.biz.dto.GroupAuditDTO;
 import com.hengde.organization.biz.dto.GroupLeaderDTO;
 import com.hengde.organization.biz.service.GroupService;
 import com.hengde.organization.biz.vo.GroupLeaderHistoryVO;
+import com.hengde.organization.biz.vo.GroupMemberVO;
 import com.hengde.organization.biz.vo.GroupVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -67,6 +68,13 @@ public class AdminGroupController {
     @GetMapping("/{id}/leader-history")
     public Result<List<GroupLeaderHistoryVO>> leaderHistory(@PathVariable Long id) {
         return Result.ok(groupService.leaderHistory(id));
+    }
+
+    @Operation(summary = "小组成员列表（转移组长选人用）")
+    @SaCheckPermission(value = "org:group-manage", type = "admin")
+    @GetMapping("/{id}/members")
+    public Result<List<GroupMemberVO>> members(@PathVariable Long id) {
+        return Result.ok(groupService.membersForAdmin(id));
     }
 
     @Operation(summary = "批量导入小组数据")

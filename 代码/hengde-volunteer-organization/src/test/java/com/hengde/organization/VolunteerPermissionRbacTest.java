@@ -135,6 +135,28 @@ class VolunteerPermissionRbacTest {
     }
 
     @Test
+    void superAdminCanReadAssigned() {
+        Long saId = insertAdmin(1);
+        Long vid = insertManager();
+        volunteerPermissionService.assignPermissionsBy(vid, List.of(permId("activity:publish")), saId);
+
+        List<PermissionVO> assigned = volunteerPermissionService.listAssignedBy(vid, saId);
+        assertEquals(1, assigned.size());
+        assertEquals("activity:publish", assigned.get(0).getCode(), "超管可读志愿者已授权限");
+    }
+
+    @Test
+    void nonSuperAdminCannotReadAssigned() {
+        // 读「已授权限」与写授权同一超管边界，防被误改回 org:manager-flag 可读
+        Long subId = insertAdmin(0); // 非超管
+        Long vid = insertManager();
+
+        BusinessException ex = assertThrows(BusinessException.class, () ->
+                volunteerPermissionService.listAssignedBy(vid, subId));
+        assertTrue(ex.getMessage().contains("超级管理员"));
+    }
+
+    @Test
     void assignRejectsNonManagerVolunteer() {
         Long saId = insertAdmin(1);
         Long vid = insertVolunteer(0); // 活跃但未标记「管理团队」

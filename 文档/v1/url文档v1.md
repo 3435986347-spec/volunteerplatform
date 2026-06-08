@@ -257,8 +257,9 @@
 | GET | /a/organization/groups | 全量小组列表 | 需登录 |
 | DELETE | /a/organization/groups/{id} | 解散小组（带原因，记录 dissolve_*） | 需登录 |
 | PUT | /a/organization/groups/{id}/leader | 转移组长（写入组长变更历史） | 需登录 |
-| GET | /a/organization/groups/{id}/leader-history | 组长变更历史 | 需登录 |
-| POST | /a/organization/groups/import | 批量导入小组数据（Excel） | 需登录 |
+| GET | /a/organization/groups/{id}/leader-history | 组长变更历史 | 需登录（org:group-manage） |
+| GET | /a/organization/groups/{id}/members | 小组成员列表（转移组长选人用） | 需登录（org:group-manage） |
+| POST | /a/organization/groups/import | 批量导入小组数据（Excel） | 需登录（org:group-manage） |
 | GET | /a/organization/groups/applications | 建组申请列表 | 需登录 |
 | POST | /a/organization/groups/applications/{id}/approve | 批准建组 | 需登录 |
 | POST | /a/organization/groups/applications/{id}/reject | 拒绝建组 | 需登录 |
@@ -280,8 +281,9 @@
 
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
+| GET | /a/organization/volunteers/{id}/flag-info | 标记/授权页基础信息（姓名+管理团队标记+是否实名；不含 PII） | 需登录（org:manager-flag） |
 | PUT | /a/organization/volunteers/{id}/manager-flag | 设置/取消志愿者「管理团队」标记（body `flag` 0取消/1设为；设为 1 仅限已实名、取消 0 不限；积分 ×1.2 倍率通道；记录操作人/时间） | 需登录（org:manager-flag） |
-| GET | /a/organization/volunteers/{id}/permissions | 志愿者已分配的权限点 | 需登录（org:manager-flag） |
+| GET | /a/organization/volunteers/{id}/permissions | 志愿者已分配的权限点（与授权写入口同超管边界） | 需登录（仅超管） |
 | PUT | /a/organization/volunteers/{id}/permissions | 全量替换志愿者权限（body `permissionIds`；**仅超管**；**目标须已标记管理团队 `manager_flag=1`**[防误授普通/游客态志愿者]；只接受活动域子集白名单，非白名单点拒；传空 `permissionIds`=清空，不要求 manager_flag[便于降级后清理 stale 授权]） | 需登录（仅超管） |
 
 ---

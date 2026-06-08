@@ -74,8 +74,17 @@ public class VolunteerPermissionService {
         return volunteerPermissionMapper.selectCodesByVolunteerId(volunteerId);
     }
 
-    /** 某志愿者已分配的权限点（后台回显，含完整 {@link PermissionVO}）。 */
+    /**
+     * 某志愿者已分配的权限点（后台回显，含完整 {@link PermissionVO}）。
+     * <b>仅超管</b>——授权信息属授权面，与写入口 {@link #assignPermissions} 保持同一超管边界（操作人取当前管理端登录态）。
+     */
     public List<PermissionVO> listAssigned(Long volunteerId) {
+        return listAssignedBy(volunteerId, StpAdminUtil.getLoginIdAsLong());
+    }
+
+    /** 显式操作人入口（供测试 / 需绕过 Sa-Token 上下文的场景），同样仅超管。 */
+    public List<PermissionVO> listAssignedBy(Long volunteerId, Long operatorAdminId) {
+        requireSuperAdmin(operatorAdminId);
         List<VolunteerPermission> rows = volunteerPermissionMapper.selectList(
                 Wrappers.<VolunteerPermission>lambdaQuery().eq(VolunteerPermission::getVolunteerId, volunteerId));
         if (rows.isEmpty()) {
