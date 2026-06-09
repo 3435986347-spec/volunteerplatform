@@ -73,6 +73,8 @@
 
 ```
 ■ 概览                         （登录即可）
+■ 用户管理
+    · 志愿者管理                (user:list / user:status / user:delete / user:export / 修改仅超管)
 ■ 活动管理
     · 活动列表/发布            (activity:menu / activity:publish / edit / delete)
     · 报名管理                (activity:enroll-view ...)
@@ -244,6 +246,17 @@
 - 审核拒绝：`POST /a/activity/backfills/{id}/reject` `[activity:backfill-audit]`
 可视化：补录申请显示「定位到的志愿者 + 活动 + 时间段 + 拟发积分/时长」；审核流同上。
 
+### 13. 志愿者管理（user 模块，后台前端补建 — 已实现）
+列表筛选 `keyword`（姓名/学校模糊，纯数字按手机号精确）+ `gender`(1男/2女) + `political`(政治面貌 code 1~5) + `squad`(分队 id) + 分页；**仅返回已实名志愿者**。
+- 列表：`GET /a/user/volunteers` `[user:list]` —— 行展示 姓名/性别/手机号(明文)/管理团队标记/学校·年级·政治面貌/归属分队·所在小组/服务时长·积分·参与活动数/状态(0正常/1禁用/2注销)
+- 详情：`GET /a/user/volunteers/{id}` `[user:list]` —— 补 身份证尾号(****后4位)/紧急联系人/注册时间；服务时长·积分·参与活动为跨域聚合
+- 修改：`PUT /a/user/volunteers/{id}` `[仅超管 user:edit，不入权限点表]` —— 全量更新，留空字段=清空（手机号留空=清空主手机号；改号自动查重）；**「修改」按钮仅超管可见**
+- 暂停/恢复：`PATCH /a/user/volunteers/{id}/status` `[user:status]`（body `{"status":0或1}`；**注销态 2 为终态，不提供启用/禁用入口**）
+- 删除：`DELETE /a/user/volunteers/{id}` `[user:delete]`（逻辑删除）
+- 导出：`GET /a/user/volunteers/export` `[user:export]`（Excel，同列表筛选）
+- 重置密码：`POST /a/user/volunteers/{id}/password/reset` `[user:pwd-reset]` —— **志愿者微信登录无密码列，此操作为契约兼容 no-op；前端应隐藏该按钮**
+可视化：标准「筛选 + 表格 + 行内操作（详情/修改/更多[启用·禁用/删除]）」；「管理团队」标记与活动域授权在「志愿者标记与授权」页操作、不在此页；分队下拉可复用 `GET /a/organization/squads`（无 `org:squad-manage` 时降级为仅「全部分队」）。
+
 ---
 
 ## 七、状态与枚举色板（用于标签着色）
@@ -278,7 +291,7 @@
 4. 响应式、空/加载/错误态、二次确认齐全。
 5. 先给**整体设计稿/线框 + 关键页面高保真**（概览、活动列表+发布、现场管理、一个审核流页、子账号权限分配），再落地为可运行前端代码。
 
-> 约束：**只实现上面列出的已落地接口与按钮**；志愿者列表 CRUD、协会数据看板、组织架构后台接口等**尚未实现**，如要预留位请明确标注「待接口」，不要伪造数据接口。
+> 约束：**只实现上面列出的已落地接口与按钮**；~~志愿者列表 CRUD~~（已补建，见第 13 节）；**协会数据看板（`data:dashboard`）、组织架构后台增删改接口、全局待审报名计数接口仍尚未实现**，如要预留位请明确标注「待接口」，不要伪造数据接口。
 
 ### 基建接口（曾经的「0 号前置」，现已全部补齐，可直接接真后端）
 

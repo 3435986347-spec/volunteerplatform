@@ -50,7 +50,7 @@ var MAPS = {
   points: { 0: ['未发放', 'default'], 1: ['已发放', 'success'] },
   pubStatus: { 0: ['草稿', 'default'], 1: ['已发布', 'success'] },
   shelf: { 0: ['已下架', 'default'], 1: ['已上架', 'success'] },
-  acct: { 0: ['已禁用', 'default'], 1: ['正常使用', 'success'] },
+  acct: { 0: ['正常使用', 'success'], 1: ['已禁用', 'default'], 2: ['已注销', 'default'] },
   groupStatus: { 0: ['待审批', 'warning'], 1: ['正常', 'success'], 2: ['已解散', 'default'] },
   linkType: { 0: ['无跳转', 'default'], 1: ['网页/推文', 'blue'], 2: ['小程序', 'cyan'] },
   leaderType: { 1: ['报名志愿者', 'blue'], 2: ['管理团队', 'purple'] },

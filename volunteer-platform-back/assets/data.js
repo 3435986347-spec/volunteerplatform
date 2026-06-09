@@ -8,7 +8,12 @@
   // module 分组：activity / organization / publicity （user/data 暂未实现接口）
   var PERM_CATALOG = [
     { module: 'user', label: '用户管理', perms: [
-      { id: 1, code: 'user:volunteer', name: '志愿者管理', desc: '志愿者列表/详情/修改/停用/删除/重置密码/导出' },
+      { id: 1, code: 'user:list', name: '志愿者查看', desc: '志愿者列表/详情（含明文手机号）' },
+      { id: 2, code: 'user:status', name: '暂停/恢复账号', desc: '停用 / 启用志愿者' },
+      { id: 3, code: 'user:delete', name: '删除志愿者', desc: '逻辑删除志愿者' },
+      { id: 4, code: 'user:export', name: '导出志愿者', desc: '导出志愿者名单 Excel' },
+      { id: 5, code: 'user:pwd-reset', name: '重置志愿者密码', desc: '契约兼容（微信登录无密码）' },
+      // 注：修改实名敏感资料 user:edit 写死仅超管，不入可分配目录
     ]},
     { module: 'activity', label: '活动管理', perms: [
       { id: 11, code: 'activity:menu', name: '活动菜单/列表', desc: '查看活动列表与详情' },
@@ -62,7 +67,7 @@
       key: 'org', adminId: 7, name: '林海燕', account: 'zuzhi01',
       dept: '组织部', phone: '13902460012', phoneTail: '0012',
       isSuperAdmin: false,
-      permissionCodes: ['user:volunteer', 'activity:enroll-view', 'activity:enroll-audit', 'activity:publish-audit', 'org:group-audit', 'org:squad-manage', 'org:squad-audit'],
+      permissionCodes: ['user:list', 'user:status', 'user:export', 'activity:enroll-view', 'activity:enroll-audit', 'activity:publish-audit', 'org:group-audit', 'org:squad-manage', 'org:squad-audit'],
       roleLabel: '组织部 · 子账号',
     },
     secretary: {

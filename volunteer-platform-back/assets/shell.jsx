@@ -8,7 +8,7 @@ var NAV_GROUPS = [
     { key: 'overview', label: '概览', icon: 'dashboard', code: null },
   ]},
   { label: '用户管理', items: [
-    { key: 'volunteers', label: '志愿者管理', icon: 'user', code: 'user:volunteer' },
+    { key: 'volunteers', label: '志愿者管理', icon: 'user', code: 'user:list' },
   ]},
   { label: '活动管理', items: [
     { key: 'activities', label: '活动列表/发布', icon: 'calendar', code: 'activity:menu' },
