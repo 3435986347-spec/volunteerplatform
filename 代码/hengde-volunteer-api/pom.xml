@@ -73,6 +73,13 @@
             <version>1.1-SNAPSHOT</version>
         </dependency>
 
+        <!-- 领域模块：数据看板（/a/data/dashboard、/v/data/dashboard） -->
+        <dependency>
+            <groupId>com.hengde</groupId>
+            <artifactId>hengde-volunteer-data</artifactId>
+            <version>1.1-SNAPSHOT</version>
+        </dependency>
+
         <!-- Spring Boot 启动器 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

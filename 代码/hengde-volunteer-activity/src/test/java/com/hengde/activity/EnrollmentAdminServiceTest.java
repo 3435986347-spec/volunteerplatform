@@ -195,6 +195,27 @@ class EnrollmentAdminServiceTest {
         assertEquals("13800001234", records.get(0).getPhone(), "手机号应解密为明文");
     }
 
+    @Test
+    void listGlobal_crossActivity_filtersStatus_joinsTitle_ordersDesc() {
+        Long vid = insertVolunteer("全局", null, Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
+        Long aid = insertActivity(a -> a.setNeedAudit(1));
+        Activity act = activityMapper.selectById(aid);
+        Long slot = insertSlot(aid, A_START, A_START.plusHours(2));
+        Long e1 = insertEnrollmentAt(aid, slot, vid, 1, LocalDateTime.now());              // 已通过，较新
+        Long e2 = insertEnrollmentAt(aid, slot, vid, 1, LocalDateTime.now().minusHours(2)); // 已通过，较旧
+        insertEnrollmentAt(aid, slot, vid, 0, LocalDateTime.now().minusHours(1));           // 待审——status=1 过滤应排除
+
+        List<EnrollmentAdminVO> all = adminService.listGlobal(pageQuery(), 1).getRecords();
+        List<EnrollmentAdminVO> mine = all.stream().filter(r -> aid.equals(r.getActivityId())).toList();
+
+        assertEquals(2, mine.size(), "全局 status=1 过滤应排除该活动的待审记录");
+        assertTrue(mine.stream().allMatch(r -> act.getTitle().equals(r.getActivityTitle())),
+                "全局列表每行应带出活动标题");
+        // 全局按 enroll_time 倒序：我的两条里较新的 e1 在前、较旧的 e2 在后
+        assertEquals(e1, mine.get(0).getEnrollmentId(), "较新报名应排在前（倒序）");
+        assertEquals(e2, mine.get(1).getEnrollmentId());
+    }
+
     // ---------- helpers ----------
 
     private interface ActivityConfigurer {

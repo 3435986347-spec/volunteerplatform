@@ -142,6 +142,7 @@
 | DELETE | /a/activity/activities/{id} | 删除活动（待审核/驳回活动不可删，属审核侧处置） | 需登录 |
 | POST | /a/activity/activities/{id}/copy | 复制活动（**待审核/驳回活动不可复制**，否则绕开审核直接发布同内容） | 需登录 |
 | GET | /a/activity/activities/{id}/enrollments | 报名列表（优先展示管理团队/临时负责人） | 需登录（activity:enroll-view） |
+| GET | /a/activity/enrollments | 全局报名列表（跨活动，可 `?status=` 筛选，按报名时间倒序，每行带 `activityTitle`；概览「待审报名」计数用 `size=1` 取 `total`） | 需登录（activity:enroll-view） |
 | GET | /a/activity/activities/{id}/enrollment-slots | 活动时间段列表（报名域，供手动新增报名选时间段，避免要 activity:menu；仅已发布活动，与手动新增口径一致，否则报「活动不存在」） | 需登录（activity:enroll-view） |
 | POST | /a/activity/activities/{id}/enrollments | 手动新增报名（body: `volunteerId`+`slotIds`） | 需登录（activity:enroll-add） |
 | GET | /a/activity/activities/{id}/enrollments/export | 导出报名名单（Excel） | 需登录（activity:enroll-export） |

@@ -48,4 +48,9 @@ public class SquadQueryService {
                         .in(VolunteerSquad::getId, ids))
                 .stream().collect(Collectors.toMap(VolunteerSquad::getId, VolunteerSquad::getName));
     }
+
+    /** 分队总数（逻辑删除由 {@code @TableLogic} 自动排除）。供 data 域数据看板「分队数量」。 */
+    public long count() {
+        return squadMapper.selectCount(null);
+    }
 }

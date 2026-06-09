@@ -125,8 +125,34 @@ public class EnrollmentAdminService {
         List<ActivityEnrollment> records = page.getRecords();
         Map<Long, VolunteerDisplayView> volunteerById = loadVolunteers(records);
         Map<Long, ActivitySlot> slotById = loadSlots(records);
+        Map<Long, Activity> activityById = loadActivities(records);
 
-        List<EnrollmentAdminVO> vos = records.stream().map(e -> toAdminVO(e, volunteerById, slotById)).toList();
+        List<EnrollmentAdminVO> vos = records.stream().map(e -> toAdminVO(e, volunteerById, slotById, activityById)).toList();
+        return PageResult.of(vos, page.getTotal(), page.getCurrent(), page.getSize());
+    }
+
+    /**
+     * 全局报名列表（跨活动，可选状态筛选），按报名时间<b>倒序</b>（最新在前）——供概览「待审报名」计数
+     * （{@code size=1} 取 total）与统一报名视图。每行带活动标题，便于不进具体活动也能定位。
+     */
+    public PageResult<EnrollmentAdminVO> listGlobal(PageQuery query, Integer status) {
+        if (status != null && (status < ENROLL_PENDING || status > ENROLL_CANCELLED)) {
+            throw new BusinessException("报名状态取值非法（应为 0~3）");
+        }
+        Page<ActivityEnrollment> page = query.toPage();
+        var wrapper = Wrappers.<ActivityEnrollment>lambdaQuery();
+        if (status != null) {
+            wrapper.eq(ActivityEnrollment::getStatus, status);
+        }
+        wrapper.orderByDesc(ActivityEnrollment::getEnrollTime);
+        enrollmentMapper.selectPage(page, wrapper);
+
+        List<ActivityEnrollment> records = page.getRecords();
+        Map<Long, VolunteerDisplayView> volunteerById = loadVolunteers(records);
+        Map<Long, ActivitySlot> slotById = loadSlots(records);
+        Map<Long, Activity> activityById = loadActivities(records);
+
+        List<EnrollmentAdminVO> vos = records.stream().map(e -> toAdminVO(e, volunteerById, slotById, activityById)).toList();
         return PageResult.of(vos, page.getTotal(), page.getCurrent(), page.getSize());
     }
 
@@ -232,11 +258,26 @@ public class EnrollmentAdminService {
                 .collect(Collectors.toMap(ActivitySlot::getId, Function.identity()));
     }
 
+    private Map<Long, Activity> loadActivities(List<ActivityEnrollment> records) {
+        List<Long> ids = records.stream().map(ActivityEnrollment::getActivityId).distinct().toList();
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        return activityMapper.selectBatchIds(ids).stream()
+                .collect(Collectors.toMap(Activity::getId, Function.identity()));
+    }
+
     private EnrollmentAdminVO toAdminVO(ActivityEnrollment e,
                                         Map<Long, VolunteerDisplayView> volunteerById,
-                                        Map<Long, ActivitySlot> slotById) {
+                                        Map<Long, ActivitySlot> slotById,
+                                        Map<Long, Activity> activityById) {
         EnrollmentAdminVO vo = new EnrollmentAdminVO();
         vo.setEnrollmentId(e.getId());
+        vo.setActivityId(e.getActivityId());
+        Activity activity = activityById.get(e.getActivityId());
+        if (activity != null) {
+            vo.setActivityTitle(activity.getTitle());
+        }
         vo.setVolunteerId(e.getVolunteerId());
         vo.setSlotId(e.getSlotId());
         vo.setStatus(e.getStatus());

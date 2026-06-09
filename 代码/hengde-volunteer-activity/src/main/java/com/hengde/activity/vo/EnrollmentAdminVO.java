@@ -17,6 +17,12 @@ public class EnrollmentAdminVO {
     /** 报名记录 id */
     private Long enrollmentId;
 
+    /** 活动 id（全局报名列表用，按活动列表时与路径 id 一致） */
+    private Long activityId;
+
+    /** 活动标题（全局报名列表展示用，按活动列表可为 null） */
+    private String activityTitle;
+
     /** 志愿者 id */
     private Long volunteerId;
 

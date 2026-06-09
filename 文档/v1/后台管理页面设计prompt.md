@@ -99,17 +99,21 @@
 
 ## 五、概览页（首页）
 
-聚合**待办计数卡片**，点击卡片跳到对应列表（已带状态筛选）。后端**暂无专用统计接口**，这些数字**由各列表接口 `status=待审` 的 `total` 拼出**（设计成卡片即可，标注数据来源）：
+页面分两块：
 
-- 待审建组申请（`GET /a/organization/groups/applications` 的 total）✅ 全局接口可直接计数
-- 待审考勤变更（`GET /a/activity/attendance-changes?status=0`）✅
-- 待补录审核（`GET /a/activity/backfills?status=0`）✅
-- 待审发布活动（`GET /a/activity/activities/pending-reviews`）✅ 小程序提交、等上线的活动
-- 待秘书部确认时长（`GET /a/activity/service-records/pending`）✅
-- 待审分队加入（`GET /a/organization/squads/applications?status=0`）✅ 已补全局接口，可直接计数（每行带 squadName/volunteerName）
-- 待审报名 ——⚠️ 报名审核是**按活动**的（`GET /a/activity/activities/{id}/enrollments?status=...`），无全局待审报名接口，概览**占位**或在活动详情内展示。
+**① 头部数据概览**（6 项聚合数字，一次 `GET /a/data/dashboard` 取回，**仅登录即可**、子账号也能看）：注册志愿者数 / 活动场次 / 总服务时长(h) / 参与人次 / 管理团队数 / 分队数。`Long` 字段后端序列化为字符串，前端 `Number()` 后展示。
 
-> 注：协会级数据看板（`data:dashboard`）尚未实现，**不要画营收/趋势大图**，概览只做「待办入口 + 简单计数」。
+**② 待办计数卡片**，点击跳到对应列表（已带状态筛选）。待办数字**由各<b>权限受控</b>列表接口的 `total` 拼出**（`size=1` 取 total）；**前端只对当前账号有该端点权限的项发请求**（避免 403）：
+
+- 待审发布活动（`GET /a/activity/activities/pending-reviews?status=4`，`activity:publish-audit`）✅
+- 待审建组申请（`GET /a/organization/groups/applications`，`org:group-audit`）✅ 全局接口
+- 待审分队加入（`GET /a/organization/squads/applications?status=0`，`org:squad-audit`）✅ 全局接口（每行带 squadName）
+- 待审报名（`GET /a/activity/enrollments?status=0`，`activity:enroll-view`）✅ **已补全局接口**（跨活动、每行带 activityTitle）
+- 待审考勤变更（`GET /a/activity/attendance-changes?status=0`；列表仅登录、卡按 `activity:attendance-audit` 显隐）✅
+- 待补录审核（`GET /a/activity/backfills?status=0`；列表仅登录、卡按 `activity:backfill-audit` 显隐）✅
+- 待秘书部确认时长（`GET /a/activity/service-records/pending`，`activity:service-confirm`）✅
+
+> 注：头部数据看板（6 项聚合）**已实现**；协会级**营收/趋势大图**仍不做，概览只做「数据概览 + 待办入口」。
 
 ---
 
@@ -291,7 +295,7 @@
 4. 响应式、空/加载/错误态、二次确认齐全。
 5. 先给**整体设计稿/线框 + 关键页面高保真**（概览、活动列表+发布、现场管理、一个审核流页、子账号权限分配），再落地为可运行前端代码。
 
-> 约束：**只实现上面列出的已落地接口与按钮**；~~志愿者列表 CRUD~~（已补建，见第 13 节）；**协会数据看板（`data:dashboard`）、组织架构后台增删改接口、全局待审报名计数接口仍尚未实现**，如要预留位请明确标注「待接口」，不要伪造数据接口。
+> 约束：**只实现上面列出的已落地接口与按钮**；~~志愿者列表 CRUD~~（已补建，见第 13 节）、~~数据看板~~（`GET /a/data/dashboard` 已实现，见第五节）、~~全局待审报名计数~~（`GET /a/activity/enrollments` 已补）；**组织架构后台增删改接口、协会级趋势/营收大图仍尚未实现**，如要预留位请明确标注「待接口」，不要伪造数据接口。
 
 ### 基建接口（曾经的「0 号前置」，现已全部补齐，可直接接真后端）
 

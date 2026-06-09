@@ -54,6 +54,14 @@ public class EnrollmentAdminController {
         return Result.ok(enrollmentAdminService.list(id, query, status));
     }
 
+    @Operation(summary = "全局报名列表（跨活动，可按状态筛选，按报名时间倒序；概览待审报名计数用 size=1 取 total）")
+    @SaCheckPermission(value = PermissionCode.ACTIVITY_ENROLL_VIEW, type = "admin")
+    @GetMapping("/enrollments")
+    public Result<PageResult<EnrollmentAdminVO>> listGlobal(PageQuery query,
+                                                            @RequestParam(required = false) Integer status) {
+        return Result.ok(enrollmentAdminService.listGlobal(query, status));
+    }
+
     @Operation(summary = "活动时间段列表（报名域，供手动新增报名选时间段；按 enroll-view 鉴权，不需 activity:menu）")
     @SaCheckPermission(value = PermissionCode.ACTIVITY_ENROLL_VIEW, type = "admin")
     @GetMapping("/activities/{id}/enrollment-slots")

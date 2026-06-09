@@ -154,6 +154,26 @@ public class VolunteerQueryService {
     }
 
     /**
+     * 已实名志愿者人数（{@code register_time} 非空）。供 data 域数据看板「注册志愿者人数」。
+     * 逻辑删除由 {@code @TableLogic} 自动排除。
+     */
+    public long countRegistered() {
+        return volunteerMapper.selectCount(Wrappers.<Volunteer>lambdaQuery()
+                .isNotNull(Volunteer::getRegisterTime));
+    }
+
+    /**
+     * 「管理团队」志愿者人数：{@code manager_flag=1} 且<b>已实名、未停用/注销</b>，与 {@link #isActiveManager}
+     * 读取口径一致——游客态/禁用/注销上的管理团队标记不计入。供 data 域数据看板「管理团队人数」。
+     */
+    public long countManagers() {
+        return volunteerMapper.selectCount(Wrappers.<Volunteer>lambdaQuery()
+                .eq(Volunteer::getManagerFlag, 1)
+                .isNotNull(Volunteer::getRegisterTime)
+                .eq(Volunteer::getStatus, UserStatus.NORMAL));
+    }
+
+    /**
      * 该志愿者是否被标记为「管理团队」（V11 manager_flag）。供 activity 积分发放判定 ×1.2 倍率。
      *
      * @param volunteerId 志愿者 id
