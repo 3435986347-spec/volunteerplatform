@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.hengde</groupId>
+        <artifactId>hengde-volunteer-parent</artifactId>
+        <version>1.1-SNAPSHOT</version>
+        <relativePath/> <!-- lookup parent from repository -->
+    </parent>
+    <groupId>com.hengde</groupId>
+    <artifactId>hengde-volunteer-user</artifactId>
+    <version>1.1-SNAPSHOT</version>
+    <name>hengde-volunteer-user</name>
+    <description>hengde-volunteer-user</description>
+    <packaging>jar</packaging>
+    <url/>
+    <licenses>
+        <license/>
+    </licenses>
+    <developers>
+        <developer/>
+    </developers>
+    <scm>
+        <connection/>
+        <developerConnection/>
+        <tag/>
+        <url/>
+    </scm>
+    <properties>
+        <java.version>17</java.version>
+    </properties>
+    <dependencies>
+        <dependency>
+            <groupId>com.hengde</groupId>
+            <artifactId>hengde-volunteer-common</artifactId>
+            <version>1.1-SNAPSHOT</version>
+        </dependency>
+
+        <!-- 认证域：Volunteer 实体/Mapper（志愿者表归 auth）、StpAdminUtil、CryptoUtil(经 common) -->
+        <dependency>
+            <groupId>com.hengde</groupId>
+            <artifactId>hengde-volunteer-auth</artifactId>
+            <version>1.1-SNAPSHOT</version>
+        </dependency>
+
+        <!-- 组织域：分队名(SquadQueryService)、所在小组名(GroupQueryService) 跨模块只读 -->
+        <dependency>
+            <groupId>com.hengde</groupId>
+            <artifactId>hengde-volunteer-organization</artifactId>
+            <version>1.1-SNAPSHOT</version>
+        </dependency>
+
+        <!-- 活动域：服务时长/积分/参与活动数聚合(ServiceRecordService.batchStatsByVolunteerIds)。
+             经此传递引入 redisson-spring-boot-starter，故本模块测试上下文也会装配 RedissonClient → 需 Redis 容器 -->
+        <dependency>
+            <groupId>com.hengde</groupId>
+            <artifactId>hengde-volunteer-activity</artifactId>
+            <version>1.1-SNAPSHOT</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.swagger.core.v3</groupId>
+            <artifactId>swagger-annotations-jakarta</artifactId>
+        </dependency>
+
+        <!-- 志愿者名单导出 -->
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>easyexcel</artifactId>
+        </dependency>
+
+        <!-- 参数校验：修改/状态入参 @Valid -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- Lombok（common 里是 provided 不传递，本模块需单独声明） -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- 测试：@SpringBootTest + Testcontainers-MySQL（+ Redis，因传递引入 redisson starter） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.hengde</groupId>
+            <artifactId>hengde-volunteer-common</artifactId>
+            <version>${project.version}</version>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>mysql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>1.18.38</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+            <!-- 领域模块是被依赖的库，不可独立启动，关闭 repackage -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

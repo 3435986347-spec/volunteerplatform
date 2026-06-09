@@ -3,14 +3,20 @@ package com.hengde.organization.biz.service;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.organization.biz.constant.MemberStatus;
+import com.hengde.organization.biz.dao.VolunteerGroupMapper;
 import com.hengde.organization.biz.dao.VolunteerGroupMemberMapper;
+import com.hengde.organization.biz.entity.VolunteerGroup;
 import com.hengde.organization.biz.entity.VolunteerGroupMember;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 跨模块只读出参：供其他领域（如 activity 代报名）以「最小耦合」方式校验小组关系，
@@ -27,10 +33,53 @@ public class GroupQueryService {
     private static final int MEMBER_ACTIVE = MemberStatus.ACTIVE;
 
     private VolunteerGroupMemberMapper memberMapper;
+    private VolunteerGroupMapper groupMapper;
 
     @Autowired
     public void setMemberMapper(VolunteerGroupMemberMapper memberMapper) {
         this.memberMapper = memberMapper;
+    }
+
+    @Autowired
+    public void setGroupMapper(VolunteerGroupMapper groupMapper) {
+        this.groupMapper = groupMapper;
+    }
+
+    /**
+     * 批量取志愿者所在 ACTIVE 小组名（volunteerId → 小组名），供 user 域志愿者管理列表/详情展示「所在小组」。
+     *
+     * <p>「一人一组」约束下每名志愿者至多一条 ACTIVE 成员行，故 volunteerId → groupId 唯一。两次查库
+     * （成员行 + 小组名）后内存拼装，<b>避免逐人查询（N+1）</b>。无 ACTIVE 小组的志愿者不入 Map（调用方显示「无」）。</p>
+     *
+     * @param volunteerIds 志愿者 id 集合
+     * @return id -> 小组名；空集合或无人在组返回空 Map
+     */
+    public Map<Long, String> listActiveGroupNamesByVolunteerIds(Collection<Long> volunteerIds) {
+        if (volunteerIds == null || volunteerIds.isEmpty()) {
+            return Map.of();
+        }
+        List<VolunteerGroupMember> members = memberMapper.selectList(Wrappers.<VolunteerGroupMember>lambdaQuery()
+                .select(VolunteerGroupMember::getVolunteerId, VolunteerGroupMember::getGroupId)
+                .eq(VolunteerGroupMember::getStatus, MEMBER_ACTIVE)
+                .in(VolunteerGroupMember::getVolunteerId, new HashSet<>(volunteerIds)));
+        if (members.isEmpty()) {
+            return Map.of();
+        }
+        // 一人一组：同一 volunteerId 至多一条 ACTIVE 行；合并函数仅为防御脏数据
+        Map<Long, Long> volToGroup = members.stream().collect(Collectors.toMap(
+                VolunteerGroupMember::getVolunteerId, VolunteerGroupMember::getGroupId, (a, b) -> a));
+        Map<Long, String> groupNameById = groupMapper.selectList(Wrappers.<VolunteerGroup>lambdaQuery()
+                        .select(VolunteerGroup::getId, VolunteerGroup::getName)
+                        .in(VolunteerGroup::getId, new HashSet<>(volToGroup.values())))
+                .stream().collect(Collectors.toMap(VolunteerGroup::getId, VolunteerGroup::getName));
+        Map<Long, String> result = new HashMap<>();
+        volToGroup.forEach((vid, gid) -> {
+            String name = groupNameById.get(gid);
+            if (name != null) {
+                result.put(vid, name);
+            }
+        });
+        return result;
     }
 
     /**

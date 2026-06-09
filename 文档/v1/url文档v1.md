@@ -80,13 +80,13 @@
 
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | /a/user/volunteers | 志愿者列表（`?keyword=&gender=&squad=&political=&school=&grade=&page=&size=`） | 需登录 |
-| GET | /a/user/volunteers/{id} | 志愿者详情 | 需登录 |
-| PUT | /a/user/volunteers/{id} | 修改志愿者全量信息 | 需登录 |
-| PATCH | /a/user/volunteers/{id}/status | 暂停/恢复志愿者账号（body: `{"status": 0/1}`） | 需登录 |
-| DELETE | /a/user/volunteers/{id} | 删除志愿者 | 需登录 |
-| POST | /a/user/volunteers/{id}/password/reset | 重置志愿者密码 | 需登录 |
-| GET | /a/user/volunteers/export | 批量导出志愿者（Excel，支持与列表相同的筛选参数） | 需登录 |
+| GET | /a/user/volunteers | 志愿者列表（`?keyword=&gender=&squad=&political=&school=&grade=&page=&size=`；keyword 纯数字按手机号 HMAC 精确，否则姓名/学校模糊；仅返回已实名志愿者） | `user:list` |
+| GET | /a/user/volunteers/{id} | 志愿者详情（含明文手机号、身份证尾号；仅已实名） | `user:list` |
+| PUT | /a/user/volunteers/{id} | 修改志愿者全量信息（实名敏感字段，全量 PUT 可清空字段） | **仅超管**（`user:edit`，不入权限点表、不可分配，service 手写 `is_super_admin` 校验） |
+| PATCH | /a/user/volunteers/{id}/status | 暂停/恢复志愿者账号（body: `{"status": 0/1}`，仅 0正常/1禁用） | `user:status` |
+| DELETE | /a/user/volunteers/{id} | 删除志愿者（逻辑删除） | `user:delete` |
+| POST | /a/user/volunteers/{id}/password/reset | 重置志愿者密码（微信登录无密码列，契约兼容 no-op） | `user:pwd-reset` |
+| GET | /a/user/volunteers/export | 批量导出志愿者（Excel，支持与列表相同的筛选参数） | `user:export` |
 
 ---
 

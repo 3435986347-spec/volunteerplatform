@@ -11,6 +11,7 @@ import com.hengde.activity.dao.ActivityMapper;
 import com.hengde.activity.entity.Activity;
 import com.hengde.activity.entity.ActivityAttendance;
 import com.hengde.activity.vo.ServiceRecordVO;
+import com.hengde.activity.vo.VolunteerServiceStatsView;
 import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.auth.vo.VolunteerDisplayView;
 import com.hengde.common.exception.BusinessException;
@@ -22,8 +23,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 服务记录：志愿者「我的服务记录」、管理端「服务记录大板块」、秘书部确认时长、积分发放。
@@ -115,6 +120,50 @@ public class ServiceRecordService {
                 .eq(ActivityAttendance::getSecretaryStatus, SECRETARY_PENDING)
                 .orderByDesc(ActivityAttendance::getId));
         return toVoPage(page, true);
+    }
+
+    /**
+     * 批量聚合多名志愿者的服务统计（参与活动数 / 已确认时长 / 已发放积分），供 user 域志愿者管理列表与详情展示。
+     *
+     * <p>一次查库取这些志愿者的全部考勤行后在内存聚合，<b>避免逐人查询（N+1）</b>；单人详情传单元素集合即可精确统计。
+     * 口径：activityCount 按 activity_id 去重；confirmedMinutes 仅累计 secretary_status=已确认；
+     * grantedPoints 仅累计 points_status=已发放（与「服务记录闭环」三态一致，未确认/未发放不计入）。</p>
+     *
+     * @param volunteerIds 志愿者 id 集合
+     * @return id -> 统计视图；<b>仅包含有考勤记录者</b>，无记录的 id 不在 Map 中（调用方按 best-effort 补 0）
+     */
+    public Map<Long, VolunteerServiceStatsView> batchStatsByVolunteerIds(Collection<Long> volunteerIds) {
+        if (volunteerIds == null || volunteerIds.isEmpty()) {
+            return Map.of();
+        }
+        List<ActivityAttendance> rows = attendanceMapper.selectList(Wrappers.<ActivityAttendance>lambdaQuery()
+                .select(ActivityAttendance::getVolunteerId, ActivityAttendance::getActivityId,
+                        ActivityAttendance::getServiceMinutes, ActivityAttendance::getSecretaryStatus,
+                        ActivityAttendance::getPointsAward, ActivityAttendance::getPointsStatus)
+                .in(ActivityAttendance::getVolunteerId, new HashSet<>(volunteerIds)));
+        if (rows.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, Set<Long>> activitiesByVol = new HashMap<>();
+        Map<Long, Integer> minutesByVol = new HashMap<>();
+        Map<Long, Integer> pointsByVol = new HashMap<>();
+        for (ActivityAttendance att : rows) {
+            Long vid = att.getVolunteerId();
+            activitiesByVol.computeIfAbsent(vid, k -> new HashSet<>()).add(att.getActivityId());
+            if (Integer.valueOf(SECRETARY_CONFIRMED).equals(att.getSecretaryStatus()) && att.getServiceMinutes() != null) {
+                minutesByVol.merge(vid, att.getServiceMinutes(), Integer::sum);
+            }
+            if (Integer.valueOf(POINTS_GRANTED).equals(att.getPointsStatus()) && att.getPointsAward() != null) {
+                pointsByVol.merge(vid, att.getPointsAward(), Integer::sum);
+            }
+        }
+        Map<Long, VolunteerServiceStatsView> result = new HashMap<>();
+        for (Map.Entry<Long, Set<Long>> e : activitiesByVol.entrySet()) {
+            Long vid = e.getKey();
+            result.put(vid, new VolunteerServiceStatsView(vid, e.getValue().size(),
+                    minutesByVol.getOrDefault(vid, 0), pointsByVol.getOrDefault(vid, 0)));
+        }
+        return result;
     }
 
     // ---------- 秘书部确认 / 积分发放 ----------
