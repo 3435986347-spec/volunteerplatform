@@ -1,0 +1,42 @@
+# ============================================================
+# 恒德志愿者平台 API · systemd 服务单元（裸 jar 部署）
+#
+# 用法：复制到 /etc/systemd/system/hengde-api.service
+#   systemctl daemon-reload
+#   systemctl enable --now hengde-api      # 开机自启 + 立即启动
+#   journalctl -u hengde-api -f            # 看日志（应用日志走 stdout → journald）
+#
+# 前置（见 文档/v1/部署说明.md）：
+#   - jar 放 /opt/hengde/api/hengde-volunteer-api-1.1-SNAPSHOT.jar
+#   - 环境变量填好 /etc/hengde/api.env（chmod 600，模板见同目录 api.env.example）
+#   - 协议正文等长文本配置放 /opt/hengde/api/config/application-prod.yaml
+#     （WorkingDirectory 指向 /opt/hengde/api，Spring Boot 自动加载 ./config/ 下的 prod 配置）
+#   - 专用运行用户：useradd -r -s /usr/sbin/nologin hengde
+# ============================================================
+
+[Unit]
+Description=Hengde Volunteer Platform API (Spring Boot)
+# MySQL/Redis 同机时建议带上（服务名按发行版调整：mysqld/mariadb、redis/redis-server）
+After=network-online.target mysql.service redis.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hengde
+Group=hengde
+WorkingDirectory=/opt/hengde/api
+EnvironmentFile=/etc/hengde/api.env
+# 2C4G 服务器参考堆配置；更大内存可按需上调 -Xmx
+ExecStart=/usr/bin/java -Xms512m -Xmx1024m -jar /opt/hengde/api/hengde-volunteer-api-1.1-SNAPSHOT.jar --spring.profiles.active=prod
+# JVM 收到 SIGTERM 正常退出码为 143，不算失败
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5
+
+# 安全收敛（出问题可逐项放宽）
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

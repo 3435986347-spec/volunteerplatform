@@ -300,5 +300,5 @@
 ### 基建接口（曾经的「0 号前置」，现已全部补齐，可直接接真后端）
 
 1. ✅ **当前管理员资料 + 权限码**：`GET /a/auth/me` → `{ adminId, username, realName, department, superAdmin, permissionCodes:[] }`（超管 codes 为 `["*"]`）。整套权限驱动 UI 直接接它，无需 mock。
-2. ✅ **通用上传**：`POST /a/files/upload`（multipart，字段 `file`，可选 `dir`）→ `{ url, name, size }`。所有传图/裁剪上传成品后调它拿 URL。
+2. ✅ **通用上传**：`POST /a/files/upload`（multipart，字段 `file` + **必传** `dir`[banner/announcement/file/activity/summary，按 dir 做权限+类型双门槛，未知 dir 拒]）→ `{ url, name, size }`。所有传图/裁剪上传成品后调它拿 URL。
 3. ✅ **全局待审分队加入申请**：`GET /a/organization/squads/applications`（默认 status=0 待审，可传 status 覆盖；每行带 squadName）。概览「待审分队加入」卡片与统一审批入口据此实现。

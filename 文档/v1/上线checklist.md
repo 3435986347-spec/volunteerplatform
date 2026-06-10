@@ -1,7 +1,7 @@
 # 恒德志愿者平台 V1 上线 / 交付需求方测试 Checklist
 
 适用：把 `hengde-volunteer-api-1.1-SNAPSHOT.jar` 从「本地联调」推进到「需求方真机测试 / 正式上线」。
-本地联调请看同目录 `运行说明.md`；本清单只讲**对外交付**多出来的那些事。
+本地联调请看同目录 `运行说明.md`；**服务器上的具体安装动作（systemd / nginx / 目录约定 / 升级回滚）见同目录 `部署说明.md`**（配套制品在仓库 `部署/`：`nginx.conf`、`hengde-api.service`、`api.env.example`）；本清单只讲**对外交付**多出来的那些事。
 
 > 关键判断：**管理后台（`/a/**`）门槛低、可最先交付**（账号密码登录、浏览器即可访问，不依赖微信）；
 > **小程序志愿者端（`/v/**`）门槛高**，强依赖「微信小程序账号 + 已备案 HTTPS 域名 + 短信/OSS 真密钥」，且**域名备案最慢，要最先启动**。
@@ -37,7 +37,8 @@
 
 - [ ] 域名 **ICP 备案**（数天~数周，微信加合法域名的前提）。
 - [ ] 配 **HTTPS 证书**（微信强制 HTTPS）。
-- [ ] **Nginx 反向代理**：`https://域名` → `http://127.0.0.1:8080`，并保留 `/api` 前缀（context-path）。前端 baseURL = `https://域名/api`。
+- [ ] **Nginx 反向代理**：`https://域名` → `http://127.0.0.1:8080`，并保留 `/api` 前缀（context-path）。前端 baseURL = `https://域名/api`。**现成配置见仓库 `部署/nginx.conf`**（已含安全头/gzip/缓存/上传大小/接口文档屏蔽），安装步骤见 `部署说明.md` 第 3 节。
+- [ ] **后台管理前端（admin-web）**：`volunteer-platform-back/` 的 `index.html + assets/` 拷到 nginx 静态根（`/opt/hengde/admin-web`，**README/联调指南/uploads 参考资料不要上服务器**）；需要地图选点的话在 `index.html` 填 `__AMAP_KEY__`。前端在 80/443 下自动用同源 `/api`，零改动。
 
 ## 4. 第三方真实密钥（关掉 dev stub）
 
@@ -54,7 +55,8 @@
 
 - [ ] **必须显式指定 profile**：生产 `--spring.profiles.active=prod`（或 `SPRING_PROFILES_ACTIVE=prod`）。
       base config 不再默认进 dev；**不带 profile 启动会被 `ProductionConfigGuard` fail-fast 拦下**。
-- [ ] **prod 启动会强校验关键密钥**：若 `SECURITY_AES_KEY`/`SECURITY_HMAC_KEY` 仍是 `dev-only-*`/为空，或超管密码仍是 `admin123`，**直接拒绝启动**（宁可起不来也不让弱配置上线）。
+- [ ] **prod 启动会强校验（任一不过直接拒绝启动，宁可起不来也不让弱配置上线）**：`SECURITY_AES_KEY`/`SECURITY_HMAC_KEY` 非空且非 `dev-only-*` 默认值；超管密码非 `admin123`；`AUTH_DEV_LOGIN_ENABLED=false`（开发登录绕过微信鉴权，禁止上生产）；`AUTH_AGREEMENT_VERSION` 非空；**协议正文 `hengde.auth.agreement-text` 非占位文本**（否则志愿者签的是占位协议——正式文本是长文本，推荐写服务器上的 `application-prod.yaml`，见 `部署说明.md` 第 2 节）。
+- [ ] **环境变量模板**：仓库 `部署/api.env.example` 已按本表整理好全部变量与注释，复制到 `/etc/hengde/api.env`（chmod 600）填真值即可。
 
 | 变量 | 必改? | 说明 |
 |---|---|---|
@@ -71,6 +73,8 @@
 | `OSS_PROVIDER` | ✅ | `aliyun`(默认) / `volc`(火山 TOS)；恒德置 `volc` |
 | `OSS_ENABLED` + `OSS_ENDPOINT/OSS_REGION/OSS_BUCKET/OSS_AK/OSS_SK` | ✅ | 见第 4 点；火山 TOS 必填 `OSS_REGION` |
 | `AUTH_REALNAME_ENABLED` / `AUTH_WEWORK_ENABLED` / `AUTH_WEWORK_QR_URL` | 视情况 | 实名 / 企业微信群 |
+| `AUTH_AGREEMENT_VERSION` + 协议正文 | ✅ | 版本号 env 即可；**正文**（`hengde.auth.agreement-text`）是长文本，放服务器 `application-prod.yaml`（守卫强校验非占位） |
+| `HENGDE_ACTIVITY_EMERGENCYPHONE` | 可选 | 活动现场「紧急上报」预设电话（小程序负责人端 `tel:` 拨号，不配则前端隐藏入口） |
 | `LOGGING_LEVEL_COM_HENGDE` | 可选 | base 默认已是 `INFO`；dev profile 下为 `DEBUG`，需要更细可覆盖 |
 
 ⚠️ **AES/HMAC 密钥极其关键**：志愿者身份证/手机号用它加密入库。
@@ -79,8 +83,9 @@
 
 ## 6. 上线后冒烟验证
 
-- [ ] `https://域名/api/doc.html` 能打开（或确认生产是否关闭文档）。
-- [ ] 管理端：`admin` 强密码登录成功 → 发活动 / 建公告 / 建分队成功。
+- [ ] 后端在线：`curl -i https://域名/api/a/auth/login -X POST` 返回 JSON 错误体即在线。**`/api/doc.html` 应为 403**——生产 nginx 已屏蔽接口文档（预期行为；联调需要时临时注释 `部署/nginx.conf` 对应 location，或服务器本机直连 `:8080` 访问）。
+- [ ] **管理后台**：`https://域名/` 打开登录页（控制台无报错）→ `admin` 强密码登录 → 概览**数据看板有数字**、待办卡按权限显示；`https://域名/README.md`、`/uploads/...` 均 403。
+- [ ] 管理端：发活动 / 建公告 / 建分队成功。
 - [ ] 志愿者端（真机体验版）：微信登录拿到 token → 收到**真实短信**验证码 → 实名注册 → 看活动 → 报名/取消 → 看公告 → 全局搜索。
 - [ ] 上传一张图（头像/活动图），确认是**真实 OSS URL** 且能访问。
 - [ ] 报名审核：管理端通过/拒绝，志愿者端「我的报名」状态正确。

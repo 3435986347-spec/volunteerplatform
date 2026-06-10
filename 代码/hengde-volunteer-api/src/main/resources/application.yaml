@@ -18,6 +18,12 @@ spring:
       host: localhost
       port: 6379
       database: 0
+  servlet:
+    multipart:
+      # 上传链路三层对齐：nginx client_max_body_size 16m > 此处 12MB > 业务校验 FileValidator 10MB。
+      # 略高于业务上限，让 FileValidator 的友好报错先生效（Spring 默认 max-file-size=1MB 会先拦掉大图）。
+      max-file-size: 12MB
+      max-request-size: 15MB
 
 server:
   port: 8080
