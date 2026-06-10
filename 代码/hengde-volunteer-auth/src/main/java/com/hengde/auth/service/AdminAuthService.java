@@ -32,6 +32,7 @@ public class AdminAuthService {
 
     private AdminUserMapper adminUserMapper;
     private VerifyCodeService verifyCodeService;
+    private LoginProtectionService loginProtectionService;
 
     @Autowired
     public void setAdminUserMapper(AdminUserMapper adminUserMapper) {
@@ -43,18 +44,31 @@ public class AdminAuthService {
         this.verifyCodeService = verifyCodeService;
     }
 
+    @Autowired
+    public void setLoginProtectionService(LoginProtectionService loginProtectionService) {
+        this.loginProtectionService = loginProtectionService;
+    }
+
     /**
-     * 账号密码登录，返回 token。
+     * 账号密码登录，返回 token。带防爆破：账号/IP 失败计数达上限即临时锁定
+     * （见 {@link LoginProtectionService}），成功则清零账号计数。
+     *
+     * @param dto      账号密码
+     * @param clientIp 来源 IP（控制器经 {@code IpUtil.getClientIp} 取得；可空，空则跳过 IP 维度限流）
      */
-    public String login(AdminLoginDTO dto) {
+    public String login(AdminLoginDTO dto, String clientIp) {
+        loginProtectionService.checkNotLocked(dto.getUsername(), clientIp);
         AdminUser admin = adminUserMapper.selectOne(
                 Wrappers.<AdminUser>lambdaQuery().eq(AdminUser::getUsername, dto.getUsername()));
         if (admin == null || !PasswordUtil.matches(dto.getPassword(), admin.getPassword())) {
+            // 凭据错误才计失败；禁用账号不计（口令正确，不属爆破信号）
+            loginProtectionService.onLoginFailed(dto.getUsername(), clientIp);
             throw new BusinessException(ResultCode.PASSWORD_ERROR.getCode(), "账号或密码错误");
         }
         if (admin.getStatus() != null && admin.getStatus().equals(UserStatus.BANNED)) {
             throw new BusinessException("账号已被禁用");
         }
+        loginProtectionService.onLoginSucceeded(dto.getUsername());
         StpAdminUtil.login(admin.getId());
 
         admin.setLastLoginTime(LocalDateTime.now());
@@ -64,14 +78,17 @@ public class AdminAuthService {
 
     /**
      * 发送找回密码短信验证码（手机号须已绑定后台账号）。
+     *
+     * @param phone    手机号
+     * @param clientIp 来源 IP（用于发送限流，可空）
      */
-    public void sendResetSmsCode(String phone) {
+    public void sendResetSmsCode(String phone, String clientIp) {
         AdminUser admin = adminUserMapper.selectOne(
                 Wrappers.<AdminUser>lambdaQuery().eq(AdminUser::getPhone, phone));
         if (admin == null) {
             throw new BusinessException("该手机号未绑定后台账号");
         }
-        verifyCodeService.sendCode(phone, SmsScene.RESET_PASSWORD);
+        verifyCodeService.sendCode(phone, SmsScene.RESET_PASSWORD, clientIp);
     }
 
     /**

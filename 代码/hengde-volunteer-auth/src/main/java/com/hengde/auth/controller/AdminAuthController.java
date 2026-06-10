@@ -6,8 +6,10 @@ import com.hengde.auth.dto.AdminResetPasswordDTO;
 import com.hengde.auth.dto.SmsCodeDTO;
 import com.hengde.auth.service.AdminAuthService;
 import com.hengde.common.result.Result;
+import com.hengde.common.utils.IpUtil;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -35,14 +37,14 @@ public class AdminAuthController {
 
     @Operation(summary = "账号密码登录")
     @PostMapping("/login")
-    public Result<String> login(@RequestBody @Valid AdminLoginDTO dto) {
-        return Result.ok(adminAuthService.login(dto));
+    public Result<String> login(@RequestBody @Valid AdminLoginDTO dto, HttpServletRequest request) {
+        return Result.ok(adminAuthService.login(dto, IpUtil.getClientIp(request)));
     }
 
     @Operation(summary = "发送短信验证码（找回密码）")
     @PostMapping("/sms/codes")
-    public Result<Void> sendSmsCode(@RequestBody @Valid SmsCodeDTO dto) {
-        adminAuthService.sendResetSmsCode(dto.getPhone());
+    public Result<Void> sendSmsCode(@RequestBody @Valid SmsCodeDTO dto, HttpServletRequest request) {
+        adminAuthService.sendResetSmsCode(dto.getPhone(), IpUtil.getClientIp(request));
         return Result.ok();
     }
 

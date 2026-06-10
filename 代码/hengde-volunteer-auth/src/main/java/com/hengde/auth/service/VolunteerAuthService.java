@@ -167,9 +167,12 @@ public class VolunteerAuthService {
 
     /**
      * 发送注册短信验证码。
+     *
+     * @param phone    手机号
+     * @param clientIp 来源 IP（用于发送限流，可空；接口公开，限流是该入口唯一的滥用闸门）
      */
-    public void sendRegisterSmsCode(String phone) {
-        verifyCodeService.sendCode(phone, SmsScene.REGISTER);
+    public void sendRegisterSmsCode(String phone, String clientIp) {
+        verifyCodeService.sendCode(phone, SmsScene.REGISTER, clientIp);
     }
 
     /**

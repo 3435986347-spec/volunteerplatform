@@ -10,8 +10,10 @@ import com.hengde.auth.vo.AgreementVO;
 import com.hengde.auth.vo.GroupMembershipVO;
 import com.hengde.auth.vo.LoginVO;
 import com.hengde.common.result.Result;
+import com.hengde.common.utils.IpUtil;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -46,8 +48,8 @@ public class VolunteerAuthController {
 
     @Operation(summary = "发送短信验证码（注册）")
     @PostMapping("/sms/codes")
-    public Result<Void> sendSmsCode(@RequestBody @Valid SmsCodeDTO dto) {
-        volunteerAuthService.sendRegisterSmsCode(dto.getPhone());
+    public Result<Void> sendSmsCode(@RequestBody @Valid SmsCodeDTO dto, HttpServletRequest request) {
+        volunteerAuthService.sendRegisterSmsCode(dto.getPhone(), IpUtil.getClientIp(request));
         return Result.ok();
     }
 

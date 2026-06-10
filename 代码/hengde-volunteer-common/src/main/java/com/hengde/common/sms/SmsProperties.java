@@ -52,4 +52,16 @@ public class SmsProperties {
 
     /** 同一手机号同一场景的重发间隔（秒），间隔内重复请求会被拦截 */
     private int codeResendSeconds = 60;
+
+    /** 同一条验证码最多允许的校验失败次数，达到即作废须重新获取（防有效期内暴力穷举 6 位码） */
+    private int verifyMaxAttempts = 5;
+
+    /** 同一手机号 24 小时内最多发送条数（跨场景累计；防对单个号码的短信轰炸与话费消耗） */
+    private int sendDailyCapPerPhone = 10;
+
+    /** 同一来源 IP 每小时最多发送条数（防脚本遍历号段批量发码）；调用方未传 IP 时该项不生效 */
+    private int sendHourlyCapPerIp = 10;
+
+    /** 同一来源 IP 24 小时内最多发送条数；调用方未传 IP 时该项不生效 */
+    private int sendDailyCapPerIp = 50;
 }

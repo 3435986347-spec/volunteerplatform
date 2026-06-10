@@ -42,6 +42,15 @@ public class AuthProperties {
     /** 志愿者协议正文（注册前阅读；默认占位，由协会方提供正式文本后经配置覆盖） */
     private String agreementText = DEFAULT_AGREEMENT_TEXT;
 
+    /** 同一账号在窗口内连续登录失败达到该次数即临时锁定（防在线撞库/爆破后台口令） */
+    private int loginMaxFailures = 5;
+
+    /** 登录失败计数窗口与锁定时长（秒），默认 15 分钟；达到上限时重置满时长 */
+    private int loginLockSeconds = 900;
+
+    /** 同一来源 IP 在窗口内登录失败上限（防换着账号喷洒式爆破）；未取到 IP 时该项不生效 */
+    private int loginIpMaxFailures = 20;
+
     /** 是否在启动时初始化超级管理员（不存在任何超管时才创建） */
     private boolean initSuperAdmin = true;
 
