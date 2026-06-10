@@ -8,48 +8,32 @@ function OverviewPage(props) {
   var [stats, setStats] = useState(null);   // 头部看板
   var [counts, setCounts] = useState({});   // key -> 待办数
 
-  // 待办卡片：code=菜单/卡片可见性；countPerm=该计数端点的真实权限（据此决定是否发请求，防 403）
+  // 待办卡片：code=卡片可见性；计数端点与权限(countPerm)走共享 TODO_SOURCES（shell.js，与侧边栏角标同源）
   var cards = [
-    { key: 'publishReview', label: '待审活动发布', icon: 'checkCircle', color: '#1677ff', target: 'activityReview',
-      code: 'activity:publish-audit', countPerm: 'activity:publish-audit',
-      path: '/a/activity/activities/pending-reviews', query: { status: 4, page: 1, size: 1 },
-      source: 'GET /a/activity/activities/pending-reviews?status=4' },
-    { key: 'group', label: '待审建组申请', icon: 'team', color: '#fa8c16', target: 'groups',
-      code: ['org:group-manage', 'org:group-audit'], countPerm: 'org:group-audit',
-      path: '/a/organization/groups/applications', query: { page: 1, size: 1 },
-      source: 'GET /a/organization/groups/applications' },
-    { key: 'squad', label: '待审分队加入', icon: 'squad', color: '#13a8a8', target: 'squads',
-      code: ['org:squad-manage', 'org:squad-audit'], countPerm: 'org:squad-audit',
-      path: '/a/organization/squads/applications', query: { status: 0, page: 1, size: 1 },
-      source: 'GET /a/organization/squads/applications?status=0' },
-    { key: 'enroll', label: '待审报名', icon: 'users', color: '#722ed1', target: 'enroll',
-      code: 'activity:enroll-view', countPerm: 'activity:enroll-view',
-      path: '/a/activity/enrollments', query: { status: 0, page: 1, size: 1 },
-      source: 'GET /a/activity/enrollments?status=0（全局）' },
-    { key: 'attendance', label: '待审考勤变更', icon: 'swap', color: '#2f54eb', target: 'attendance',
-      code: 'activity:attendance-audit', countPerm: 'activity:attendance-audit',
-      path: '/a/activity/attendance-changes', query: { status: 0, page: 1, size: 1 },
-      source: 'GET /a/activity/attendance-changes?status=0' },
-    { key: 'backfill', label: '待补录审核', icon: 'history', color: '#eb2f96', target: 'backfill',
-      code: 'activity:backfill-audit', countPerm: 'activity:backfill-audit',
-      path: '/a/activity/backfills', query: { status: 0, page: 1, size: 1 },
-      source: 'GET /a/activity/backfills?status=0' },
-    { key: 'service', label: '待秘书部确认时长', icon: 'award', color: '#52c41a', target: 'service',
-      code: ['activity:service-confirm', 'activity:points-grant'], countPerm: 'activity:service-confirm',
-      path: '/a/activity/service-records/pending', query: { page: 1, size: 1 },
-      source: 'GET /a/activity/service-records/pending' },
+    { key: 'publishReview', label: '待审活动发布', icon: 'checkCircle', color: '#1677ff', target: 'activityReview', code: 'activity:publish-audit', source: 'GET /a/activity/activities/pending-reviews?status=4' },
+    { key: 'group', label: '待审建组申请', icon: 'team', color: '#fa8c16', target: 'groups', code: ['org:group-manage', 'org:group-audit'], source: 'GET /a/organization/groups/applications' },
+    { key: 'squad', label: '待审分队加入', icon: 'squad', color: '#13a8a8', target: 'squads', code: ['org:squad-manage', 'org:squad-audit'], source: 'GET /a/organization/squads/applications?status=0' },
+    { key: 'enroll', label: '待审报名', icon: 'users', color: '#722ed1', target: 'enroll', code: 'activity:enroll-view', source: 'GET /a/activity/enrollments?status=0（全局）' },
+    { key: 'attendance', label: '待审考勤变更', icon: 'swap', color: '#2f54eb', target: 'attendance', code: 'activity:attendance-audit', source: 'GET /a/activity/attendance-changes?status=0' },
+    { key: 'backfill', label: '待补录审核', icon: 'history', color: '#eb2f96', target: 'backfill', code: 'activity:backfill-audit', source: 'GET /a/activity/backfills?status=0' },
+    { key: 'service', label: '待秘书部确认时长', icon: 'award', color: '#52c41a', target: 'service', code: ['activity:service-confirm', 'activity:points-grant'], source: 'GET /a/activity/service-records/pending' },
   ];
 
   useEffect(function () {
-    API.get('/a/data/dashboard').then(function (d) { setStats(d || {}); }).catch(function () { setStats({}); });
+    var cancelled = false;
+    setCounts({});   // 身份切换先清旧计数，防降权后残留（与侧边栏角标同口径）
+    API.get('/a/data/dashboard').then(function (d) { if (!cancelled) setStats(d || {}); }).catch(function () { if (!cancelled) setStats({}); });
     cards.forEach(function (c) {
-      if (!HD.hasPerm(id, c.countPerm)) return;   // 仅对有权账号发计数请求，避免 403
-      API.get(c.path, c.query).then(function (r) {
+      var s = TODO_SOURCES[c.key];
+      if (!s || !hasPerm(id, s.countPerm)) return;   // 仅对有权账号发计数请求，避免 403
+      API.get(s.path, s.query).then(function (r) {
+        if (cancelled) return;   // 丢弃旧身份的迟到响应
         var total = Number((r && r.total) || 0);
         setCounts(function (p) { var n = Object.assign({}, p); n[c.key] = total; return n; });
       }).catch(function () { /* 单卡失败不影响其它 */ });
     });
-  }, []);
+    return function () { cancelled = true; };
+  }, [id.isSuperAdmin, (id.permissionCodes || []).join('|')]);
 
   function statVal(field) {
     if (!stats || stats[field] == null) return null;
@@ -89,7 +73,7 @@ function OverviewPage(props) {
     // 待办入口
     React.createElement('div', { style: { fontSize: 13, fontWeight: 600, color: 'var(--text-2)', margin: '4px 0 12px' } }, '待办入口'),
     React.createElement('div', { className: 'stat-grid' }, cards.map(function (c) {
-      var canAccess = HD.hasPerm(id, c.code);
+      var canAccess = hasPerm(id, c.code);
       var hasCount = Object.prototype.hasOwnProperty.call(counts, c.key);
       var val = counts[c.key];
       return React.createElement('div', { key: c.key, className: 'stat-card' + (canAccess ? '' : ' disabled'),

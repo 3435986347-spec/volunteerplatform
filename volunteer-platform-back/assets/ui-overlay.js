@@ -237,7 +237,7 @@ var IdentityCtx = createContext(null);
 function useIdentity() { return useContext(IdentityCtx); }
 function Auth(props) {
   var id = useIdentity();
-  var ok = HD.hasPerm(id, props.code);
+  var ok = hasPerm(id, props.code);
   if (ok) return props.children;
   if (props.fallback) return props.fallback;
   if (props.disabled) {

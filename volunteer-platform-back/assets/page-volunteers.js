@@ -22,9 +22,9 @@ var VOL_GRADE_OPTS = [
 function VolunteersPage(props) {
   var id = props.identity;
   var canEdit = !!id.isSuperAdmin;                 // PUT 仅超管（user:edit 不入权限表）
-  var canStatus = HD.hasPerm(id, 'user:status');
-  var canDelete = HD.hasPerm(id, 'user:delete');
-  var canExport = HD.hasPerm(id, 'user:export');
+  var canStatus = hasPerm(id, 'user:status');
+  var canDelete = hasPerm(id, 'user:delete');
+  var canExport = hasPerm(id, 'user:export');
 
   var [kw, setKw] = useState('');
   var [gender, setGender] = useState('all');

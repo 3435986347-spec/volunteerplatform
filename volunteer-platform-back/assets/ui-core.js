@@ -1,9 +1,9 @@
 /* ============================================================
    UI 核心原语：按钮 / 标签 / 表单控件 / 状态映射 / 卡片
-   导出到 window 供其它 babel 脚本共享。
+   导出到 window 供其它 plain script 共享。
    ============================================================ */
 /* hooks (useState/useEffect/useRef/useCallback/createContext/useContext)
-   are provided as globals by a plain <script> in the HTML head before babel. */
+   are provided as globals by a plain <script> in the HTML before page scripts. */
 
 /* ---------- hooks ---------- */
 function useClickOutside(ref, onOut, active) {

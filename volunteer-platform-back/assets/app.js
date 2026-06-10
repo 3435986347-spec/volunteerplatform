@@ -34,7 +34,7 @@ var PAGE_COMPONENTS = {
   banners: BannersPage, announcements: AnnouncementsPage, files: FilesPage,
 };
 
-/* GET /a/auth/me 出参 → 现有 identity 形状（喂 HD.hasPerm / 顶栏 / 水印） */
+/* GET /a/auth/me 出参 → 现有 identity 形状（喂 hasPerm / 顶栏 / 水印） */
 function meToIdentity(me) {
   return {
     key: 'me', adminId: me.adminId, name: me.realName || me.username, account: me.username,
@@ -112,7 +112,7 @@ function App() {
   var [me, setMe] = useState(null);
   var [booting, setBooting] = useState(!!API.getToken()); // 有 token 才进恢复态，否则直接登录页
   // 真实登录后 me 优先；未登录/纯 mock 预览时回退到 Tweaks 身份
-  var identity = me || HD.IDENTITIES[t.identity] || HD.IDENTITIES.super;
+  var identity = me || PREVIEW_IDENTITIES[t.identity] || PREVIEW_IDENTITIES.super;
 
   useEffect(function () { applyPrimary(t.primaryColor); }, [t.primaryColor]);
 
@@ -121,7 +121,7 @@ function App() {
   useEffect(function () {
     var navItem = null;
     NAV_GROUPS.forEach(function (g) { g.items.forEach(function (it) { if (it.key === page) navItem = it; }); });
-    if (navItem && !HD.hasPerm(identity, navItem.code)) setPage('overview');
+    if (navItem && !hasPerm(identity, navItem.code)) setPage('overview');
   }, [page, identity.isSuperAdmin, identity.permissionCodes.join('|')]);
 
   // 真实登录：拿 token → /a/auth/me → 用真实权限码驱动菜单/按钮
@@ -157,13 +157,13 @@ function App() {
   function navAllowed(key) {
     var item = null;
     NAV_GROUPS.forEach(function (g) { g.items.forEach(function (it) { if (it.key === key) item = it; }); });
-    return !item || HD.hasPerm(identity, item.code);
+    return !item || hasPerm(identity, item.code);
   }
   function nav(key) {
     if (!navAllowed(key)) { window.message && window.message.error('无权限访问该页面'); return; }
     setPage(key); document.querySelector('.content-scroll') && (document.querySelector('.content-scroll').scrollTop = 0);
   }
-  function setIdentity(key) { setTweak('identity', key); window.message.info('已切换身份：' + (HD.IDENTITIES[key] ? HD.IDENTITIES[key].roleLabel : key)); }
+  function setIdentity(key) { setTweak('identity', key); window.message.info('已切换身份：' + (PREVIEW_IDENTITIES[key] ? PREVIEW_IDENTITIES[key].roleLabel : key)); }
 
   // 渲染前派生有效页：当前 page 无权限时直接渲染概览，避免无权页先 mount 一帧（其 load() 会打「登录即可」的列表接口）。
   // effect 仍会把 page 状态修正为 overview，但渲染不依赖它先跑。

@@ -39,21 +39,40 @@ var PAGE_TITLES = {
   banners: ['轮播图', '信息公示'], announcements: ['公告', '信息公示'], files: ['文件下载', '信息公示'],
 };
 
-/* 菜单徽标计数（待办） */
-function badgeCount(kind) {
-  if (kind === 'enroll') { var c = 0; Object.keys(HD.ENROLLMENTS).forEach(function (k) { HD.ENROLLMENTS[k].forEach(function (e) { if (e.enrollStatus === 0) c++; }); }); return c; }
-  if (kind === 'squad') { var sc = 0; Object.keys(HD.SQUAD_APPLICATIONS).forEach(function (k) { HD.SQUAD_APPLICATIONS[k].forEach(function (a) { if (a.status === 0) sc++; }); }); return sc; }
-  if (kind === 'publishReview') return HD.PENDING_ACTIVITIES.filter(function (r) { return r.status === 4; }).length;
-  if (kind === 'service') return HD.SERVICE_RECORDS.filter(function (r) { return r.secretaryStatus === 0; }).length;
-  if (kind === 'attendance') return HD.ATTENDANCE_CHANGES.filter(function (r) { return r.status === 0; }).length;
-  if (kind === 'backfill') return HD.BACKFILLS.filter(function (r) { return r.status === 0; }).length;
-  if (kind === 'group') return HD.GROUP_APPLICATIONS.filter(function (r) { return r.status === 0; }).length;
-  return 0;
-}
+/* 菜单徽标「待办计数」数据源：kind → { path, query, countPerm }。
+   与概览页 7 张待办卡同源（page-overview.js 复用本表）。侧边栏只对当前账号
+   有 countPerm 权限的项发请求（size=1 取 total），避免无权账号触发 403。
+   countPerm = 各计数端点的真实权限：group/squad 列表端点需 audit；service /pending 需 service-confirm；
+   attendance/backfill 列表端点仅登录，但仍按 audit 码取数（只有审核者关心该角标）。 */
+var TODO_SOURCES = {
+  publishReview: { path: '/a/activity/activities/pending-reviews', query: { status: 4, page: 1, size: 1 }, countPerm: 'activity:publish-audit' },
+  enroll:        { path: '/a/activity/enrollments',                query: { status: 0, page: 1, size: 1 }, countPerm: 'activity:enroll-view' },
+  service:       { path: '/a/activity/service-records/pending',    query: { page: 1, size: 1 },            countPerm: 'activity:service-confirm' },
+  attendance:    { path: '/a/activity/attendance-changes',         query: { status: 0, page: 1, size: 1 }, countPerm: 'activity:attendance-audit' },
+  backfill:      { path: '/a/activity/backfills',                  query: { status: 0, page: 1, size: 1 }, countPerm: 'activity:backfill-audit' },
+  group:         { path: '/a/organization/groups/applications',    query: { page: 1, size: 1 },            countPerm: 'org:group-audit' },
+  squad:         { path: '/a/organization/squads/applications',    query: { status: 0, page: 1, size: 1 }, countPerm: 'org:squad-audit' },
+};
 
 /* ---------- 侧边栏 ---------- */
 function Sidebar(props) {
   var id = props.identity, collapsed = props.collapsed, active = props.active;
+  var [badges, setBadges] = useState({});
+  // 侧边栏常驻、不随翻页重挂；按身份权限变化（重登/切身份）重取各待办端点 total 作角标。
+  useEffect(function () {
+    var cancelled = false;
+    setBadges({});   // 先清旧身份角标：高权→低权切换时，无 countPerm 的项不再发请求，旧数不残留
+    Object.keys(TODO_SOURCES).forEach(function (kind) {
+      var s = TODO_SOURCES[kind];
+      if (!hasPerm(id, s.countPerm)) return;   // 仅对有权账号发计数请求，避免 403
+      API.get(s.path, s.query).then(function (r) {
+        if (cancelled) return;   // 身份已再次切换：丢弃旧身份的迟到响应，防清空后又写回
+        var total = Number((r && r.total) || 0);
+        setBadges(function (p) { var n = Object.assign({}, p); n[kind] = total; return n; });
+      }).catch(function () { /* 单项失败不影响其它角标 */ });
+    });
+    return function () { cancelled = true; };
+  }, [id.isSuperAdmin, (id.permissionCodes || []).join('|')]);
   return React.createElement('div', { className: 'sider' + (collapsed ? ' collapsed' : '') },
     React.createElement('div', { className: 'sider-logo' },
       React.createElement('span', { className: 'logo-mark' }, '恒德'),
@@ -61,12 +80,12 @@ function Sidebar(props) {
         React.createElement('b', null, '恒德志愿者平台'),
         React.createElement('span', null, '运营管理后台'))),
     React.createElement('div', { className: 'menu' }, NAV_GROUPS.map(function (g, gi) {
-      var visible = g.items.filter(function (it) { return HD.hasPerm(id, it.code); });
+      var visible = g.items.filter(function (it) { return hasPerm(id, it.code); });
       if (visible.length === 0) return null;
       return React.createElement('div', { key: gi },
         g.label ? React.createElement('div', { className: 'menu-group-label' }, g.label) : null,
         visible.map(function (it) {
-          var bc = it.badge ? badgeCount(it.badge) : 0;
+          var bc = it.badge ? (badges[it.badge] || 0) : 0;
           return React.createElement('div', { key: it.key, className: 'menu-item' + (active === it.key ? ' active' : ''),
             onClick: function () { props.onNav(it.key); }, title: collapsed ? it.label : undefined },
             React.createElement('span', { className: 'mi-icon' }, React.createElement(Icon, { name: it.icon, size: 17 })),
@@ -158,4 +177,4 @@ function Watermark(props) {
   return React.createElement('div', { className: 'watermark', style: { backgroundImage: 'url(' + url + ')' } });
 }
 
-Object.assign(window, { NAV_GROUPS: NAV_GROUPS, Sidebar: Sidebar, Topbar: Topbar, Watermark: Watermark, badgeCount: badgeCount, PAGE_TITLES: PAGE_TITLES });
+Object.assign(window, { NAV_GROUPS: NAV_GROUPS, Sidebar: Sidebar, Topbar: Topbar, Watermark: Watermark, TODO_SOURCES: TODO_SOURCES, PAGE_TITLES: PAGE_TITLES });

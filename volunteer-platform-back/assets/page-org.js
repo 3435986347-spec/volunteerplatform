@@ -9,8 +9,8 @@
 /* ---------- 4. 志愿小组 ---------- */
 function GroupsPage(props) {
   var id = props.identity;
-  var canManage = HD.hasPerm(id, 'org:group-manage');
-  var canAudit = HD.hasPerm(id, 'org:group-audit');
+  var canManage = hasPerm(id, 'org:group-manage');
+  var canAudit = hasPerm(id, 'org:group-audit');
   var [tab, setTab] = useState(canManage ? 'list' : 'apply');
   var [kw, setKw] = useState('');
   var [page, setPage] = useState(1);
@@ -177,8 +177,8 @@ function GroupImportDrawer(props) {
 /* ---------- 5. 归属分队 ---------- */
 function SquadsPage(props) {
   var id = props.identity;
-  var canManage = HD.hasPerm(id, 'org:squad-manage');
-  var canAudit = HD.hasPerm(id, 'org:squad-audit');
+  var canManage = hasPerm(id, 'org:squad-manage');
+  var canAudit = hasPerm(id, 'org:squad-audit');
   var [list, setList] = useState([]);
   var [loading, setLoading] = useState(false);
   var [err, setErr] = useState(false);

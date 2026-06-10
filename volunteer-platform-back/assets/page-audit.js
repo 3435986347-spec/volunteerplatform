@@ -6,7 +6,7 @@
      考勤变更：GET /a/activity/attendance-changes?status=  + POST …/{id}/approve|reject {reason}（attendance-audit）
      活动补录：GET /a/activity/backfills?status=           + POST …/{id}/approve|reject {reason}（backfill-audit）
    注：confirm/grant 作用于 attendanceId（非 service-record id）；积分由后端按 基数×角色倍率×系数 计算。
-   datePart/fmtRange 复用 page-activities.jsx 全局函数。
+   datePart/fmtRange 复用 page-activities.js 全局函数。
    ============================================================ */
 function fmtDur(min) { min = Number(min) || 0; var h = Math.floor(min / 60), m = min % 60; return h + ' 小时' + (m ? ' ' + m + ' 分' : ''); }
 function changeTypeLabel(t) { return t === 1 ? '签到时间' : t === 2 ? '签退时间' : t === 3 ? '积分' : '变更'; }
@@ -15,8 +15,8 @@ function chgVal(t, v) { if (v == null || v === '') return '—'; return (t === 1
 /* ---------- 10. 服务记录与积分 ---------- */
 function ServicePage(props) {
   var id = props.identity;
-  var canConfirm = HD.hasPerm(id, 'activity:service-confirm');
-  var canGrant = HD.hasPerm(id, 'activity:points-grant');
+  var canConfirm = hasPerm(id, 'activity:service-confirm');
+  var canGrant = hasPerm(id, 'activity:points-grant');
   var [tab, setTab] = useState(canConfirm ? 'pending' : 'all'); // 'pending' 待确认（可确认列表） | 'all' 全部
   var [page, setPage] = useState(1);
   var [list, setList] = useState([]);
@@ -93,7 +93,7 @@ function GrantPointsModal(props) {
 /* ---------- 11. 考勤变更审核 ---------- */
 function AttendanceChangePage(props) {
   var id = props.identity;
-  var canAudit = HD.hasPerm(id, 'activity:attendance-audit');
+  var canAudit = hasPerm(id, 'activity:attendance-audit');
   var [tab, setTab] = useState('0');
   var [page, setPage] = useState(1);
   var [list, setList] = useState([]);
@@ -154,7 +154,7 @@ function AttendanceChangePage(props) {
 /* ---------- 12. 活动补录审核 ---------- */
 function BackfillPage(props) {
   var id = props.identity;
-  var canAudit = HD.hasPerm(id, 'activity:backfill-audit');
+  var canAudit = hasPerm(id, 'activity:backfill-audit');
   var [tab, setTab] = useState('0');
   var [page, setPage] = useState(1);
   var [list, setList] = useState([]);

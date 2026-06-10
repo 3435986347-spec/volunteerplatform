@@ -68,8 +68,8 @@ function ActivitiesPage(props) {
     { title: '状态', key: 'status', width: 100, align: 'center', render: function (r) { return actStatusTag(r.status); } },
     { title: '操作', key: 'act', width: 220, render: function (r) {
       var moreItems = [];
-      if (HD.hasPerm(id, 'activity:publish')) moreItems.push({ icon: 'copy', label: '复制活动', onClick: function () { copyActivity(r); } });
-      if (HD.hasPerm(id, 'activity:delete')) {
+      if (hasPerm(id, 'activity:publish')) moreItems.push({ icon: 'copy', label: '复制活动', onClick: function () { copyActivity(r); } });
+      if (hasPerm(id, 'activity:delete')) {
         if (moreItems.length) moreItems.push({ divider: true });
         moreItems.push({ icon: 'trash', label: '删除', danger: true, onClick: function () { delActivity(r); } });
       }

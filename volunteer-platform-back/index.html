@@ -16,12 +16,14 @@
 <body>
 <div id="root"></div>
 
-<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<!-- React 生产版（本地 vendor）：M5 生产硬化已去掉 unpkg CDN 与运行期 @babel/standalone；
+     全部 assets/*.js 均为纯 React.createElement，以普通 <script> 加载（见下）。 -->
+<script src="assets/vendor/react.production.min.js"></script>
+<script src="assets/vendor/react-dom.production.min.js"></script>
 
-<!-- 全局数据 + 权限模型（plain） -->
-<script src="assets/data.js"></script>
+<!-- 前端权限模型 + 预览身份（plain，须在页面脚本之前） -->
+<script src="assets/authz.js"></script>
+<script src="assets/preview-identities.js"></script>
 <!-- 真实接口基址：经 nginx 同源反代(80/443)用 '/api'；本地静态服务器(其它端口)直连后端 8080(CORS 已开) -->
 <script>
   window.__API_BASE__ = (location.port === '' || location.port === '80' || location.port === '443')
@@ -38,28 +40,28 @@
   window.__AMAP_SECURITY_CODE__ = '';
   window.__AMAP_SERVICE_HOST__ = '';
 </script>
-<!-- 共享 hooks 全局别名（plain，须在 babel 脚本之前） -->
+<!-- 共享 hooks 全局别名（plain，须在 React 之后、页面脚本之前） -->
 <script>
   var useState = React.useState, useEffect = React.useEffect, useRef = React.useRef,
       useCallback = React.useCallback, createContext = React.createContext, useContext = React.useContext;
 </script>
 
-<!-- UI 与页面（babel） -->
-<script type="text/babel" src="assets/icons.jsx"></script>
-<script type="text/babel" src="assets/ui-core.jsx"></script>
-<script type="text/babel" src="assets/ui-overlay.jsx"></script>
-<script type="text/babel" src="assets/ui-upload.jsx"></script>
-<script type="text/babel" src="assets/tweaks-panel.jsx"></script>
-<script type="text/babel" src="assets/shell.jsx"></script>
-<script type="text/babel" src="assets/page-overview.jsx"></script>
-<script type="text/babel" src="assets/page-volunteers.jsx"></script>
-<script type="text/babel" src="assets/page-activities.jsx"></script>
-<script type="text/babel" src="assets/page-activity-review.jsx"></script>
-<script type="text/babel" src="assets/page-enroll.jsx"></script>
-<script type="text/babel" src="assets/page-audit.jsx"></script>
-<script type="text/babel" src="assets/page-org.jsx"></script>
-<script type="text/babel" src="assets/page-org2.jsx"></script>
-<script type="text/babel" src="assets/page-publicity.jsx"></script>
-<script type="text/babel" src="assets/app.jsx"></script>
+<!-- UI 与页面（普通脚本；已去 Babel，文件均为纯 React.createElement） -->
+<script src="assets/icons.js"></script>
+<script src="assets/ui-core.js"></script>
+<script src="assets/ui-overlay.js"></script>
+<script src="assets/ui-upload.js"></script>
+<script src="assets/tweaks-panel.js"></script>
+<script src="assets/shell.js"></script>
+<script src="assets/page-overview.js"></script>
+<script src="assets/page-volunteers.js"></script>
+<script src="assets/page-activities.js"></script>
+<script src="assets/page-activity-review.js"></script>
+<script src="assets/page-enroll.js"></script>
+<script src="assets/page-audit.js"></script>
+<script src="assets/page-org.js"></script>
+<script src="assets/page-org2.js"></script>
+<script src="assets/page-publicity.js"></script>
+<script src="assets/app.js"></script>
 </body>
 </html>

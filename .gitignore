@@ -67,3 +67,7 @@ secrets/
 # 解压后的目录（hengde-volunteer-admin-mock/、hengde-volunteer-miniprogram/）已入库，
 # 原始下载 zip 与其重复，不入库
 *.zip
+
+# --- 杂项本地产物 ---
+# 后台前端原型本地预览生成的临时缩略图目录，不入库
+**/.thumbnail

@@ -5,14 +5,14 @@
      GET    /a/activity/activities/{id}/enrollments/export    导出 Excel（enroll-export）
      POST   /a/activity/enrollments/{id}/approve|reject       审核（enroll-audit）
      DELETE /a/activity/enrollments/{id}                      删除（enroll-delete）
-   注：行=按时间段(slot)的报名记录；status 0待审/1已通过/2已拒绝/3已取消。fmtRange 复用 page-activities.jsx。
+   注：行=按时间段(slot)的报名记录；status 0待审/1已通过/2已拒绝/3已取消。fmtRange 复用 page-activities.js。
    选活动用 GET /a/activity/activities（activity:menu）；若无该权限则回退手动输入活动 ID。
    ============================================================ */
 function EnrollPage(props) {
   var id = props.identity;
-  var canView = HD.hasPerm(id, 'activity:enroll-view');
-  var canAudit = HD.hasPerm(id, 'activity:enroll-audit');
-  var canDel = HD.hasPerm(id, 'activity:enroll-delete');
+  var canView = hasPerm(id, 'activity:enroll-view');
+  var canAudit = hasPerm(id, 'activity:enroll-audit');
+  var canDel = hasPerm(id, 'activity:enroll-delete');
   var [acts, setActs] = useState([]);
   var [actsErr, setActsErr] = useState(false);
   var [manualId, setManualId] = useState('');

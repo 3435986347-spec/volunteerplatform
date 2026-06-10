@@ -1,58 +1,23 @@
 
 /* BEGIN USAGE */
-// tweaks-panel.jsx
+// tweaks-panel.js
 // Reusable Tweaks shell + form-control helpers.
 // Exports (to window): useTweaks, TweaksPanel, TweakSection, TweakRow, TweakSlider,
 //   TweakToggle, TweakRadio, TweakSelect, TweakText, TweakNumber, TweakColor, TweakButton.
 //
+// 注：本文件原用 JSX，为去掉运行期 Babel（M5 生产硬化）已整体改写为 React.createElement，
+//   与其余 assets/*.js 一致；行为不变。以普通 <script> 加载（非 type="text/babel"）。
+//
 // Owns the host protocol (listens for __activate_edit_mode / __deactivate_edit_mode,
 // posts __edit_mode_available / __edit_mode_set_keys / __edit_mode_dismissed) so
 // individual prototypes don't re-roll it. Ships a consistent set of controls so you
-// don't hand-draw <input type="range">, segmented radios, steppers, etc.
-//
-// Usage (in an HTML file that loads React + Babel):
-//
-//   const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
-//     "primaryColor": "#D97757",
-//     "palette": ["#D97757", "#29261b", "#f6f4ef"],
-//     "fontSize": 16,
-//     "density": "regular",
-//     "dark": false
-//   }/*EDITMODE-END*/;
-//
-//   function App() {
-//     const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
-//     return (
-//       <div style={{ fontSize: t.fontSize, color: t.primaryColor }}>
-//         Hello
-//         <TweaksPanel>
-//           <TweakSection label="Typography" />
-//           <TweakSlider label="Font size" value={t.fontSize} min={10} max={32} unit="px"
-//                        onChange={(v) => setTweak('fontSize', v)} />
-//           <TweakRadio  label="Density" value={t.density}
-//                        options={['compact', 'regular', 'comfy']}
-//                        onChange={(v) => setTweak('density', v)} />
-//           <TweakSection label="Theme" />
-//           <TweakColor  label="Primary" value={t.primaryColor}
-//                        options={['#D97757', '#2A6FDB', '#1F8A5B', '#7A5AE0']}
-//                        onChange={(v) => setTweak('primaryColor', v)} />
-//           <TweakColor  label="Palette" value={t.palette}
-//                        options={[['#D97757', '#29261b', '#f6f4ef'],
-//                                  ['#475569', '#0f172a', '#f1f5f9']]}
-//                        onChange={(v) => setTweak('palette', v)} />
-//           <TweakToggle label="Dark mode" value={t.dark}
-//                        onChange={(v) => setTweak('dark', v)} />
-//         </TweaksPanel>
-//       </div>
-//     );
-//   }
+// don't hand-draw range inputs, segmented radios, steppers, etc.
 //
 // TweakRadio is the segmented control for 2–3 short options (auto-falls-back to
 // TweakSelect past ~16/~10 chars per label); reach for TweakSelect directly when
 // options are many or long. For color tweaks always curate 3-4 options rather than
 // a free picker; an option can also be a whole 2–5 color palette (the stored value
-// is the array). The Tweak* controls are a floor, not a ceiling — build custom
-// controls inside the panel if a tweak calls for UI they don't cover.
+// is the array). The Tweak* controls are a floor, not a ceiling.
 /* END USAGE */
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -179,20 +144,15 @@ function useTweaks(defaults) {
       ? keyOrEdits : { [keyOrEdits]: val };
     setValues((prev) => ({ ...prev, ...edits }));
     window.parent.postMessage({ type: '__edit_mode_set_keys', edits }, '*');
-    // Same-window signal so in-page listeners (deck-stage rail thumbnails)
-    // can react — the parent message only reaches the host, not peers.
+    // Same-window signal so in-page listeners can react — the parent message
+    // only reaches the host, not peers.
     window.dispatchEvent(new CustomEvent('tweakchange', { detail: edits }));
   }, []);
   return [values, setTweak];
 }
 
 // ── TweaksPanel ─────────────────────────────────────────────────────────────
-// Floating shell. Registers the protocol listener BEFORE announcing
-// availability — if the announce ran first, the host's activate could land
-// before our handler exists and the toolbar toggle would silently no-op.
-// The close button posts __edit_mode_dismissed so the host's toolbar toggle
-// flips off in lockstep; the host echoes __deactivate_edit_mode back which
-// is what actually hides the panel.
+// Floating shell. Registers the protocol listener BEFORE announcing availability.
 function TweaksPanel({ title = 'Tweaks', children }) {
   const [open, setOpen] = React.useState(false);
   const dragRef = React.useRef(null);
@@ -227,7 +187,7 @@ function TweaksPanel({ title = 'Tweaks', children }) {
 
   React.useEffect(() => {
     const onMsg = (e) => {
-      const t = e?.data?.type;
+      const t = e && e.data && e.data.type;
       if (t === '__activate_edit_mode') setOpen(true);
       else if (t === '__deactivate_edit_mode') setOpen(false);
     };
@@ -264,68 +224,54 @@ function TweaksPanel({ title = 'Tweaks', children }) {
   };
 
   if (!open) return null;
-  return (
-    <>
-      <style>{__TWEAKS_STYLE}</style>
-      <div ref={dragRef} className="twk-panel" data-omelette-chrome=""
-           style={{ right: offsetRef.current.x, bottom: offsetRef.current.y }}>
-        <div className="twk-hd" onMouseDown={onDragStart}>
-          <b>{title}</b>
-          <button className="twk-x" aria-label="Close tweaks"
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onClick={dismiss}>✕</button>
-        </div>
-        <div className="twk-body">
-          {children}
-        </div>
-      </div>
-    </>
-  );
+  return React.createElement(React.Fragment, null,
+    React.createElement('style', null, __TWEAKS_STYLE),
+    React.createElement('div', {
+        ref: dragRef, className: 'twk-panel', 'data-omelette-chrome': '',
+        style: { right: offsetRef.current.x, bottom: offsetRef.current.y },
+      },
+      React.createElement('div', { className: 'twk-hd', onMouseDown: onDragStart },
+        React.createElement('b', null, title),
+        React.createElement('button', {
+          className: 'twk-x', 'aria-label': 'Close tweaks',
+          onMouseDown: (e) => e.stopPropagation(), onClick: dismiss,
+        }, '✕')),
+      React.createElement('div', { className: 'twk-body' }, children)));
 }
 
 // ── Layout helpers ──────────────────────────────────────────────────────────
 
 function TweakSection({ label, children }) {
-  return (
-    <>
-      <div className="twk-sect">{label}</div>
-      {children}
-    </>
-  );
+  return React.createElement(React.Fragment, null,
+    React.createElement('div', { className: 'twk-sect' }, label),
+    children);
 }
 
 function TweakRow({ label, value, children, inline = false }) {
-  return (
-    <div className={inline ? 'twk-row twk-row-h' : 'twk-row'}>
-      <div className="twk-lbl">
-        <span>{label}</span>
-        {value != null && <span className="twk-val">{value}</span>}
-      </div>
-      {children}
-    </div>
-  );
+  return React.createElement('div', { className: inline ? 'twk-row twk-row-h' : 'twk-row' },
+    React.createElement('div', { className: 'twk-lbl' },
+      React.createElement('span', null, label),
+      value != null ? React.createElement('span', { className: 'twk-val' }, value) : null),
+    children);
 }
 
 // ── Controls ────────────────────────────────────────────────────────────────
 
 function TweakSlider({ label, value, min = 0, max = 100, step = 1, unit = '', onChange }) {
-  return (
-    <TweakRow label={label} value={`${value}${unit}`}>
-      <input type="range" className="twk-slider" min={min} max={max} step={step}
-             value={value} onChange={(e) => onChange(Number(e.target.value))} />
-    </TweakRow>
-  );
+  return React.createElement(TweakRow, { label: label, value: `${value}${unit}` },
+    React.createElement('input', {
+      type: 'range', className: 'twk-slider', min: min, max: max, step: step,
+      value: value, onChange: (e) => onChange(Number(e.target.value)),
+    }));
 }
 
 function TweakToggle({ label, value, onChange }) {
-  return (
-    <div className="twk-row twk-row-h">
-      <div className="twk-lbl"><span>{label}</span></div>
-      <button type="button" className="twk-toggle" data-on={value ? '1' : '0'}
-              role="switch" aria-checked={!!value}
-              onClick={() => onChange(!value)}><i /></button>
-    </div>
-  );
+  return React.createElement('div', { className: 'twk-row twk-row-h' },
+    React.createElement('div', { className: 'twk-lbl' }, React.createElement('span', null, label)),
+    React.createElement('button', {
+      type: 'button', className: 'twk-toggle', 'data-on': value ? '1' : '0',
+      role: 'switch', 'aria-checked': !!value, onClick: () => onChange(!value),
+    }, React.createElement('i', null)));
 }
 
 function TweakRadio({ label, value, options, onChange }) {
@@ -336,11 +282,8 @@ function TweakRadio({ label, value, options, onChange }) {
   const valueRef = React.useRef(value);
   valueRef.current = value;
 
-  // Segments wrap mid-word once per-segment width runs out. The track is
-  // ~248px (280 panel − 28 body pad − 4 seg pad), each button loses 12px
-  // to its own padding, and 11.5px system-ui averages ~6.3px/char — so 2
-  // options fit ~16 chars each, 3 fit ~10. Past that (or >3 options), fall
-  // back to a dropdown rather than wrap.
+  // Segments wrap mid-word once per-segment width runs out; past ~16/~10 chars
+  // (or >3 options) fall back to a dropdown rather than wrap.
   const labelLen = (o) => String(typeof o === 'object' ? o.label : o).length;
   const maxLen = options.reduce((m, o) => Math.max(m, labelLen(o)), 0);
   const fitsAsSegments = maxLen <= ({ 2: 16, 3: 10 }[options.length] ?? 0);
@@ -351,8 +294,9 @@ function TweakRadio({ label, value, options, onChange }) {
       const m = options.find((o) => String(typeof o === 'object' ? o.value : o) === s);
       return m === undefined ? s : typeof m === 'object' ? m.value : m;
     };
-    return <TweakSelect label={label} value={value} options={options}
-                        onChange={(s) => onChange(resolve(s))} />;
+    return React.createElement(TweakSelect, {
+      label: label, value: value, options: options, onChange: (s) => onChange(resolve(s)),
+    });
   }
   const opts = options.map((o) => (typeof o === 'object' ? o : { value: o, label: o }));
   const idx = Math.max(0, opts.findIndex((o) => o.value === value));
@@ -383,44 +327,41 @@ function TweakRadio({ label, value, options, onChange }) {
     window.addEventListener('pointerup', up);
   };
 
-  return (
-    <TweakRow label={label}>
-      <div ref={trackRef} role="radiogroup" onPointerDown={onPointerDown}
-           className={dragging ? 'twk-seg dragging' : 'twk-seg'}>
-        <div className="twk-seg-thumb"
-             style={{ left: `calc(2px + ${idx} * (100% - 4px) / ${n})`,
-                      width: `calc((100% - 4px) / ${n})` }} />
-        {opts.map((o) => (
-          <button key={o.value} type="button" role="radio" aria-checked={o.value === value}>
-            {o.label}
-          </button>
-        ))}
-      </div>
-    </TweakRow>
-  );
+  return React.createElement(TweakRow, { label: label },
+    React.createElement('div', {
+        ref: trackRef, role: 'radiogroup', onPointerDown: onPointerDown,
+        className: dragging ? 'twk-seg dragging' : 'twk-seg',
+      },
+      React.createElement('div', {
+        className: 'twk-seg-thumb',
+        style: {
+          left: `calc(2px + ${idx} * (100% - 4px) / ${n})`,
+          width: `calc((100% - 4px) / ${n})`,
+        },
+      }),
+      opts.map((o) => React.createElement('button', {
+        key: o.value, type: 'button', role: 'radio', 'aria-checked': o.value === value,
+      }, o.label))));
 }
 
 function TweakSelect({ label, value, options, onChange }) {
-  return (
-    <TweakRow label={label}>
-      <select className="twk-field" value={value} onChange={(e) => onChange(e.target.value)}>
-        {options.map((o) => {
-          const v = typeof o === 'object' ? o.value : o;
-          const l = typeof o === 'object' ? o.label : o;
-          return <option key={v} value={v}>{l}</option>;
-        })}
-      </select>
-    </TweakRow>
-  );
+  return React.createElement(TweakRow, { label: label },
+    React.createElement('select', {
+        className: 'twk-field', value: value, onChange: (e) => onChange(e.target.value),
+      },
+      options.map((o) => {
+        const v = typeof o === 'object' ? o.value : o;
+        const l = typeof o === 'object' ? o.label : o;
+        return React.createElement('option', { key: v, value: v }, l);
+      })));
 }
 
 function TweakText({ label, value, placeholder, onChange }) {
-  return (
-    <TweakRow label={label}>
-      <input className="twk-field" type="text" value={value} placeholder={placeholder}
-             onChange={(e) => onChange(e.target.value)} />
-    </TweakRow>
-  );
+  return React.createElement(TweakRow, { label: label },
+    React.createElement('input', {
+      className: 'twk-field', type: 'text', value: value, placeholder: placeholder,
+      onChange: (e) => onChange(e.target.value),
+    }));
 }
 
 function TweakNumber({ label, value, min, max, step = 1, unit = '', onChange }) {
@@ -447,14 +388,13 @@ function TweakNumber({ label, value, min, max, step = 1, unit = '', onChange }) 
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
   };
-  return (
-    <div className="twk-num">
-      <span className="twk-num-lbl" onPointerDown={onScrubStart}>{label}</span>
-      <input type="number" value={value} min={min} max={max} step={step}
-             onChange={(e) => onChange(clamp(Number(e.target.value)))} />
-      {unit && <span className="twk-num-unit">{unit}</span>}
-    </div>
-  );
+  return React.createElement('div', { className: 'twk-num' },
+    React.createElement('span', { className: 'twk-num-lbl', onPointerDown: onScrubStart }, label),
+    React.createElement('input', {
+      type: 'number', value: value, min: min, max: max, step: step,
+      onChange: (e) => onChange(clamp(Number(e.target.value))),
+    }),
+    unit ? React.createElement('span', { className: 'twk-num-unit' }, unit) : null);
 }
 
 // Relative-luminance contrast pick — checkmarks drawn over a swatch need to
@@ -469,68 +409,58 @@ function __twkIsLight(hex) {
   return r * 299 + g * 587 + b * 114 > 148000;
 }
 
-const __TwkCheck = ({ light }) => (
-  <svg viewBox="0 0 14 14" aria-hidden="true">
-    <path d="M3 7.2 5.8 10 11 4.2" fill="none" strokeWidth="2.2"
-          strokeLinecap="round" strokeLinejoin="round"
-          stroke={light ? 'rgba(0,0,0,.78)' : '#fff'} />
-  </svg>
-);
+function __TwkCheck(props) {
+  return React.createElement('svg', { viewBox: '0 0 14 14', 'aria-hidden': 'true' },
+    React.createElement('path', {
+      d: 'M3 7.2 5.8 10 11 4.2', fill: 'none', strokeWidth: '2.2',
+      strokeLinecap: 'round', strokeLinejoin: 'round',
+      stroke: props.light ? 'rgba(0,0,0,.78)' : '#fff',
+    }));
+}
 
 // TweakColor — curated color/palette picker. Each option is either a single
-// hex string or an array of 1-5 hex strings; the card adapts — a lone color
-// renders solid, a palette renders colors[0] as the hero (left ~2/3) with the
-// rest stacked in a sharp column on the right. onChange emits the
-// option in the shape it was passed (string stays string, array stays array).
-// Without options it falls back to the native color input for back-compat.
+// hex string or an array of 1-5 hex strings; the card adapts. onChange emits the
+// option in the shape it was passed. Without options it falls back to the native
+// color input for back-compat.
 function TweakColor({ label, value, options, onChange }) {
   if (!options || !options.length) {
-    return (
-      <div className="twk-row twk-row-h">
-        <div className="twk-lbl"><span>{label}</span></div>
-        <input type="color" className="twk-swatch" value={value}
-               onChange={(e) => onChange(e.target.value)} />
-      </div>
-    );
+    return React.createElement('div', { className: 'twk-row twk-row-h' },
+      React.createElement('div', { className: 'twk-lbl' }, React.createElement('span', null, label)),
+      React.createElement('input', {
+        type: 'color', className: 'twk-swatch', value: value,
+        onChange: (e) => onChange(e.target.value),
+      }));
   }
   // Native <input type=color> emits lowercase hex per the HTML spec, so
-  // compare case-insensitively. String() guards JSON.stringify(undefined),
-  // which returns the primitive undefined (no .toLowerCase).
+  // compare case-insensitively. String() guards JSON.stringify(undefined).
   const key = (o) => String(JSON.stringify(o)).toLowerCase();
   const cur = key(value);
-  return (
-    <TweakRow label={label}>
-      <div className="twk-chips" role="radiogroup">
-        {options.map((o, i) => {
-          const colors = Array.isArray(o) ? o : [o];
-          const [hero, ...rest] = colors;
-          const sup = rest.slice(0, 4);
-          const on = key(o) === cur;
-          return (
-            <button key={i} type="button" className="twk-chip" role="radio"
-                    aria-checked={on} data-on={on ? '1' : '0'}
-                    aria-label={colors.join(', ')} title={colors.join(' · ')}
-                    style={{ background: hero }}
-                    onClick={() => onChange(o)}>
-              {sup.length > 0 && (
-                <span>
-                  {sup.map((c, j) => <i key={j} style={{ background: c }} />)}
-                </span>
-              )}
-              {on && <__TwkCheck light={__twkIsLight(hero)} />}
-            </button>
-          );
-        })}
-      </div>
-    </TweakRow>
-  );
+  return React.createElement(TweakRow, { label: label },
+    React.createElement('div', { className: 'twk-chips', role: 'radiogroup' },
+      options.map((o, i) => {
+        const colors = Array.isArray(o) ? o : [o];
+        const hero = colors[0];
+        const rest = colors.slice(1);
+        const sup = rest.slice(0, 4);
+        const on = key(o) === cur;
+        return React.createElement('button', {
+            key: i, type: 'button', className: 'twk-chip', role: 'radio',
+            'aria-checked': on, 'data-on': on ? '1' : '0',
+            'aria-label': colors.join(', '), title: colors.join(' · '),
+            style: { background: hero }, onClick: () => onChange(o),
+          },
+          sup.length > 0
+            ? React.createElement('span', null,
+                sup.map((c, j) => React.createElement('i', { key: j, style: { background: c } })))
+            : null,
+          on ? React.createElement(__TwkCheck, { light: __twkIsLight(hero) }) : null);
+      })));
 }
 
 function TweakButton({ label, onClick, secondary = false }) {
-  return (
-    <button type="button" className={secondary ? 'twk-btn secondary' : 'twk-btn'}
-            onClick={onClick}>{label}</button>
-  );
+  return React.createElement('button', {
+    type: 'button', className: secondary ? 'twk-btn secondary' : 'twk-btn', onClick: onClick,
+  }, label);
 }
 
 Object.assign(window, {

@@ -5,11 +5,11 @@
      GET  /a/activity/activities/{id}/review-detail        完整详情（含驳回原因/审核人/时间）
      POST /a/activity/activities/{id}/publish-approve      通过（活动上线 status→1）
      POST /a/activity/activities/{id}/publish-reject       驳回（status→5，body 可填 reason ≤512）
-   注：fmtRange / actStatusTag / datePart 复用 page-activities.jsx 的全局函数。
+   注：fmtRange / actStatusTag / datePart 复用 page-activities.js 的全局函数。
    ============================================================ */
 function ActivityReviewPage(props) {
   var id = props.identity;
-  var canAudit = HD.hasPerm(id, 'activity:publish-audit');
+  var canAudit = hasPerm(id, 'activity:publish-audit');
   var [tab, setTab] = useState('4');          // '4' 待审核 | '5' 已驳回（后端只支持这两个）
   var [list, setList] = useState([]);
   var [total, setTotal] = useState(0);
