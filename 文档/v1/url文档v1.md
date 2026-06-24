@@ -39,11 +39,15 @@
 
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
-| POST | /v/auth/sms/codes | 发送短信验证码（注册/换绑手机号均调此接口） | 公开 |
-| POST | /v/auth/login/wechat | 微信小程序登录；未注册返回 `registered:false`，已注册返回 token | 公开 |
+| POST | /v/auth/sms/codes | 发送短信验证码；body `{phone, scene}`，scene 白名单 `register`(默认)/`login`/`volunteer-password-reset`，越界拒绝；复用发码限流+错满作废 | 公开 |
+| POST | /v/auth/login/sms | **手机号+验证码登录**（`{phone, smsCode}`，scene=login）；陌生手机号自动建游客账号（之后再实名），禁用/注销拒登 | 公开 |
+| POST | /v/auth/login/password | **手机号+密码登录**（`{phone, password}`，账号=手机号）；接防爆破（phoneHash/IP 计数），账号不存在/未设密码/密码错统一报错不泄露存在性 | 公开 |
+| PUT | /v/auth/password | **设置/修改登录密码**（`{oldPassword?, newPassword}`）；首次设密码原密码可空，已有密码须校验原密码；账号须已绑手机号 | 需登录 |
+| PUT | /v/auth/password/reset | **忘记密码**：手机号+验证码+新密码重置（`{phone, smsCode, newPassword}`，scene=volunteer-password-reset） | 公开 |
+| POST | /v/auth/login/wechat | 微信小程序登录；未注册返回 `registered:false`，已注册返回 token（端点保留；小程序默认改走手机号体系） | 公开 |
 | POST | /v/auth/login/dev | **开发登录**：跳过微信直接发 token 供前端联调（无 appid/secret 时用）。body 可选 `key`（测试身份，默认 tester）/`registered`（true 造已实名身份）。**仅 `hengde.auth.dev-login-enabled=true` 可用，生产被 `ProductionConfigGuard` fail-fast 拒绝** | 公开（dev 限定） |
 | GET | /v/auth/agreement | 获取志愿者协议（注册前阅读）；返回 `{version, text}`，正文/版本经配置 | 公开 |
-| POST | /v/auth/register | 志愿者实名注册（身份证二要素 + 短信验证码 + 企业微信群校验 + **协议手写签名图 URL**） | 需登录（先微信登录拿游客 token） |
+| POST | /v/auth/register | 志愿者实名注册（身份证二要素 + 短信验证码 + 企业微信群校验 + **协议手写签名图 URL**）；落库前显式查 phoneHash 防串号（已绑他号报错、登录手机号须与注册一致） | 需登录（先登录拿游客 token） |
 | GET | /v/auth/wechat/group-membership | 企业微信群成员资格校验 | 公开 |
 | POST | /v/auth/logout | 退出登录 | 需登录 |
 
@@ -92,11 +96,17 @@
 
 ## 活动 activity
 
+### 志愿者端 通用上传 `/v/files`
+
+| Method | URL | 说明 | 鉴权 |
+|---|---|---|---|
+| POST | /v/files/upload | 图片上传（multipart `file` + `dir`，**仅 `dir=activity`** 活动封面、限图片），返回 `{url,name,size}`。给「管理团队」志愿者在小程序发活动传封面用；与 `/a/files/upload` 分开（小程序持志愿者 token 过不了 `/a/**`） | 需登录（activity:publish） |
+
 ### 志愿者端 `/v/activity`
 
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | /v/activity/activities | 活动列表/推荐（排序：有名额优先→最新活动时间；返回含 `enrolledCount` 报名人数、`hasQuota` 是否有名额） | 需登录 |
+| GET | /v/activity/activities | 活动列表/推荐（排序：有名额优先→最新活动时间；返回含 `enrolledCount` 报名人数、`hasQuota` 是否有名额、`displayStatus` 实时展示状态[0未开放/1报名中/2报名截止/3活动中/4已结束，按开放/截止/run_status 派生，非持久化 status]） | 需登录 |
 | POST | /v/activity/activities | 提交活动（「管理团队」志愿者；不带 `type=admin` 走默认 login 域鉴权，吃 V18 志愿者权限；**V19 起：落「待审核发布」status=4、不直接上线，须后台 `activity:publish-audit` 审核通过才可见**；操作人记志愿者） | 需登录（activity:publish） |
 | GET | /v/activity/activities/{id} | 活动详情（含子时间段/子项目/报名须知；内部展示全字段：定位+经纬度、三类报名开放时间、报名限制等） | 需登录 |
 | POST | /v/activity/activities/{id}/enroll | 报名（body 指定时间段） | 需登录 |

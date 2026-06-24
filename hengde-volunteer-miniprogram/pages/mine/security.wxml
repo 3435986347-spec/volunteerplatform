@@ -20,7 +20,8 @@
   <block wx:elif="{{mode === 'password'}}">
     <view class="form-card">
       <view class="field">密码修改</view>
-      <input class="input" placeholder="请输入新密码" />
+      <input class="input" password placeholder="原密码（首次设置可留空）" data-field="oldPasswordValue" value="{{oldPasswordValue}}" bindinput="updateField" />
+      <input class="input" password placeholder="请输入新密码（6-32位）" data-field="newPasswordValue" value="{{newPasswordValue}}" bindinput="updateField" />
       <button class="primary-btn" bindtap="savePassword">保存</button>
     </view>
   </block>

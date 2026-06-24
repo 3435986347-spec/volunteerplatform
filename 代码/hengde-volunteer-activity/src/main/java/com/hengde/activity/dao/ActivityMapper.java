@@ -28,6 +28,7 @@ public interface ActivityMapper extends BaseMapper<Activity> {
     @Select("""
             SELECT a.id, a.serial_no, a.title, a.cover_image_url, a.location,
                    a.start_time, a.end_time, a.enroll_deadline, a.need_audit, a.status,
+                   a.enroll_open_volunteer, a.run_status,
                    (SELECT COUNT(DISTINCT e2.volunteer_id) FROM activity_enrollment e2
                       WHERE e2.activity_id = a.id AND e2.status IN (0, 1) AND e2.is_deleted = 0) AS enrolled_count,
                    CASE WHEN EXISTS (

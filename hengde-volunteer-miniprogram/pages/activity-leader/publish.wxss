@@ -26,6 +26,79 @@
   color: #111111;
 }
 
+.form-row-cover {
+  align-items: flex-start;
+  padding: 16rpx 0;
+}
+
+.form-row-cover .form-label {
+  padding-top: 8rpx;
+}
+
+.cover-uploader {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 20rpx;
+}
+
+.cover-preview {
+  width: 220rpx;
+  height: 150rpx;
+  border-radius: 12rpx;
+  background: #f4f4f4;
+}
+
+.cover-placeholder {
+  width: 220rpx;
+  height: 150rpx;
+  border-radius: 12rpx;
+  border: 2rpx dashed #cccccc;
+  background: #fafafa;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.cover-plus {
+  font-size: 48rpx;
+  color: #bbbbbb;
+  line-height: 1;
+}
+
+.cover-hint {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #999999;
+}
+
+.cover-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  padding-top: 8rpx;
+}
+
+.cover-action {
+  font-size: 26rpx;
+  color: #1677ff;
+}
+
+.cover-action-danger {
+  color: #fa5151;
+}
+
+/* 离屏裁剪 canvas：移出可视区但保留在布局中（绘制缓冲尺寸由 JS 设，CSS 尺寸不影响导出） */
+.cover-canvas {
+  position: fixed;
+  left: -9999rpx;
+  top: -9999rpx;
+  width: 320rpx;
+  height: 180rpx;
+}
+
 .form-row-textarea {
   align-items: flex-start;
   padding: 16rpx 0;

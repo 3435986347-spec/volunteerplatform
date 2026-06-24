@@ -58,7 +58,7 @@
       <view class="sms-row">
         <input class="login-input sms-input" type="number" data-field="smsCode" bindinput="updateField" />
         <view class="sms-divider"></view>
-        <view class="code-btn" style="width:120rpx;min-width:120rpx;max-width:120rpx;flex-basis:120rpx;" bindtap="mockGetCode">获取</view>
+        <view class="code-btn" style="width:120rpx;min-width:120rpx;max-width:120rpx;flex-basis:120rpx;" bindtap="getSmsCode">获取</view>
       </view>
     </block>
 

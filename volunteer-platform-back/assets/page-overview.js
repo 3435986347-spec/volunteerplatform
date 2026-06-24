@@ -10,13 +10,13 @@ function OverviewPage(props) {
 
   // 待办卡片：code=卡片可见性；计数端点与权限(countPerm)走共享 TODO_SOURCES（shell.js，与侧边栏角标同源）
   var cards = [
-    { key: 'publishReview', label: '待审活动发布', icon: 'checkCircle', color: '#1677ff', target: 'activityReview', code: 'activity:publish-audit', source: 'GET /a/activity/activities/pending-reviews?status=4' },
-    { key: 'group', label: '待审建组申请', icon: 'team', color: '#fa8c16', target: 'groups', code: ['org:group-manage', 'org:group-audit'], source: 'GET /a/organization/groups/applications' },
-    { key: 'squad', label: '待审分队加入', icon: 'squad', color: '#13a8a8', target: 'squads', code: ['org:squad-manage', 'org:squad-audit'], source: 'GET /a/organization/squads/applications?status=0' },
-    { key: 'enroll', label: '待审报名', icon: 'users', color: '#722ed1', target: 'enroll', code: 'activity:enroll-view', source: 'GET /a/activity/enrollments?status=0（全局）' },
-    { key: 'attendance', label: '待审考勤变更', icon: 'swap', color: '#2f54eb', target: 'attendance', code: 'activity:attendance-audit', source: 'GET /a/activity/attendance-changes?status=0' },
-    { key: 'backfill', label: '待补录审核', icon: 'history', color: '#eb2f96', target: 'backfill', code: 'activity:backfill-audit', source: 'GET /a/activity/backfills?status=0' },
-    { key: 'service', label: '待秘书部确认时长', icon: 'award', color: '#52c41a', target: 'service', code: ['activity:service-confirm', 'activity:points-grant'], source: 'GET /a/activity/service-records/pending' },
+    { key: 'publishReview', label: '待审活动发布', icon: 'checkCircle', color: '#1677ff', target: 'activityReview', code: 'activity:publish-audit', hint: '小程序提交、待上线审核的活动' },
+    { key: 'group', label: '待审建组申请', icon: 'team', color: '#fa8c16', target: 'groups', code: ['org:group-manage', 'org:group-audit'], hint: '志愿者发起、待审批的建组申请' },
+    { key: 'squad', label: '待审分队加入', icon: 'squad', color: '#13a8a8', target: 'squads', code: ['org:squad-manage', 'org:squad-audit'], hint: '待审批的分队加入申请' },
+    { key: 'enroll', label: '待审报名', icon: 'users', color: '#722ed1', target: 'enroll', code: 'activity:enroll-view', hint: '需审核活动的待处理报名' },
+    { key: 'attendance', label: '待审考勤变更', icon: 'swap', color: '#2f54eb', target: 'attendance', code: 'activity:attendance-audit', hint: '组织部申请的签到/积分变更' },
+    { key: 'backfill', label: '待补录审核', icon: 'history', color: '#eb2f96', target: 'backfill', code: 'activity:backfill-audit', hint: '历史活动的考勤补录申请' },
+    { key: 'service', label: '待秘书部确认时长', icon: 'award', color: '#52c41a', target: 'service', code: ['activity:service-confirm', 'activity:points-grant'], hint: '已签退、待确认服务时长的记录' },
   ];
 
   useEffect(function () {
@@ -55,7 +55,7 @@ function OverviewPage(props) {
         React.createElement('h1', null, '你好，' + id.name + '　',
           React.createElement('span', { style: { fontSize: 13, fontWeight: 400, color: 'var(--text-3)' } },
             id.isSuperAdmin ? '超级管理员 · 可见全部模块' : (id.dept || '') + ' · 按授权权限点显示菜单')),
-        React.createElement('p', null, '平台数据看板（GET /a/data/dashboard）+ 各模块待办计数。待办数据来自各自权限受控的列表接口，仅对你有权的项发起请求。'))),
+        React.createElement('p', null, '平台数据看板 + 各模块待办计数，仅显示你有权限处理的待办项。'))),
 
     // 头部数据看板
     React.createElement('div', { style: { fontSize: 13, fontWeight: 600, color: 'var(--text-2)', margin: '4px 0 12px' } }, '数据概览'),
@@ -87,7 +87,7 @@ function OverviewPage(props) {
             : !hasCount ? React.createElement('span', { style: { fontSize: 18, color: 'var(--text-4)', fontWeight: 400 } }, '—')
             : React.createElement(React.Fragment, null, val, React.createElement('span', { className: 'unit' }, '项')),
           (canAccess && hasCount && val > 0) ? React.createElement('span', { className: 'badge-dot warning', style: { marginLeft: 10, fontSize: 12, fontWeight: 400, color: 'var(--text-3)' } }, '待处理') : null),
-        React.createElement('div', { className: 'sc-source' }, c.source),
+        React.createElement('div', { className: 'sc-source' }, c.hint),
         canAccess ? React.createElement('span', { className: 'go' }, React.createElement(Icon, { name: 'arrowRightShort', size: 16 })) : null);
     })),
     React.createElement('div', { style: { fontSize: 12, color: 'var(--text-4)', marginTop: 18 } },

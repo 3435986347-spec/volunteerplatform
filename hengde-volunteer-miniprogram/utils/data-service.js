@@ -108,7 +108,9 @@ function normalizeActivity(row) {
     }, valueOf(row, ["target", "targetScopeName", "signupTarget"], "全平台")),
     requirement: valueOf(row, ["requirement"], "")
   };
-  const status = statusText(valueOf(row, ["statusName", "statusText", "status"]), {
+  // 优先用后端实时派生的 displayStatus（0未开放/1报名中/2报名截止/3活动中/4已结束）；
+  // 后端未给（旧接口/详情）才退回持久化的 status——后者对已发布活动恒为「报名中」，不反映截止/结束。
+  const status = statusText(valueOf(row, ["displayStatus", "statusName", "statusText", "status"]), {
     0: "未开放",
     1: "报名中",
     2: "报名截止",
@@ -621,6 +623,45 @@ async function publishActivity(data) {
   });
 }
 
+// 上传活动封面：选好的本地临时图片传到 /v/files/upload?dir=activity，返回可访问 URL。
+// wx.request 不能传文件，必须用 wx.uploadFile；这里复用 request.js 同款的 baseUrl + token 取法，
+// 并按后端 {code,message,data:{url}} 包装层解析（res.data 是字符串，需 JSON.parse）。
+function uploadActivityImage(tempFilePath) {
+  if (useMockApi()) return Promise.resolve(tempFilePath);
+  const app = getApp();
+  const baseUrl = (app && app.globalData && app.globalData.apiBaseUrl) || "http://localhost:8080/api";
+  const token = auth.getToken();
+  return new Promise((resolve, reject) => {
+    wx.uploadFile({
+      url: `${baseUrl}${ENDPOINTS.volunteer.files.upload}`,
+      filePath: tempFilePath,
+      name: "file",
+      formData: { dir: "activity" },
+      header: token ? { Authorization: token } : {},
+      success(res) {
+        let body = res.data;
+        try { body = JSON.parse(res.data); } catch (e) { /* 保留原始字符串 */ }
+        const wrapped = body && typeof body === "object" && body.code !== undefined;
+        const ok2xx = res.statusCode >= 200 && res.statusCode < 300;
+        if (!ok2xx || (wrapped && ![0, 200].includes(Number(body.code)))) {
+          reject(new Error((wrapped && (body.message || body.msg)) || `上传失败（${res.statusCode}）`));
+          return;
+        }
+        const data = wrapped && body.data ? body.data : body;
+        const url = data && (data.url || (typeof data === "string" ? data : ""));
+        if (!url) {
+          reject(new Error("上传返回异常"));
+          return;
+        }
+        resolve(url);
+      },
+      fail() {
+        reject(new Error("网络连接失败，图片上传失败"));
+      }
+    });
+  });
+}
+
 async function listMyActivities() {
   if (useMockApi()) return mock.myActivities.map(normalizeActivity);
   const response = await request({ url: ENDPOINTS.volunteer.activity.myActivities });
@@ -1051,6 +1092,7 @@ module.exports = {
   loadHomeData,
   registerVolunteer,
   publishActivity,
+  uploadActivityImage,
   reviewActivity,
   search,
   normalizeActivity

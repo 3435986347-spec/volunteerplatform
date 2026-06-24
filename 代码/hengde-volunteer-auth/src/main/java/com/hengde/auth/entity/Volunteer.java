@@ -44,8 +44,11 @@ public class Volunteer extends BaseEntity {
     /** 手机号（AES-GCM 密文） */
     private String phone;
 
-    /** 手机号 HMAC（精确搜/换绑查重） */
+    /** 手机号 HMAC（精确搜/换绑查重/手机号登录定位） */
     private String phoneHash;
+
+    /** 登录密码（BCrypt 密文，V20）；null=未设密码。设密码后可用「手机号+密码」登录 */
+    private String password;
 
     /** 性别（可由身份证解析） */
     private Gender gender;

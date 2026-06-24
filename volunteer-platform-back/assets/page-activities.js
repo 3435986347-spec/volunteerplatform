@@ -80,7 +80,7 @@ function ActivitiesPage(props) {
           React.createElement('button', { className: 'btn-link', onClick: function (e) { e.stopPropagation(); setEditDrawer({ mode: 'edit', id: r.id }); } }, '修改'))),
         moreItems.length ? React.createElement(React.Fragment, null,
           React.createElement('span', { className: 'act-sep' }),
-          React.createElement(Dropdown, { items: moreItems, trigger: React.createElement('button', { className: 'btn-link', onClick: function (e) { e.stopPropagation(); } }, '更多 ▾') })) : null);
+          React.createElement(Dropdown, { items: moreItems, trigger: React.createElement('button', { className: 'btn-link' }, '更多 ▾') })) : null);
     }},
   ];
 

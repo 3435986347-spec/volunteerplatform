@@ -11,9 +11,19 @@
         <text class="form-label">活动名称：</text>
         <input class="form-input" value="{{form.title}}" data-field="title" bindinput="updateField" placeholder="请输入活动名称" />
       </view>
-      <view class="form-row">
+      <view class="form-row form-row-cover">
         <text class="form-label">封面图：</text>
-        <input class="form-input" value="{{form.coverImageUrl}}" data-field="coverImageUrl" bindinput="updateField" placeholder="可填写图片 URL" />
+        <view class="cover-uploader">
+          <image wx:if="{{form.coverImageUrl}}" class="cover-preview" src="{{form.coverImageUrl}}" mode="aspectFill" bindtap="chooseCover"></image>
+          <view wx:else class="cover-placeholder" bindtap="chooseCover">
+            <text class="cover-plus">+</text>
+            <text class="cover-hint">{{uploadingCover ? '上传中…' : '上传封面'}}</text>
+          </view>
+          <view wx:if="{{form.coverImageUrl}}" class="cover-actions">
+            <text class="cover-action" bindtap="chooseCover">重新上传</text>
+            <text class="cover-action cover-action-danger" bindtap="removeCover">删除</text>
+          </view>
+        </view>
       </view>
       <view class="form-row">
         <text class="form-label">活动地点：</text>
@@ -79,4 +89,7 @@
 
     <button class="submit-publish" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submitPublish">发布活动</button>
   </view>
+
+  <!-- 离屏裁剪用（封面按 16:9 裁切）：定位移出可视区，绘制缓冲尺寸由 JS 设 node.width/height -->
+  <canvas type="2d" id="coverCanvas" class="cover-canvas"></canvas>
 </view>

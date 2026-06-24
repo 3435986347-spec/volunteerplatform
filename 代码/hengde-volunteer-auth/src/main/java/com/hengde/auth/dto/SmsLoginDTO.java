@@ -5,21 +5,17 @@ import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 
 /**
- * 发送短信验证码入参。
+ * 志愿者手机号+验证码登录入参。陌生手机号会自动建游客账号（见 VolunteerAuthService.smsLogin）。
  *
  * @author hengde
  */
 @Data
-public class SmsCodeDTO {
+public class SmsLoginDTO {
 
-    /** 手机号 */
     @NotBlank(message = "手机号不能为空")
     @Pattern(regexp = "^1[3-9]\\d{9}$", message = "手机号格式不正确")
     private String phone;
 
-    /**
-     * 场景：register（注册，默认）/ login（手机号验证码登录）/ volunteer-password-reset（忘记密码）。
-     * service 层按白名单校验，越界拒绝。
-     */
-    private String scene;
+    @NotBlank(message = "验证码不能为空")
+    private String smsCode;
 }

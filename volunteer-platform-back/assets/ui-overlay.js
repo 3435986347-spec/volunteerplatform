@@ -179,7 +179,9 @@ function Modal(props) {
 function Dropdown(props) {
   var ref = useRef(); var [open, setOpen] = useState(false);
   useClickOutside(ref, function () { setOpen(false); }, open);
-  return React.createElement('div', { className: 'dropdown', ref: ref },
+  // 整个下拉自行拦截冒泡：放在可点击表格行内时，点「更多」或菜单项都不应触发行级 onRowClick（打开详情）。
+  // 触发器只管 toggle，无需各调用方再给按钮加 stopPropagation（那样反而会挡掉 span 的 toggle）。
+  return React.createElement('div', { className: 'dropdown', ref: ref, onClick: function (e) { e.stopPropagation(); } },
     React.createElement('span', { onClick: function () { setOpen(!open); } }, props.trigger),
     open ? React.createElement('div', { className: 'dropdown-menu' + (props.align === 'left' ? ' left' : '') },
       props.items.map(function (it, i) {

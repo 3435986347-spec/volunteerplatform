@@ -136,12 +136,12 @@ function VolunteersPage(props) {
         canEdit ? React.createElement('button', { className: 'btn-link', onClick: function (e) { e.stopPropagation(); setEdit(v); } }, '修改') : null,
         items.length ? React.createElement('span', { className: 'act-sep' }) : null,
         items.length ? React.createElement(Dropdown, { items: items,
-          trigger: React.createElement('button', { className: 'btn-link', onClick: function (e) { e.stopPropagation(); } }, '更多 ▾') }) : null);
+          trigger: React.createElement('button', { className: 'btn-link' }, '更多 ▾') }) : null);
     }},
   ];
 
   return React.createElement('div', { className: 'page page-wide' },
-    React.createElement(PageHead, { title: '志愿者管理', desc: 'GET /a/user/volunteers —— 志愿者列表、详情、修改、停用/恢复、删除、导出（支持 keyword/性别/分队/政治面貌 筛选）。',
+    React.createElement(PageHead, { title: '志愿者管理', desc: '志愿者列表、详情、修改、停用/恢复、删除、导出（支持按姓名/学校/手机号、性别、分队、政治面貌筛选）。',
       actions: canExport ? React.createElement(Btn, { icon: 'download', onClick: doExport }, '导出志愿者') : null }),
     React.createElement(Toolbar, { filters: React.createElement(React.Fragment, null,
       React.createElement(Search, { value: kw, onChange: resetTo1(setKw), placeholder: '搜索姓名 / 学校 / 手机号', width: 240 }),

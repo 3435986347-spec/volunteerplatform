@@ -1,5 +1,4 @@
 const auth = require("../../utils/auth");
-const localAuthMock = require("../../utils/local-auth-mock");
 const dataService = require("../../utils/data-service");
 const { request } = require("../../utils/request");
 const { ENDPOINTS } = require("../../utils/api-endpoints");
@@ -98,35 +97,24 @@ Page({
     this.setData({ agreed: !this.data.agreed });
   },
 
-  async mockGetCode() {
+  // 登录页发码：场景 login（与注册 register 隔离）。失败直接显示后端原因，不再本地伪造验证码。
+  async getSmsCode() {
+    if (!this.data.phone) {
+      wx.showToast({ title: "请输入手机号", icon: "none" });
+      return;
+    }
     try {
       await request({
         url: ENDPOINTS.volunteer.auth.smsCodes,
         method: "POST",
         data: {
           phone: this.data.phone,
-          scene: "register"
+          scene: "login"
         }
       });
-      wx.showToast({
-        title: "验证码已发送",
-        icon: "none"
-      });
+      wx.showToast({ title: "验证码已发送", icon: "none" });
     } catch (error) {
-      const localCode = localAuthMock.createSmsCode();
-      if (localCode) {
-        this.setData({ smsCode: localCode });
-        wx.showToast({
-          title: `Local code: ${localCode}`,
-          icon: "none"
-        });
-        return;
-      }
-
-      wx.showToast({
-        title: `验证码接口未通：${ENDPOINTS.volunteer.auth.smsCodes}`,
-        icon: "none"
-      });
+      wx.showToast({ title: error.message || "验证码发送失败", icon: "none" });
     }
   },
 
@@ -138,52 +126,49 @@ Page({
       });
       return;
     }
+    if (!this.validateLoginInput()) {
+      return;
+    }
 
     this.setData({ submitting: true, submittingTarget: "volunteer" });
 
     try {
       await this.loginVolunteer();
       await this.loadMyPermissions();
+      wx.switchTab({ url: "/pages/home/index" });
     } catch (error) {
-      if (this.loginLocalDebug()) {
-        wx.showToast({
-          title: "Local debug login",
-          icon: "none"
-        });
-      } else {
-        wx.showToast({
-          title: error.message || "登录失败，请检查账号或验证码",
-          icon: "none"
-        });
-        auth.setLoggedIn({
-          token: "",
-          role: "volunteer"
-        });
-        auth.clearLogin();
-        return;
-      }
+      // 真实登录失败（密码错/验证码错/账号禁用）直接显示后端原因，绝不回退到免鉴权 dev 登录
+      wx.showToast({
+        title: error.message || "登录失败，请检查账号或验证码",
+        icon: "none"
+      });
+      auth.clearLogin();
     } finally {
       this.setData({ submitting: false, submittingTarget: "" });
     }
-
-    wx.switchTab({ url: "/pages/home/index" });
   },
 
-  loginLocalDebug() {
-    const session = localAuthMock.createSession({
-      mode: this.data.loginMode,
-      role: "volunteer",
-      account: this.data.account,
-      phone: this.data.phone,
-      registered: true
-    });
-
-    if (!session) {
-      return false;
+  validateLoginInput() {
+    if (this.data.loginMode === "account") {
+      if (!this.data.account) {
+        wx.showToast({ title: "请输入手机号", icon: "none" });
+        return false;
+      }
+      if (!this.data.password) {
+        wx.showToast({ title: "请输入密码", icon: "none" });
+        return false;
+      }
+    } else {
+      if (!this.data.phone) {
+        wx.showToast({ title: "请输入手机号", icon: "none" });
+        return false;
+      }
+      if (!this.data.smsCode) {
+        wx.showToast({ title: "请输入验证码", icon: "none" });
+        return false;
+      }
     }
-
-    auth.setLoggedIn(session);
-    return Boolean(auth.getToken());
+    return true;
   },
 
   async loadMyPermissions() {
@@ -203,28 +188,29 @@ Page({
   },
 
   async loginVolunteer() {
+    // dev 登录仅当本地显式开启 devVolunteerLogin 时走（联调用），不在失败路径兜底
     if (this.shouldUseDevVolunteerLogin()) {
       await this.loginVolunteerDev();
       return;
     }
 
-    const wxCode = await this.getWxLoginCode();
-    const result = await request({
-      url: ENDPOINTS.volunteer.auth.wechatLogin,
-      method: "POST",
-      data: {
-        code: wxCode,
-        phone: this.data.phone,
-        smsCode: this.data.smsCode
-      }
-    });
+    // 按登录方式分流：账号登录=手机号+密码；短信登录=手机号+验证码
+    const isAccount = this.data.loginMode === "account";
+    const url = isAccount
+      ? ENDPOINTS.volunteer.auth.passwordLogin
+      : ENDPOINTS.volunteer.auth.smsLogin;
+    const data = isAccount
+      ? { phone: this.data.account, password: this.data.password }
+      : { phone: this.data.phone, smsCode: this.data.smsCode };
+
+    const result = await request({ url, method: "POST", data });
 
     auth.setLoggedIn({
       token: pickToken(result),
       role: "volunteer",
       ...pickLoginUser(result),
       permissions: pickPermissions(result),
-      phone: pickLoginUser(result).phone || this.data.phone
+      phone: pickLoginUser(result).phone || data.phone
     });
     if (!auth.getToken()) {
       throw new Error("登录成功但未返回 token");

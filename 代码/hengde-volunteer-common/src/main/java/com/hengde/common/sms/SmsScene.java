@@ -13,6 +13,12 @@ public interface SmsScene {
     /** 志愿者注册 */
     String REGISTER = "register";
 
+    /** 志愿者手机号+验证码登录 */
+    String LOGIN = "login";
+
+    /** 志愿者忘记密码（手机号+验证码重置登录密码）；与管理端 {@link #RESET_PASSWORD} 语义隔离 */
+    String VOLUNTEER_PASSWORD_RESET = "volunteer-password-reset";
+
     /** 管理端找回密码 */
     String RESET_PASSWORD = "reset-password";
 

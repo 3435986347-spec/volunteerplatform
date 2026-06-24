@@ -8,10 +8,17 @@ const ENDPOINTS = {
   volunteer: {
     home: "/v/home",
     search: "/v/search",
+    files: {
+      upload: "/v/files/upload"
+    },
     auth: {
       smsCodes: "/v/auth/sms/codes",
       wechatLogin: "/v/auth/login/wechat",
       devLogin: "/v/auth/login/dev",
+      smsLogin: "/v/auth/login/sms",
+      passwordLogin: "/v/auth/login/password",
+      passwordChange: "/v/auth/password",
+      passwordReset: "/v/auth/password/reset",
       agreement: "/v/auth/agreement",
       register: "/v/auth/register",
       wechatGroupMembership: "/v/auth/wechat/group-membership",

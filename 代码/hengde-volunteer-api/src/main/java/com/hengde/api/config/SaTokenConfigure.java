@@ -30,7 +30,8 @@ public class SaTokenConfigure implements WebMvcConfigurer {
             // 志愿者端：仅放行微信登录/发验证码/企业微信群前置校验；
             // 注册和退出需携带（游客）登录态，其余 /v/** 同样要求已登录
             SaRouter.match("/v/**")
-                    .notMatch("/v/auth/login/wechat", "/v/auth/login/dev", "/v/auth/sms/codes",
+                    .notMatch("/v/auth/login/wechat", "/v/auth/login/dev", "/v/auth/login/sms",
+                            "/v/auth/login/password", "/v/auth/password/reset", "/v/auth/sms/codes",
                             "/v/auth/wechat/group-membership", "/v/auth/agreement")
                     .check(r -> StpUtil.checkLogin());
 

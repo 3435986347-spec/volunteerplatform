@@ -21,8 +21,10 @@ import com.hengde.common.crypto.CryptoUtil;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.sms.SmsScene;
 import com.hengde.common.sms.VerifyCodeService;
+import com.hengde.common.utils.PasswordUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -30,6 +32,8 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Set;
 
 /**
  * 志愿者端认证服务：微信登录、发注册验证码、实名注册、企业微信群校验、退出。
@@ -45,6 +49,10 @@ public class VolunteerAuthService {
 
     private static final DateTimeFormatter BIRTH_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
 
+    /** 发码允许的场景白名单（仅志愿者域三类，防被借道发任意场景码） */
+    private static final Set<String> ALLOWED_SMS_SCENES =
+            Set.of(SmsScene.REGISTER, SmsScene.LOGIN, SmsScene.VOLUNTEER_PASSWORD_RESET);
+
     private VolunteerMapper volunteerMapper;
     private WxMaService wxMaService;
     private VerifyCodeService verifyCodeService;
@@ -52,6 +60,7 @@ public class VolunteerAuthService {
     private RealNameService realNameService;
     private WeworkGroupService weworkGroupService;
     private AuthProperties authProperties;
+    private LoginProtectionService loginProtectionService;
 
     @Autowired
     public void setVolunteerMapper(VolunteerMapper volunteerMapper) {
@@ -86,6 +95,11 @@ public class VolunteerAuthService {
     @Autowired
     public void setWeworkGroupService(WeworkGroupService weworkGroupService) {
         this.weworkGroupService = weworkGroupService;
+    }
+
+    @Autowired
+    public void setLoginProtectionService(LoginProtectionService loginProtectionService) {
+        this.loginProtectionService = loginProtectionService;
     }
 
     /**
@@ -166,13 +180,138 @@ public class VolunteerAuthService {
     }
 
     /**
-     * 发送注册短信验证码。
+     * 发送短信验证码（按场景）。scene 仅允许 register/login/volunteer-password-reset（白名单外拒绝）；
+     * 留空默认 register（兼容旧调用）。复用 {@link VerifyCodeService} 的手机号/IP 限流 + 错满作废。
      *
      * @param phone    手机号
+     * @param scene    场景（见 {@link SmsScene}）
      * @param clientIp 来源 IP（用于发送限流，可空；接口公开，限流是该入口唯一的滥用闸门）
      */
-    public void sendRegisterSmsCode(String phone, String clientIp) {
-        verifyCodeService.sendCode(phone, SmsScene.REGISTER, clientIp);
+    public void sendSmsCode(String phone, String scene, String clientIp) {
+        String s = StringUtils.hasText(scene) ? scene : SmsScene.REGISTER;
+        if (!ALLOWED_SMS_SCENES.contains(s)) {
+            throw new BusinessException("不支持的验证码场景");
+        }
+        verifyCodeService.sendCode(phone, s, clientIp);
+    }
+
+    /**
+     * 手机号 + 验证码登录。校验 LOGIN 场景验证码后按 phoneHash 定位志愿者；
+     * <b>陌生手机号自动建游客账号</b>（以手机号为标识，registerTime=null，之后再走实名注册）。
+     * 禁用/注销账号拒发 token。
+     *
+     * @param phone    手机号
+     * @param smsCode  短信验证码
+     * @param clientIp 来源 IP（预留，当前仅发码侧限流）
+     */
+    public LoginVO smsLogin(String phone, String smsCode, String clientIp) {
+        verifyCodeService.verify(phone, SmsScene.LOGIN, smsCode);
+        String phoneHash = cryptoUtil.hashPhone(phone);
+        Volunteer volunteer = findOrCreateByPhone(phone, phoneHash);
+        if (volunteer.getStatus() != null && volunteer.getStatus().equals(UserStatus.BANNED)) {
+            throw new BusinessException("账号已被禁用");
+        }
+        StpUtil.login(volunteer.getId());
+        return new LoginVO(StpUtil.getTokenValue(), volunteer.getRegisterTime() != null);
+    }
+
+    /**
+     * 按 phoneHash 找志愿者；没有则建一个游客账号。
+     * 并发冷启动（同号两个请求同时建号）由 DB 唯一索引 {@code uk_phone_hash} 兜底——
+     * 撞 {@link DuplicateKeyException} 即回查复用，避免重复账号（不引分布式锁，auth 无 Redisson）。
+     */
+    private Volunteer findOrCreateByPhone(String phone, String phoneHash) {
+        Volunteer existing = selectByPhoneHash(phoneHash);
+        if (existing != null) {
+            return existing;
+        }
+        Volunteer v = new Volunteer();
+        v.setPhone(cryptoUtil.encrypt(phone));
+        v.setPhoneHash(phoneHash);
+        // 合成 openid 满足 NOT NULL UNIQUE 且 ≤ VARCHAR(64)："p:" + 62 位哈希 = 64；同号确定性、幂等
+        v.setOpenid("p:" + phoneHash.substring(0, 62));
+        v.setStatus(UserStatus.NORMAL);
+        try {
+            volunteerMapper.insert(v);
+            return v;
+        } catch (DuplicateKeyException e) {
+            Volunteer raced = selectByPhoneHash(phoneHash);
+            if (raced != null) {
+                return raced;
+            }
+            throw e;
+        }
+    }
+
+    private Volunteer selectByPhoneHash(String phoneHash) {
+        List<Volunteer> matches = volunteerMapper.selectList(
+                Wrappers.<Volunteer>lambdaQuery().eq(Volunteer::getPhoneHash, phoneHash));
+        if (matches.size() > 1) {
+            throw new BusinessException("该手机号对应多个账号，请联系管理员");
+        }
+        return matches.isEmpty() ? null : matches.get(0);
+    }
+
+    /**
+     * 手机号 + 密码登录。接防爆破（{@link LoginProtectionService}，按 phoneHash/IP 计数）；
+     * 账号不存在/未设密码/密码错误统一报「手机号或密码错误」不泄露存在性；禁用/注销拒登。
+     *
+     * @param phone    手机号（即账号）
+     * @param password 密码明文
+     * @param clientIp 来源 IP（防爆破 IP 维度，可空）
+     */
+    public LoginVO passwordLogin(String phone, String password, String clientIp) {
+        String phoneHash = cryptoUtil.hashPhone(phone);
+        loginProtectionService.checkVolunteerNotLocked(phoneHash, clientIp);
+        Volunteer volunteer = selectByPhoneHash(phoneHash);
+        if (volunteer == null || !StringUtils.hasText(volunteer.getPassword())
+                || !PasswordUtil.matches(password, volunteer.getPassword())) {
+            loginProtectionService.onVolunteerLoginFailed(phoneHash, clientIp);
+            throw new BusinessException("手机号或密码错误");
+        }
+        if (volunteer.getStatus() != null && volunteer.getStatus().equals(UserStatus.BANNED)) {
+            throw new BusinessException("账号已被禁用");
+        }
+        loginProtectionService.onVolunteerLoginSucceeded(phoneHash);
+        StpUtil.login(volunteer.getId());
+        return new LoginVO(StpUtil.getTokenValue(), volunteer.getRegisterTime() != null);
+    }
+
+    /**
+     * 设置/修改登录密码（需登录态，loginId=当前志愿者）。
+     * 账号须已绑定手机号（密码登录靠手机号定位）；已有密码时必须校验原密码，首次直接设。
+     */
+    public void setOrChangePassword(long volunteerId, String oldPassword, String newPassword) {
+        Volunteer volunteer = volunteerMapper.selectById(volunteerId);
+        if (volunteer == null) {
+            throw new BusinessException("登录态异常，请重新登录");
+        }
+        if (!StringUtils.hasText(volunteer.getPhoneHash())) {
+            throw new BusinessException("请先用手机号验证码登录后再设置密码");
+        }
+        if (StringUtils.hasText(volunteer.getPassword())
+                && (!StringUtils.hasText(oldPassword) || !PasswordUtil.matches(oldPassword, volunteer.getPassword()))) {
+            throw new BusinessException("原密码错误");
+        }
+        volunteer.setPassword(PasswordUtil.encrypt(newPassword));
+        volunteerMapper.updateById(volunteer);
+    }
+
+    /**
+     * 忘记密码：手机号 + 验证码（VOLUNTEER_PASSWORD_RESET 场景）重置登录密码。
+     */
+    public void resetPasswordBySms(String phone, String smsCode, String newPassword) {
+        verifyCodeService.verify(phone, SmsScene.VOLUNTEER_PASSWORD_RESET, smsCode);
+        String phoneHash = cryptoUtil.hashPhone(phone);
+        Volunteer volunteer = selectByPhoneHash(phoneHash);
+        if (volunteer == null) {
+            throw new BusinessException("该手机号未注册");
+        }
+        if (volunteer.getStatus() != null && volunteer.getStatus().equals(UserStatus.BANNED)) {
+            throw new BusinessException("账号已被禁用");
+        }
+        volunteer.setPassword(PasswordUtil.encrypt(newPassword));
+        volunteerMapper.updateById(volunteer);
     }
 
     /**
@@ -224,6 +363,19 @@ public class VolunteerAuthService {
             throw new BusinessException("该身份证已注册");
         }
 
+        // 4.5 手机号绑定校验（防串号）：显式查 phoneHash，不靠 uk_phone_hash 抛 DB 异常兜底
+        String phoneHash = cryptoUtil.hashPhone(dto.getPhone());
+        // 当前账号已绑手机号（如手机号验证码登录建的账号）→ 注册手机号须与之一致，防把登录态改成别人的号
+        if (volunteer.getPhoneHash() != null && !volunteer.getPhoneHash().equals(phoneHash)) {
+            throw new BusinessException("登录手机号与注册手机号不一致");
+        }
+        Long phoneDup = volunteerMapper.selectCount(Wrappers.<Volunteer>lambdaQuery()
+                .eq(Volunteer::getPhoneHash, phoneHash)
+                .ne(Volunteer::getId, volunteerId));
+        if (phoneDup != null && phoneDup > 0) {
+            throw new BusinessException("该手机号已绑定账号，请使用手机号登录");
+        }
+
         // 5. 未成年需紧急联系人，且不能与本人手机号相同
         int age = IdcardUtil.getAgeByIdCard(dto.getIdCardNo());
         if (age < 18) {
@@ -241,7 +393,7 @@ public class VolunteerAuthService {
         volunteer.setIdCardNo(cryptoUtil.encrypt(dto.getIdCardNo()));
         volunteer.setIdCardHash(idCardHash);
         volunteer.setPhone(cryptoUtil.encrypt(dto.getPhone()));
-        volunteer.setPhoneHash(cryptoUtil.hashPhone(dto.getPhone()));
+        volunteer.setPhoneHash(phoneHash);
         volunteer.setGender(IdcardUtil.getGenderByIdCard(dto.getIdCardNo()) == 1 ? Gender.MALE : Gender.FEMALE);
         volunteer.setBirthday(LocalDate.parse(IdcardUtil.getBirthByIdCard(dto.getIdCardNo()), BIRTH_FMT));
         PoliticalStatus politicalStatus = PoliticalStatus.fromCode(dto.getPoliticalStatus());

@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hengde.activity.dao.ActivityEnrollmentMapper;
 import com.hengde.activity.dao.ActivityMapper;
 import com.hengde.activity.dao.ActivitySlotMapper;
+import com.hengde.activity.constant.ActivityDisplayStatus;
 import com.hengde.activity.constant.ActivityStatus;
 import com.hengde.activity.constant.RunStatus;
 import com.hengde.activity.dto.ActivityCreateDTO;
@@ -383,6 +384,12 @@ public class ActivityService {
     public PageResult<RecommendActivityVO> listForVolunteer(PageQuery query, String keyword) {
         Page<RecommendActivityVO> page = query.toPage();
         activityMapper.selectRecommendPage(page, StringUtils.hasText(keyword) ? keyword : null);
+        LocalDateTime now = LocalDateTime.now();
+        for (RecommendActivityVO vo : page.getRecords()) {
+            // 卡片徽标按实时窗口派生（未开放/报名中/报名截止/活动中/已结束），而非恒为 1 的发布态 status
+            vo.setDisplayStatus(ActivityDisplayStatus.derive(now, vo.getStartTime(), vo.getEndTime(),
+                    vo.getEnrollOpenVolunteer(), vo.getEnrollDeadline(), vo.getRunStatus()));
+        }
         return PageResult.of(page.getRecords(), page.getTotal(), page.getCurrent(), page.getSize());
     }
 

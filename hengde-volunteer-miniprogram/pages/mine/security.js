@@ -69,7 +69,8 @@ Page({
       replyContent: "阿爸巴巴爸爸"
     },
     signatureName: "邝大程",
-    passwordValue: "",
+    oldPasswordValue: "",
+    newPasswordValue: "",
     phoneValue: "",
     aboutText: "阿八八八",
     newMaterialNo: "JC202412020002",
@@ -166,8 +167,25 @@ Page({
     this.setData({ signatureName: "邝大程" });
   },
 
-  savePassword() {
-    wx.showToast({ title: "已保存", icon: "none" });
+  // 设置/修改登录密码：PUT /v/auth/password（首次设密码原密码可留空）。设密码后可用手机号+密码登录。
+  async savePassword() {
+    const newPassword = (this.data.newPasswordValue || "").trim();
+    if (newPassword.length < 6 || newPassword.length > 32) {
+      wx.showToast({ title: "新密码需 6-32 位", icon: "none" });
+      return;
+    }
+    try {
+      await request({
+        url: ENDPOINTS.volunteer.auth.passwordChange,
+        method: "PUT",
+        data: { oldPassword: this.data.oldPasswordValue || "", newPassword }
+      });
+      wx.showToast({ title: "密码已保存", icon: "success" });
+      this.setData({ oldPasswordValue: "", newPasswordValue: "" });
+      setTimeout(() => this.switchMode("main"), 600);
+    } catch (error) {
+      wx.showToast({ title: error.message || "保存失败", icon: "none" });
+    }
   },
 
   savePhone() {
