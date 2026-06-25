@@ -1,4 +1,5 @@
 const localAuthMock = require("../../utils/local-auth-mock");
+const auth = require("../../utils/auth");
 const { request } = require("../../utils/request");
 const { ENDPOINTS } = require("../../utils/api-endpoints");
 const dataService = require("../../utils/data-service");
@@ -46,11 +47,14 @@ Page({
     idMaxLength: 18,
     idNo: "",
     phone: "",
+    phoneLocked: false,
     smsCode: "",
     emergencyPhone: "",
     school: "",
     grade: "",
+    gradeCode: null,
     politicalStatus: "",
+    politicalStatusCode: null,
     addressLocation: null,
     addressText: "",
     volunteerCodeImage: "",
@@ -62,7 +66,18 @@ Page({
   },
 
   onLoad() {
+    this.prefillLoginPhone();
     this.loadAgreement();
+  },
+
+  // 方案A：账号 = 手机号。登录手机号已在登录时验证过，注册页直接带出、锁定不可改，
+  // 也无需再发注册验证码（后端对已绑手机号的账号会跳过 REGISTER 校验）。
+  // 微信登录等未绑手机号的账号取不到，phone 仍可编辑并走验证码流程。
+  prefillLoginPhone() {
+    const loginPhone = (auth.getUser() || {}).phone || "";
+    if (/^1\d{10}$/.test(loginPhone)) {
+      this.setData({ phone: loginPhone, phoneLocked: true });
+    }
   },
 
   async loadAgreement() {
@@ -104,15 +119,21 @@ Page({
 
   onPickGrade(event) {
     const index = Number(event.detail.value);
-    this.setData({ grade: GRADES[index] });
+    // 显示用 label，提交用 code（下标+1，与后端 Grade 枚举 code 顺序一致）
+    this.setData({ grade: GRADES[index], gradeCode: index + 1 });
   },
 
   onPickPolitical(event) {
     const index = Number(event.detail.value);
-    this.setData({ politicalStatus: POLITICS[index] });
+    // 显示用 label，提交用 code（下标+1，与后端 PoliticalStatus 枚举 code 顺序一致）
+    this.setData({ politicalStatus: POLITICS[index], politicalStatusCode: index + 1 });
   },
 
   async sendSmsCode() {
+    if (this.data.phoneLocked) {
+      // 登录手机号已验证，无需再发码
+      return;
+    }
     const phone = (this.data.phone || "").trim();
     if (!/^1\d{10}$/.test(phone)) {
       wx.showToast({
@@ -348,7 +369,8 @@ Page({
       return;
     }
 
-    // 字段名须与后端 RegisterDTO 对齐：idCardNo / emergencyContactPhone / iVolunteerCodeUrl / signatureUrl
+    // 字段名/类型须与后端 RegisterDTO 对齐：idCardNo / emergencyContactPhone / iVolunteerCodeUrl / signatureUrl；
+    // politicalStatus、grade 后端是 Integer code（非中文 label），这里发 code，否则 Jackson 反序列化 400。
     const payload = {
       realName,
       idCardNo: idNo,
@@ -356,8 +378,8 @@ Page({
       smsCode: this.data.smsCode,
       emergencyContactPhone: emergencyPhone,
       school,
-      grade,
-      politicalStatus,
+      grade: this.data.gradeCode,
+      politicalStatus: this.data.politicalStatusCode,
       address: addressText,
       iVolunteerCodeUrl: volunteerCodeImage,
       signatureUrl: agreementSignatureUrl

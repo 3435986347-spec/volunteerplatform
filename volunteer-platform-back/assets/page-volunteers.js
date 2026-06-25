@@ -1,8 +1,9 @@
 /* ============================================================
    志愿者管理（GET /a/user/volunteers ...）—— 真实接口
    列表(多筛选/真分页)/详情/修改(全量PUT,仅超管)/停用·恢复(PATCH status)/删除/导出
-   鉴权：列表+详情 user:list、导出 user:export、状态 user:status、删除 user:delete；
-        修改实名敏感资料 user:edit 写死仅超管。「重置密码」按决策隐藏（微信登录无密码列）。
+   鉴权：列表+详情 user:list、导出 user:export、状态 user:status、删除 user:delete、重置密码 user:pwd-reset；
+        修改实名敏感资料 user:edit 写死仅超管。「重置密码」= 清空密码（V20 起 volunteer 有 password 列），
+        志愿者之后用手机号验证码登录再自设新密码；管理员不接触明文密码。
    状态约定：后端 0正常/1禁用/2注销（与 MAPS.acct 已对齐，勿再反转）。
    ============================================================ */
 
@@ -25,6 +26,7 @@ function VolunteersPage(props) {
   var canStatus = hasPerm(id, 'user:status');
   var canDelete = hasPerm(id, 'user:delete');
   var canExport = hasPerm(id, 'user:export');
+  var canPwdReset = hasPerm(id, 'user:pwd-reset');
 
   var [kw, setKw] = useState('');
   var [gender, setGender] = useState('all');
@@ -93,6 +95,15 @@ function VolunteersPage(props) {
     window.message.success('正在导出志愿者 Excel…');
     API.download('/a/user/volunteers/export', '志愿者名单.xlsx', q).catch(function () {});
   }
+  function resetPwd(v) {
+    window.confirmDialog({ title: '重置「' + v.name + '」的登录密码？', danger: true, okText: '重置',
+      content: '重置后将清空其密码：该志愿者需用手机号 + 验证码重新登录，再到安全中心自设新密码。管理员不会获得任何明文密码。' }).then(function (ok) {
+      if (!ok) return;
+      API.post('/a/user/volunteers/' + v.id + '/password/reset').then(function () {
+        window.message.success('已重置密码（已清空，需重新设置）');
+      }).catch(function () {});
+    });
+  }
 
   function moreItems(v) {
     var items = [];
@@ -100,6 +111,8 @@ function VolunteersPage(props) {
     if (canStatus && (v.status === 0 || v.status === 1)) {
       items.push({ icon: v.status === 0 ? 'lock' : 'checkCircle', label: v.status === 0 ? '禁用账号' : '启用账号', onClick: function () { toggleStatus(v); } });
     }
+    // 仅正常态(0)账号可重置：禁用/注销账号无法用「手机号+验证码重登」完成后续自设，展示会误导
+    if (canPwdReset && v.status === 0) { if (items.length) items.push({ divider: true }); items.push({ icon: 'key', label: '重置密码', onClick: function () { resetPwd(v); } }); }
     if (canDelete) { if (items.length) items.push({ divider: true }); items.push({ icon: 'trash', label: '删除', danger: true, onClick: function () { del(v); } }); }
     return items;
   }

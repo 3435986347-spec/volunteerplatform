@@ -258,7 +258,7 @@
 - 暂停/恢复：`PATCH /a/user/volunteers/{id}/status` `[user:status]`（body `{"status":0或1}`；**注销态 2 为终态，不提供启用/禁用入口**）
 - 删除：`DELETE /a/user/volunteers/{id}` `[user:delete]`（逻辑删除）
 - 导出：`GET /a/user/volunteers/export` `[user:export]`（Excel，同列表筛选）
-- 重置密码：`POST /a/user/volunteers/{id}/password/reset` `[user:pwd-reset]` —— **志愿者微信登录无密码列，此操作为契约兼容 no-op；前端应隐藏该按钮**
+- 重置密码：`POST /a/user/volunteers/{id}/password/reset` `[user:pwd-reset]` —— **清空** `password`（V20 起志愿者有密码列）；重置后志愿者需用手机号+验证码重新登录、再自设新密码，管理员不接触明文。按钮仅对正常态(status=0)账号展示
 可视化：标准「筛选 + 表格 + 行内操作（详情/修改/更多[启用·禁用/删除]）」；「管理团队」标记与活动域授权在「志愿者标记与授权」页操作、不在此页；分队下拉可复用 `GET /a/organization/squads`（无 `org:squad-manage` 时降级为仅「全部分队」）。
 
 ---

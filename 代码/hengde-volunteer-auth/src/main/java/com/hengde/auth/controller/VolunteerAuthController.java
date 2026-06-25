@@ -52,7 +52,7 @@ public class VolunteerAuthController {
         this.weworkGroupService = weworkGroupService;
     }
 
-    @Operation(summary = "发送短信验证码（scene: register/login/volunteer-password-reset，默认 register）")
+    @Operation(summary = "发送短信验证码（scene: register/login/volunteer-password-reset/change-phone，默认 register）")
     @PostMapping("/sms/codes")
     public Result<Void> sendSmsCode(@RequestBody @Valid SmsCodeDTO dto, HttpServletRequest request) {
         volunteerAuthService.sendSmsCode(dto.getPhone(), dto.getScene(), IpUtil.getClientIp(request));

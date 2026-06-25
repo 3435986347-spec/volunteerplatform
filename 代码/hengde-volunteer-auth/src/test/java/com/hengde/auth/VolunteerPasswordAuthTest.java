@@ -82,9 +82,10 @@ class VolunteerPasswordAuthTest {
 
     @Test
     void sendSmsCode_unknownScene_rejected() {
-        assertThrows(BusinessException.class, () -> authService.sendSmsCode("13700000001", "change-phone", null));
+        assertThrows(BusinessException.class, () -> authService.sendSmsCode("13700000001", "unknown-scene", null));
         // 白名单内场景放行（短信未启用时只写 Redis，不真发）
         assertDoesNotThrow(() -> authService.sendSmsCode("13700000001", SmsScene.LOGIN, null));
+        assertDoesNotThrow(() -> authService.sendSmsCode("13700000001", SmsScene.CHANGE_PHONE, null));
     }
 
     // ---------- 验证码登录 ----------

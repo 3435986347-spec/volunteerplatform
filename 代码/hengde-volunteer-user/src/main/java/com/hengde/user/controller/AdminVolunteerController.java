@@ -96,7 +96,7 @@ public class AdminVolunteerController {
         return Result.ok();
     }
 
-    @Operation(summary = "重置志愿者密码（微信登录无密码列，契约兼容 no-op）")
+    @Operation(summary = "重置志愿者密码（清空 password，重置后需手机号验证码重登再自设新密码）")
     @SaCheckPermission(value = PermissionCode.USER_PWD_RESET, type = "admin")
     @PostMapping("/{id}/password/reset")
     public Result<Void> resetPassword(@PathVariable Long id) {

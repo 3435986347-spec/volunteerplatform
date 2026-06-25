@@ -527,7 +527,7 @@ function normalizeUserProfile(row = {}) {
       address: valueOf(row, ["address", "contactAddress"], ""),
       nickName,
       avatar: valueOf(row, ["avatarUrl", "avatar"], localUser.avatarUrl || ""),
-      volunteerCode: valueOf(row, ["ivolunteerCodeUrl", "volunteerCode"], "")
+      volunteerCode: valueOf(row, ["iVolunteerCodeUrl", "ivolunteerCodeUrl", "volunteerCode"], "")
     }
   };
 }
@@ -623,20 +623,20 @@ async function publishActivity(data) {
   });
 }
 
-// 上传活动封面：选好的本地临时图片传到 /v/files/upload?dir=activity，返回可访问 URL。
+// 通用图片上传：选好的本地临时图片传到指定 /v/files 接口（按 dir 区分用途），返回可访问 URL。
 // wx.request 不能传文件，必须用 wx.uploadFile；这里复用 request.js 同款的 baseUrl + token 取法，
 // 并按后端 {code,message,data:{url}} 包装层解析（res.data 是字符串，需 JSON.parse）。
-function uploadActivityImage(tempFilePath) {
+function uploadImageTo(tempFilePath, endpoint, dir) {
   if (useMockApi()) return Promise.resolve(tempFilePath);
   const app = getApp();
   const baseUrl = (app && app.globalData && app.globalData.apiBaseUrl) || "http://localhost:8080/api";
   const token = auth.getToken();
   return new Promise((resolve, reject) => {
     wx.uploadFile({
-      url: `${baseUrl}${ENDPOINTS.volunteer.files.upload}`,
+      url: `${baseUrl}${endpoint}`,
       filePath: tempFilePath,
       name: "file",
-      formData: { dir: "activity" },
+      formData: { dir },
       header: token ? { Authorization: token } : {},
       success(res) {
         let body = res.data;
@@ -659,6 +659,26 @@ function uploadActivityImage(tempFilePath) {
         reject(new Error("网络连接失败，图片上传失败"));
       }
     });
+  });
+}
+
+// 上传活动封面（dir=activity，需 activity:publish）
+function uploadActivityImage(tempFilePath) {
+  return uploadImageTo(tempFilePath, ENDPOINTS.volunteer.files.upload, "activity");
+}
+
+// 上传个人头像（dir=avatar，任意登录志愿者）
+function uploadProfileImage(tempFilePath) {
+  return uploadImageTo(tempFilePath, ENDPOINTS.volunteer.files.profileImage, "avatar");
+}
+
+// 修改/换绑手机号（需新手机号短信验证，scene=change-phone）
+async function changePhone(data) {
+  if (useMockApi()) return { success: true };
+  return request({
+    url: ENDPOINTS.volunteer.user.phone,
+    method: "PUT",
+    data
   });
 }
 
@@ -1089,10 +1109,12 @@ module.exports = {
   updateManagedEvaluation,
   submitManagedSummary,
   updateUserProfile,
+  changePhone,
   loadHomeData,
   registerVolunteer,
   publishActivity,
   uploadActivityImage,
+  uploadProfileImage,
   reviewActivity,
   search,
   normalizeActivity

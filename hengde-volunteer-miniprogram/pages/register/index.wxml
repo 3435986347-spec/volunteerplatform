@@ -40,11 +40,12 @@
 
       <view class="form-row action-row">
         <view class="form-label required">手机号：</view>
-        <input class="form-input" type="number" maxlength="11" data-field="phone" value="{{phone}}" placeholder="请输入手机号" bindinput="updateField" />
-        <button class="pill-btn" loading="{{smsSending}}" disabled="{{smsSending}}" bindtap="sendSmsCode">获取验证码</button>
+        <input class="form-input" type="number" maxlength="11" data-field="phone" value="{{phone}}" placeholder="请输入手机号" disabled="{{phoneLocked}}" bindinput="updateField" />
+        <button wx:if="{{!phoneLocked}}" class="pill-btn" loading="{{smsSending}}" disabled="{{smsSending}}" bindtap="sendSmsCode">获取验证码</button>
+        <view wx:else class="phone-locked-tip">已验证</view>
       </view>
 
-      <view class="form-row action-row">
+      <view wx:if="{{!phoneLocked}}" class="form-row action-row">
         <view class="form-label">验证码：</view>
         <input class="form-input" type="number" data-field="smsCode" value="{{smsCode}}" placeholder="请输入验证码" bindinput="updateField" />
         <button class="pill-btn confirm-btn" bindtap="confirmSmsCode">确认</button>

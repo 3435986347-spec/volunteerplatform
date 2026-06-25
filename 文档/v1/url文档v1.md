@@ -39,7 +39,7 @@
 
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
-| POST | /v/auth/sms/codes | 发送短信验证码；body `{phone, scene}`，scene 白名单 `register`(默认)/`login`/`volunteer-password-reset`，越界拒绝；复用发码限流+错满作废 | 公开 |
+| POST | /v/auth/sms/codes | 发送短信验证码；body `{phone, scene}`，scene 白名单 `register`(默认)/`login`/`volunteer-password-reset`/`change-phone`，越界拒绝；复用发码限流+错满作废 | 公开 |
 | POST | /v/auth/login/sms | **手机号+验证码登录**（`{phone, smsCode}`，scene=login）；陌生手机号自动建游客账号（之后再实名），禁用/注销拒登 | 公开 |
 | POST | /v/auth/login/password | **手机号+密码登录**（`{phone, password}`，账号=手机号）；接防爆破（phoneHash/IP 计数），账号不存在/未设密码/密码错统一报错不泄露存在性 | 公开 |
 | PUT | /v/auth/password | **设置/修改登录密码**（`{oldPassword?, newPassword}`）；首次设密码原密码可空，已有密码须校验原密码；账号须已绑手机号 | 需登录 |
@@ -76,8 +76,9 @@
 
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | /v/user/profile | 获取个人基本资料 | 需登录 |
-| PATCH | /v/user/profile | 更新可修改项（头像/手机号/紧急联系方式/政治面貌/学校/年级/通讯地址） | 需登录 |
+| GET | /v/user/profile | 获取本人完整资料（姓名/手机号/身份证尾号/政治面貌/学校/年级/地址/紧急联系方式 + 时长/积分/参与活动数/所在小组/归属分队）；游客也可取（实名字段为空、`registered:false`） | 需登录 |
+| PATCH | /v/user/profile | 更新可修改项（头像/学校/年级/政治面貌/通讯地址/紧急联系方式，**部分更新**仅传非空字段，对齐 xlsx Row25 可改清单）；**手机号走 `PUT /v/user/phone`**；姓名/身份证/i志愿者码/昵称「其他均不可以修改」（实名字段仅后台超管 `PUT /a/user/volunteers/{id}` 可改） | 需登录 |
+| PUT | /v/user/phone | 修改/换绑手机号（`{phone, smsCode}`，新号需 scene=change-phone 短信验证；查重不可撞其它账号；账号=手机号，同步改 phone 密文+phoneHash） | 需登录 |
 | GET | /v/user/volunteer-card | 获取电子志愿者证（类身份证样式，含内嵌小程序码） | 需登录 |
 
 ### 管理端 `/a/user`
@@ -89,7 +90,7 @@
 | PUT | /a/user/volunteers/{id} | 修改志愿者全量信息（实名敏感字段，全量 PUT 可清空字段） | **仅超管**（`user:edit`，不入权限点表、不可分配，service 手写 `is_super_admin` 校验） |
 | PATCH | /a/user/volunteers/{id}/status | 暂停/恢复志愿者账号（body: `{"status": 0/1}`，仅 0正常/1禁用） | `user:status` |
 | DELETE | /a/user/volunteers/{id} | 删除志愿者（逻辑删除） | `user:delete` |
-| POST | /a/user/volunteers/{id}/password/reset | 重置志愿者密码（微信登录无密码列，契约兼容 no-op） | `user:pwd-reset` |
+| POST | /a/user/volunteers/{id}/password/reset | 重置志愿者密码=**清空** `password`（V20 起有密码列；管理员不设/不知明文，志愿者之后用手机号验证码登录再自设新密码） | `user:pwd-reset` |
 | GET | /a/user/volunteers/export | 批量导出志愿者（Excel，支持与列表相同的筛选参数） | `user:export` |
 
 ---
@@ -101,6 +102,7 @@
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
 | POST | /v/files/upload | 图片上传（multipart `file` + `dir`，**仅 `dir=activity`** 活动封面、限图片），返回 `{url,name,size}`。给「管理团队」志愿者在小程序发活动传封面用；与 `/a/files/upload` 分开（小程序持志愿者 token 过不了 `/a/**`） | 需登录（activity:publish） |
+| POST | /v/files/profile-image | 图片上传（multipart `file` + `dir`，**仅 `dir=avatar`** 个人头像、限图片），返回 `{url,name,size}`。任意登录志愿者「我的资料」改头像用（无需 activity:publish） | 需登录 |
 
 ### 志愿者端 `/v/activity`
 

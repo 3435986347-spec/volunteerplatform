@@ -52,10 +52,10 @@
       <view class="info-row readonly"><text>身份证类型：</text><text>{{info.idType}}</text></view>
       <view class="info-row readonly"><text>身份证号码：</text><text>{{info.idNo}}</text></view>
 
-      <view class="info-row editable">
+      <view class="info-row editable" bindtap="openPhoneEdit">
         <text class="info-label">手机号：</text>
-        <input class="info-input" value="{{info.phone}}" data-field="phone" bindinput="updateInfoField" />
-        <image class="edit-feather" src="/assets/mine-v2/edit-feather.png" mode="aspectFit"></image>
+        <text class="info-input text-value">{{info.phone || '未绑定'}}</text>
+        <text class="phone-edit-link">修改</text>
       </view>
       <view class="info-row editable">
         <text class="info-label">紧急联系方式：</text>
@@ -86,16 +86,8 @@
         <input class="info-input" value="{{info.address}}" data-field="address" bindinput="updateInfoField" />
         <image class="edit-feather" src="/assets/mine-v2/edit-feather.png" mode="aspectFit"></image>
       </view>
-      <view class="info-row editable">
-        <text class="info-label">昵称：</text>
-        <input class="info-input" value="{{info.nickName}}" data-field="nickName" bindinput="updateInfoField" />
-        <image class="edit-feather" src="/assets/mine-v2/edit-feather.png" mode="aspectFit"></image>
-      </view>
-      <view class="info-row editable" bindtap="chooseVolunteerCode">
-        <text class="info-label">i志愿者码</text>
-        <text class="info-input text-value">{{info.volunteerCode ? '已上传' : '点击上传'}}</text>
-        <image class="edit-feather" src="/assets/mine-v2/edit-feather.png" mode="aspectFit"></image>
-      </view>
+      <view class="info-row readonly"><text>昵称：</text><text>{{info.nickName}}</text></view>
+      <view class="info-row readonly"><text>i志愿者码：</text><text>{{info.volunteerCode ? '已上传' : '未上传'}}</text></view>
       <view class="info-row avatar-row" bindtap="chooseAvatar">
         <text class="info-label">修改头像</text>
         <view class="avatar-preview">
@@ -351,7 +343,22 @@
     </view>
   </block>
 
-  <view class="picker-mask" wx:if="{{showPoliticsPicker || showGradePicker || showPaperCancel || showRushModal}}" catchtap="closeAllSheets"></view>
+  <view class="picker-mask" wx:if="{{showPoliticsPicker || showGradePicker || showPaperCancel || showRushModal || showPhoneEdit}}" catchtap="closeAllSheets"></view>
+
+  <view class="picker-sheet" wx:if="{{showPhoneEdit}}">
+    <view class="sheet-head">
+      <text bindtap="closePhoneEdit">取消</text>
+      <text>修改手机号</text>
+    </view>
+    <view class="phone-edit-body">
+      <input class="info-input phone-edit-input" type="number" maxlength="11" placeholder="请输入新手机号" value="{{newPhone}}" data-field="newPhone" bindinput="updateField" />
+      <view class="phone-edit-code-row">
+        <input class="info-input phone-edit-input" type="number" placeholder="验证码" value="{{phoneChangeCode}}" data-field="phoneChangeCode" bindinput="updateField" />
+        <button class="secondary-btn phone-code-btn" loading="{{phoneCodeSending}}" disabled="{{phoneCodeSending}}" bindtap="getPhoneChangeCode">获取验证码</button>
+      </view>
+    </view>
+    <button class="primary-btn" bindtap="confirmPhoneChange">确认修改</button>
+  </view>
 
   <view class="picker-sheet" wx:if="{{showPoliticsPicker}}">
     <view class="sheet-head">

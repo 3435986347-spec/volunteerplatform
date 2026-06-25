@@ -235,6 +235,14 @@
   width: 140rpx;
 }
 
+.phone-locked-tip {
+  flex: 0 0 140rpx;
+  width: 140rpx;
+  text-align: center;
+  color: #4caf50;
+  font-size: 21rpx;
+}
+
 .picker-row {
   position: relative;
   padding-right: 0;

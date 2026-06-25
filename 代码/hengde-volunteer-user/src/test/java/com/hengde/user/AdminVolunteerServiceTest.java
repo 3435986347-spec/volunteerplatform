@@ -312,10 +312,18 @@ class AdminVolunteerServiceTest {
     }
 
     @Test
-    void resetPasswordIsNoOpForExistingVolunteer() {
+    void resetPasswordClearsPassword() {
         Long id = insertRegistered("戊", "13200000000", null, "重置校", null);
-        service.resetPassword(id); // 不抛异常即视为契约兼容 no-op
-        assertNotNull(volunteerMapper.selectById(id));
+        // 先给该志愿者设一个密码（直接落库，模拟其在安全中心设过密码）
+        Volunteer setPwd = new Volunteer();
+        setPwd.setId(id);
+        setPwd.setPassword("$2a$10$dummybcryptdummybcryptdu");
+        volunteerMapper.updateById(setPwd);
+        assertNotNull(volunteerMapper.selectById(id).getPassword(), "前置：密码已设置");
+
+        service.resetPassword(id); // 重置 = 清空密码
+
+        assertNull(volunteerMapper.selectById(id).getPassword(), "重置后密码应被清空");
     }
 
     // ---------- helpers ----------

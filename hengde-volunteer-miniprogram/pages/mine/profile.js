@@ -1,4 +1,6 @@
 const dataService = require("../../utils/data-service");
+const { request } = require("../../utils/request");
+const { ENDPOINTS } = require("../../utils/api-endpoints");
 
 const POLITICS = ["群众", "共青团员", "中共预备党员", "中共党员", "民主党派"];
 
@@ -145,6 +147,10 @@ Page({
     showGradePicker: false,
     showPaperCancel: false,
     showRushModal: false,
+    showPhoneEdit: false,
+    newPhone: "",
+    phoneChangeCode: "",
+    phoneCodeSending: false,
     editAvatar: "",
     editAvatarUrl: "",
     politicsOptions: POLITICS,
@@ -257,15 +263,15 @@ Page({
     });
   },
 
+  // 顶层字段输入（手机号改绑用 newPhone / phoneChangeCode）
+  updateField(event) {
+    const field = event.currentTarget.dataset.field;
+    if (!field) return;
+    this.setData({ [field]: event.detail.value });
+  },
+
+  // 选头像 → 先本地预览，再真实上传换成可访问 URL（不能直接把临时路径存后端）
   chooseAvatar() {
-    this.chooseImage("editAvatar", "editAvatarUrl");
-  },
-
-  chooseVolunteerCode() {
-    this.chooseImage("info.volunteerCode", "info.volunteerCode");
-  },
-
-  chooseImage(tempField, urlField) {
     const chooseMedia = wx.chooseMedia || wx.chooseImage;
     if (!chooseMedia) {
       wx.showToast({ title: "当前版本不支持上传图片", icon: "none" });
@@ -277,12 +283,69 @@ Page({
       sourceType: ["album", "camera"],
       success: (res) => {
         const file = res.tempFiles ? res.tempFiles[0] : res.tempFilePaths && { tempFilePath: res.tempFilePaths[0] };
-        this.setData({
-          [tempField]: file ? file.tempFilePath : "",
-          [urlField]: file ? file.tempFilePath : ""
-        });
+        const tempFilePath = file && file.tempFilePath;
+        if (!tempFilePath) return;
+        this.setData({ editAvatarUrl: tempFilePath }); // 本地预览
+        wx.showLoading({ title: "上传中" });
+        dataService.uploadProfileImage(tempFilePath).then((url) => {
+          this.setData({ editAvatarUrl: url, "info.avatar": url });
+        }).catch((e) => {
+          this.setData({ editAvatarUrl: this.data.info.avatar || "" });
+          wx.showToast({ title: (e && e.message) || "头像上传失败", icon: "none" });
+        }).then(() => wx.hideLoading());
       }
     });
+  },
+
+  // ---------- 手机号改绑（需短信验证，scene=change-phone）----------
+  openPhoneEdit() {
+    this.setData({ showPhoneEdit: true, newPhone: "", phoneChangeCode: "" });
+  },
+
+  closePhoneEdit() {
+    this.setData({ showPhoneEdit: false, newPhone: "", phoneChangeCode: "" });
+  },
+
+  async getPhoneChangeCode() {
+    const phone = (this.data.newPhone || "").trim();
+    if (!/^1\d{10}$/.test(phone)) {
+      wx.showToast({ title: "请输入正确的新手机号", icon: "none" });
+      return;
+    }
+    this.setData({ phoneCodeSending: true });
+    try {
+      await request({
+        url: ENDPOINTS.volunteer.auth.smsCodes,
+        method: "POST",
+        data: { phone, scene: "change-phone" }
+      });
+      wx.showToast({ title: "验证码已发送", icon: "none" });
+    } catch (error) {
+      wx.showToast({ title: (error && error.message) || "验证码发送失败", icon: "none" });
+    } finally {
+      this.setData({ phoneCodeSending: false });
+    }
+  },
+
+  async confirmPhoneChange() {
+    const phone = (this.data.newPhone || "").trim();
+    const smsCode = (this.data.phoneChangeCode || "").trim();
+    if (!/^1\d{10}$/.test(phone)) {
+      wx.showToast({ title: "请输入正确的新手机号", icon: "none" });
+      return;
+    }
+    if (!smsCode) {
+      wx.showToast({ title: "请输入验证码", icon: "none" });
+      return;
+    }
+    try {
+      await dataService.changePhone({ phone, smsCode });
+      wx.showToast({ title: "手机号已更新", icon: "none" });
+      this.setData({ showPhoneEdit: false, newPhone: "", phoneChangeCode: "", "info.phone": phone });
+      this.loadProfile();
+    } catch (error) {
+      wx.showToast({ title: (error && error.message) || "手机号修改失败", icon: "none" });
+    }
   },
 
   openPoliticsPicker() {
@@ -306,7 +369,8 @@ Page({
       showPoliticsPicker: false,
       showGradePicker: false,
       showPaperCancel: false,
-      showRushModal: false
+      showRushModal: false,
+      showPhoneEdit: false
     });
   },
 
@@ -345,21 +409,24 @@ Page({
   },
 
   async saveBasic() {
+    const politicsIdx = POLITICS.indexOf(this.data.info.politics);
+    const gradeIdx = GRADES.indexOf(this.data.info.grade);
+    // 字段名/类型对齐后端 MyProfileUpdateDTO（PATCH /v/user/profile，部分更新）。
+    // GRADES 为倒序展示（毕业在前），后端 Grade code 正序，故 code = 18 - index；找不到则不传（不改）。
+    // 手机号改绑需短信验证，不在此提交。
+    // 手机号走独立改绑流程、i志愿者码/姓名/身份证/昵称不可改（xlsx Row25「其他均不可以修改」），均不在此提交
+    const payload = {
+      avatarUrl: this.data.info.avatar || this.data.editAvatarUrl || "",
+      school: this.data.info.school,
+      address: this.data.info.address
+    };
+    if (politicsIdx >= 0) payload.politicalStatus = politicsIdx + 1;
+    if (gradeIdx >= 0) payload.grade = 18 - gradeIdx;
+    if (this.data.info.emergencyPhone) payload.emergencyContactPhone = this.data.info.emergencyPhone;
     try {
-      await dataService.updateUserProfile({
-        avatarUrl: this.data.info.avatar || this.data.editAvatarUrl || "",
-        phone: this.data.info.phone,
-        emergencyContactPhone: this.data.info.emergencyPhone,
-        politicalStatus: POLITICS.indexOf(this.data.info.politics) + 1,
-        politicalStatusName: this.data.info.politics,
-        school: this.data.info.school,
-        grade: GRADES.indexOf(this.data.info.grade) >= 0 ? GRADES.indexOf(this.data.info.grade) + 1 : this.data.info.grade,
-        gradeName: this.data.info.grade,
-        address: this.data.info.address,
-        nickName: this.data.info.nickName,
-        ivolunteerCodeUrl: this.data.info.volunteerCode
-      });
+      await dataService.updateUserProfile(payload);
       wx.showToast({ title: "已修改", icon: "none" });
+      this.loadProfile();
     } catch (error) {
       wx.showToast({ title: error.message || "资料接口暂不可用", icon: "none" });
     }

@@ -204,12 +204,20 @@ public class AdminVolunteerService {
     }
 
     /**
-     * 重置密码：志愿者为微信登录、{@code volunteer} 表<b>无密码列</b>，此操作语义不成立。
-     * 保留为 no-op（仅校验存在性后返回成功），以兼容 url 契约、避免前端 404；前端应隐藏该入口。
+     * 重置密码：<b>清空</b>该志愿者的登录密码（password 置 null）。
+     *
+     * <p>口径（产品决策，安全优先）：管理员不设定、不知晓任何明文密码——重置即「清空」，志愿者之后用
+     * 「手机号+验证码」登录、再在安全中心自设新密码（也可自助走「忘记密码」短信重置）。V20 起 volunteer 表已有
+     * password 列，此操作不再是 no-op。已未设密码者重置为幂等空操作。</p>
      */
     public void resetPassword(Long id) {
         requireRegisteredVolunteer(id);
-        // no-op：无密码列，微信登录
+        LambdaUpdateWrapper<Volunteer> uw = Wrappers.<Volunteer>lambdaUpdate()
+                .eq(Volunteer::getId, id)
+                .set(Volunteer::getPassword, null)
+                // wrapper 更新不触发 MetaObjectHandler 自动填充，须显式写审计时间
+                .set(Volunteer::getUpdateTime, LocalDateTime.now());
+        volunteerMapper.update(null, uw);
     }
 
     /** 导出（与列表同筛选，不分页）。 */

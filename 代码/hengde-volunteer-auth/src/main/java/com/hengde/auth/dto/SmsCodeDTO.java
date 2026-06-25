@@ -18,8 +18,8 @@ public class SmsCodeDTO {
     private String phone;
 
     /**
-     * 场景：register（注册，默认）/ login（手机号验证码登录）/ volunteer-password-reset（忘记密码）。
-     * service 层按白名单校验，越界拒绝。
+     * 场景：register（注册，默认）/ login（手机号验证码登录）/ volunteer-password-reset（忘记密码）/
+     * change-phone（换绑手机号）。service 层按白名单校验，越界拒绝。
      */
     private String scene;
 }

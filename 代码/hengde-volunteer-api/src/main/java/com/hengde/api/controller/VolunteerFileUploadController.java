@@ -25,8 +25,9 @@ import org.springframework.web.multipart.MultipartFile;
  * 吃 organization 的志愿者 RBAC——与发布活动同一权限点 {@link PermissionCode#ACTIVITY_PUBLISH}，
  * 普通/游客志愿者无此码即被拒。</p>
  *
- * <p>仅放开 {@code dir=activity}（活动封面，限图片）；其它目录一律拒绝，避免被借道传公开孤儿文件。
- * 扩展名+大小校验沿用 {@link FileValidator}；魔数校验同管理端一并延后（仅对有发布权的志愿者开放，风险可控）。</p>
+ * <p>{@code /upload}（dir=activity，活动封面）需 {@code activity:publish}；{@code /profile-image}（dir=avatar，
+ * 个人头像）任意登录志愿者可用（「我的资料」改头像）。两者均限图片、其它目录一律拒绝，避免被借道传公开孤儿文件。
+ * 扩展名+大小校验沿用 {@link FileValidator}；魔数校验同管理端一并延后（仅对登录志愿者开放，风险可控）。</p>
  *
  * @author hengde
  */
@@ -35,8 +36,11 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/v/files")
 public class VolunteerFileUploadController {
 
-    /** 志愿者端唯一放开的上传目录：活动封面 */
+    /** 活动封面（需 activity:publish） */
     private static final String DIR_ACTIVITY = "activity";
+
+    /** 个人头像（任意登录志愿者） */
+    private static final String DIR_AVATAR = "avatar";
 
     private FileStorageService fileStorageService;
     private OssProperties ossProperties;
@@ -60,11 +64,27 @@ public class VolunteerFileUploadController {
             throw new BusinessException("不支持的上传目录：" + dir);
         }
         FileValidator.validate(file, FileValidator.IMAGE_EXTENSIONS, ossProperties.getMaxFileSize());
+        return Result.ok(store(file, dir));
+    }
+
+    @Operation(summary = "上传个人头像（任意登录志愿者；仅 dir=avatar、限图片）")
+    @PostMapping("/profile-image")
+    public Result<FileUploadVO> uploadProfileImage(@RequestParam("file") MultipartFile file,
+                                                   @RequestParam("dir") String dir) {
+        // 无 @SaCheckPermission：仅 /v/** 路由级登录校验即可（普通志愿者「我的资料」改头像）
+        if (!DIR_AVATAR.equals(dir)) {
+            throw new BusinessException("不支持的上传目录：" + dir);
+        }
+        FileValidator.validate(file, FileValidator.IMAGE_EXTENSIONS, ossProperties.getMaxFileSize());
+        return Result.ok(store(file, dir));
+    }
+
+    private FileUploadVO store(MultipartFile file, String dir) {
         String url = fileStorageService.upload(file, dir);
         FileUploadVO vo = new FileUploadVO();
         vo.setUrl(url);
         vo.setName(file.getOriginalFilename());
         vo.setSize(file.getSize());
-        return Result.ok(vo);
+        return vo;
     }
 }

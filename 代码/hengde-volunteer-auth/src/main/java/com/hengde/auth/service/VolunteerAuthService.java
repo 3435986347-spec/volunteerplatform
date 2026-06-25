@@ -49,9 +49,9 @@ public class VolunteerAuthService {
 
     private static final DateTimeFormatter BIRTH_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
 
-    /** 发码允许的场景白名单（仅志愿者域三类，防被借道发任意场景码） */
+    /** 发码允许的场景白名单（仅志愿者域，防被借道发任意场景码） */
     private static final Set<String> ALLOWED_SMS_SCENES =
-            Set.of(SmsScene.REGISTER, SmsScene.LOGIN, SmsScene.VOLUNTEER_PASSWORD_RESET);
+            Set.of(SmsScene.REGISTER, SmsScene.LOGIN, SmsScene.VOLUNTEER_PASSWORD_RESET, SmsScene.CHANGE_PHONE);
 
     private VolunteerMapper volunteerMapper;
     private WxMaService wxMaService;
@@ -180,7 +180,7 @@ public class VolunteerAuthService {
     }
 
     /**
-     * 发送短信验证码（按场景）。scene 仅允许 register/login/volunteer-password-reset（白名单外拒绝）；
+     * 发送短信验证码（按场景）。scene 仅允许 register/login/volunteer-password-reset/change-phone（白名单外拒绝）；
      * 留空默认 register（兼容旧调用）。复用 {@link VerifyCodeService} 的手机号/IP 限流 + 错满作废。
      *
      * @param phone    手机号
@@ -350,8 +350,19 @@ public class VolunteerAuthService {
             throw new BusinessException("签名图地址过长");
         }
 
-        // 1. 短信验证码
-        verifyCodeService.verify(dto.getPhone(), SmsScene.REGISTER, dto.getSmsCode());
+        // 1. 手机号绑定与验证码（方案A：注册手机号锁定 = 登录手机号）。
+        //    手机号验证码登录建的账号已绑 phoneHash，且登录时已验证过该号 → 注册手机号须与之一致、
+        //    且不再重复发注册验证码；微信登录等未绑手机号的账号仍须校验 REGISTER 验证码后绑定。
+        String phoneHash = cryptoUtil.hashPhone(dto.getPhone());
+        boolean phoneAlreadyVerified =
+                volunteer.getPhoneHash() != null && volunteer.getPhoneHash().equals(phoneHash);
+        if (volunteer.getPhoneHash() != null && !volunteer.getPhoneHash().equals(phoneHash)) {
+            // 前端已锁定手机号，此处兜底防绕过：不允许把登录态改成别人的号
+            throw new BusinessException("登录手机号与注册手机号不一致");
+        }
+        if (!phoneAlreadyVerified) {
+            verifyCodeService.verify(dto.getPhone(), SmsScene.REGISTER, dto.getSmsCode());
+        }
 
         // 2. 身份证二要素实名
         if (!realNameService.verify(dto.getRealName(), dto.getIdCardNo())) {
@@ -372,12 +383,7 @@ public class VolunteerAuthService {
             throw new BusinessException("该身份证已注册");
         }
 
-        // 4.5 手机号绑定校验（防串号）：显式查 phoneHash，不靠 uk_phone_hash 抛 DB 异常兜底
-        String phoneHash = cryptoUtil.hashPhone(dto.getPhone());
-        // 当前账号已绑手机号（如手机号验证码登录建的账号）→ 注册手机号须与之一致，防把登录态改成别人的号
-        if (volunteer.getPhoneHash() != null && !volunteer.getPhoneHash().equals(phoneHash)) {
-            throw new BusinessException("登录手机号与注册手机号不一致");
-        }
+        // 4.5 手机号查重（防串号）：显式查 phoneHash 排除自身，不靠 uk_phone_hash 抛 DB 异常兜底
         Long phoneDup = volunteerMapper.selectCount(Wrappers.<Volunteer>lambdaQuery()
                 .eq(Volunteer::getPhoneHash, phoneHash)
                 .ne(Volunteer::getId, volunteerId));

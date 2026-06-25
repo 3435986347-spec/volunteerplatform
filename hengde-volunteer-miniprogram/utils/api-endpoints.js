@@ -9,7 +9,8 @@ const ENDPOINTS = {
     home: "/v/home",
     search: "/v/search",
     files: {
-      upload: "/v/files/upload"
+      upload: "/v/files/upload",
+      profileImage: "/v/files/profile-image"
     },
     auth: {
       smsCodes: "/v/auth/sms/codes",
@@ -27,6 +28,7 @@ const ENDPOINTS = {
     },
     user: {
       profile: "/v/user/profile",
+      phone: "/v/user/phone",
       volunteerCard: "/v/user/volunteer-card"
     },
     activity: {
