@@ -21,6 +21,21 @@ const GRADES = [
 
 const POLITICS = ["群众", "共青团员", "中共预备党员", "中共党员", "民主党派"];
 
+// 从 18 位大陆居民身份证算周岁年龄；非 18 位（港澳台证件等无法据此推算）返回 null。
+function ageFromIdCard(idNo) {
+  if (!idNo || idNo.length !== 18) return null;
+  const y = Number(idNo.substring(6, 10));
+  const m = Number(idNo.substring(10, 12));
+  const d = Number(idNo.substring(12, 14));
+  if (!y || !m || !d) return null;
+  const today = new Date();
+  let age = today.getFullYear() - y;
+  const mm = today.getMonth() + 1;
+  const dd = today.getDate();
+  if (mm < m || (mm === m && dd < d)) age -= 1;
+  return age;
+}
+
 Page({
   data: {
     idTypes: ID_TYPES,
@@ -286,6 +301,18 @@ Page({
       return;
     }
 
+    // 紧急联系方式：身份证未满 18 岁必填；满 18 岁不强制、填不填都不提示。
+    const age = ageFromIdCard(idNo);
+    if (age !== null && age < 18 && !emergencyPhone) {
+      wx.showToast({ title: "未成年志愿者请填写紧急联系方式", icon: "none" });
+      return;
+    }
+    // 紧急联系方式不能与本人手机号相同（填了就校验，与需求「和手机号需要不一样」一致）
+    if (emergencyPhone && emergencyPhone === phone) {
+      wx.showToast({ title: "紧急联系方式不能与本人手机号相同", icon: "none" });
+      return;
+    }
+
     if (!politicalStatus) {
       wx.showToast({ title: "请选择政治面貌", icon: "none" });
       return;
@@ -321,34 +348,31 @@ Page({
       return;
     }
 
+    // 字段名须与后端 RegisterDTO 对齐：idCardNo / emergencyContactPhone / iVolunteerCodeUrl / signatureUrl
     const payload = {
       realName,
-      idType,
-      idNo,
+      idCardNo: idNo,
       phone,
       smsCode: this.data.smsCode,
-      emergencyPhone,
+      emergencyContactPhone: emergencyPhone,
       school,
       grade,
       politicalStatus,
       address: addressText,
-      addressLocation: this.data.addressLocation,
-      volunteerCodeImageUrl: volunteerCodeImage,
-      agreementAccepted: true,
-      agreementSignatureUrl
+      iVolunteerCodeUrl: volunteerCodeImage,
+      signatureUrl: agreementSignatureUrl
     };
 
     try {
       await dataService.registerVolunteer(payload);
-      wx.showToast({
-        title: "注册信息已提交",
-        icon: "none"
-      });
+      wx.showToast({ title: "注册信息已提交", icon: "success" });
+      setTimeout(() => wx.switchTab({ url: "/pages/home/index" }), 700);
     } catch (error) {
-      wx.showToast({
-        title: "注册接口暂不可用",
-        icon: "none"
-      });
+      // 401=登录态丢失（注册需先验证码登录拿游客 token）；其余直接显示后端校验信息
+      const title = error.statusCode === 401
+        ? "请先登录后再注册"
+        : (error.message || "注册失败");
+      wx.showToast({ title, icon: "none" });
     }
   },
 

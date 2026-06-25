@@ -28,12 +28,15 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -61,10 +64,16 @@ class AdminVolunteerServiceTest {
     private VolunteerGroupMapper groupMapper;
     private VolunteerGroupMemberMapper memberMapper;
     private ActivityAttendanceMapper attendanceMapper;
+    private JdbcTemplate jdbcTemplate;
 
     @Autowired
     public void setService(AdminVolunteerService service) {
         this.service = service;
+    }
+
+    @Autowired
+    public void setJdbcTemplate(JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Autowired
@@ -267,10 +276,39 @@ class AdminVolunteerServiceTest {
     }
 
     @Test
-    void deleteLogicallyHides() {
-        Long id = insertRegistered("丁", "13300000000", null, "删校", null);
+    void deleteReleasesUniqueFieldsAndScrubsCredentials() {
+        String phone = "133" + String.format("%08d", SEQ.incrementAndGet());
+        String idCard = "440000200002022345";
+        Long id = insertRegistered("丁", phone, idCard, "删校", null);
+        // 补 password + 紧急联系电话密文，验证删除时一并清空
+        Volunteer seed = new Volunteer();
+        seed.setId(id);
+        seed.setPassword("bcrypt-hash-x");
+        seed.setEmergencyContactPhone(cryptoUtil.encrypt("13800000000"));
+        volunteerMapper.updateById(seed);
+
         service.delete(id);
-        assertNull(volunteerMapper.selectById(id), "逻辑删除后按 id 查应被 @TableLogic 隐藏");
+
+        // active 查询隐藏（@TableLogic）
+        assertNull(volunteerMapper.selectById(id), "逻辑删除后按 id 查应被隐藏");
+
+        // 含逻辑删除的原始行（绕过 @TableLogic 直查）：唯一字段释放 + 凭据/敏感密文清空
+        Map<String, Object> row = jdbcTemplate.queryForMap(
+                "SELECT openid, phone, phone_hash, id_card_no, id_card_hash, password, "
+                        + "emergency_contact_phone, is_deleted FROM volunteer WHERE id = ?", id);
+        assertEquals(1, ((Number) row.get("is_deleted")).intValue(), "应已逻辑删除");
+        assertEquals("deleted:" + id, row.get("openid"), "openid 应改写为占位、释放唯一键");
+        assertNull(row.get("phone_hash"), "phone_hash 应释放 → 同号可重新注册");
+        assertNull(row.get("id_card_hash"), "id_card_hash 应释放");
+        assertNull(row.get("password"), "password 应清空");
+        assertNull(row.get("phone"), "手机号密文应清空");
+        assertNull(row.get("id_card_no"), "身份证密文应清空");
+        assertNull(row.get("emergency_contact_phone"), "紧急联系电话密文应清空");
+
+        // 唯一键确实释放：用同一手机号重新注册新志愿者应成功（不撞 uk_phone_hash）
+        Long reId = insertRegistered("丁二次", phone, idCard, "删校", null);
+        assertNotNull(reId);
+        assertNotEquals(id, reId);
     }
 
     @Test

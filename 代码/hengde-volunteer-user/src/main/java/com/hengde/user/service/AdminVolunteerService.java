@@ -27,6 +27,7 @@ import com.hengde.user.vo.AdminVolunteerListVO;
 import com.hengde.user.vo.VolunteerExportRow;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
@@ -172,9 +173,33 @@ public class AdminVolunteerService {
         volunteerMapper.updateById(update);
     }
 
-    /** 逻辑删除（{@code @TableLogic}，行被隐藏，非物理删除）。 */
+    /**
+     * 删除志愿者：逻辑删除 + <b>释放唯一字段并清空凭据/敏感 PII</b>，使该手机号/身份证之后可重新注册。
+     *
+     * <p>与「停用」({@link #setStatus} 置 BANNED) 的语义区别（产品决策）：
+     * <ul>
+     *   <li><b>删除</b>=账号内容清空、放开手机号——openid 改写为 {@code deleted:{id}} 占位（满足 NOT NULL UNIQUE）、
+     *       phone_hash/id_card_hash 置 null（放开 {@code uk_phone_hash} 与身份证查重）、phone/idCardNo/password/
+     *       紧急联系电话密文清空；行保留为墓碑（is_deleted=1）以维持服务记录等引用。之后同手机号可重新走验证码登录+实名注册。</li>
+     *   <li><b>停用</b>=账号与唯一字段原样保留，凭「手机号已绑定」拦截重复注册、并在登录时按 status 拒绝。</li>
+     * </ul>
+     * 同一事务内先释放字段再逻辑删除，避免遗留唯一键导致后续注册撞 {@code uk_phone_hash} 报 500。</p>
+     */
+    @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
         requireRegisteredVolunteer(id);
+        LambdaUpdateWrapper<Volunteer> uw = Wrappers.<Volunteer>lambdaUpdate()
+                .eq(Volunteer::getId, id)
+                .set(Volunteer::getOpenid, "deleted:" + id)   // 释放 openid 唯一键（不与 p:/wx/dev 前缀冲突）
+                .set(Volunteer::getUnionid, null)
+                .set(Volunteer::getPhone, null)
+                .set(Volunteer::getPhoneHash, null)            // 释放手机号唯一键 → 可重新注册
+                .set(Volunteer::getIdCardNo, null)
+                .set(Volunteer::getIdCardHash, null)           // 释放身份证查重
+                .set(Volunteer::getPassword, null)
+                .set(Volunteer::getEmergencyContactPhone, null)
+                .set(Volunteer::getUpdateTime, LocalDateTime.now());
+        volunteerMapper.update(null, uw);
         volunteerMapper.deleteById(id);
     }
 

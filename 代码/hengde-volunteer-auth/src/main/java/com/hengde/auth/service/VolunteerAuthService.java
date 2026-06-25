@@ -208,15 +208,26 @@ public class VolunteerAuthService {
         verifyCodeService.verify(phone, SmsScene.LOGIN, smsCode);
         String phoneHash = cryptoUtil.hashPhone(phone);
         Volunteer volunteer = findOrCreateByPhone(phone, phoneHash);
-        if (volunteer.getStatus() != null && volunteer.getStatus().equals(UserStatus.BANNED)) {
-            throw new BusinessException("账号已被禁用");
-        }
+        ensureLoginable(volunteer);
         StpUtil.login(volunteer.getId());
         return new LoginVO(StpUtil.getTokenValue(), volunteer.getRegisterTime() != null);
     }
 
     /**
-     * 按 phoneHash 找志愿者；没有则建一个游客账号。
+     * 登录可用性校验：仅 {@code status=NORMAL} 放行；禁用/注销终态一律拒绝，口径与交付一致
+     * （而非只挡 BANNED）。被后台「删除」的账号是逻辑删除 + 唯一字段已释放，selectByPhoneHash 查不到，
+     * 不会走到这里。
+     */
+    private void ensureLoginable(Volunteer volunteer) {
+        Integer status = volunteer.getStatus();
+        if (UserStatus.NORMAL.equals(status)) {
+            return;
+        }
+        throw new BusinessException(UserStatus.DELETED.equals(status) ? "账号已注销" : "账号已被禁用");
+    }
+
+    /**
+     * 按 phoneHash 找<b>活跃</b>志愿者（{@code @TableLogic} 自动过滤已删除行）；没有则建一个游客账号。
      * 并发冷启动（同号两个请求同时建号）由 DB 唯一索引 {@code uk_phone_hash} 兜底——
      * 撞 {@link DuplicateKeyException} 即回查复用，避免重复账号（不引分布式锁，auth 无 Redisson）。
      */
@@ -235,11 +246,13 @@ public class VolunteerAuthService {
             volunteerMapper.insert(v);
             return v;
         } catch (DuplicateKeyException e) {
+            // 并发建号 → 回查复用；若仍查不到 active（残留的旧逻辑删除占位未释放唯一字段等），
+            // 转明确业务错误而非把 DuplicateKeyException 抛成 500
             Volunteer raced = selectByPhoneHash(phoneHash);
             if (raced != null) {
                 return raced;
             }
-            throw e;
+            throw new BusinessException("该手机号暂不可用，请联系管理员");
         }
     }
 
@@ -269,9 +282,7 @@ public class VolunteerAuthService {
             loginProtectionService.onVolunteerLoginFailed(phoneHash, clientIp);
             throw new BusinessException("手机号或密码错误");
         }
-        if (volunteer.getStatus() != null && volunteer.getStatus().equals(UserStatus.BANNED)) {
-            throw new BusinessException("账号已被禁用");
-        }
+        ensureLoginable(volunteer);
         loginProtectionService.onVolunteerLoginSucceeded(phoneHash);
         StpUtil.login(volunteer.getId());
         return new LoginVO(StpUtil.getTokenValue(), volunteer.getRegisterTime() != null);
@@ -307,9 +318,7 @@ public class VolunteerAuthService {
         if (volunteer == null) {
             throw new BusinessException("该手机号未注册");
         }
-        if (volunteer.getStatus() != null && volunteer.getStatus().equals(UserStatus.BANNED)) {
-            throw new BusinessException("账号已被禁用");
-        }
+        ensureLoginable(volunteer);
         volunteer.setPassword(PasswordUtil.encrypt(newPassword));
         volunteerMapper.updateById(volunteer);
     }
@@ -376,16 +385,14 @@ public class VolunteerAuthService {
             throw new BusinessException("该手机号已绑定账号，请使用手机号登录");
         }
 
-        // 5. 未成年需紧急联系人，且不能与本人手机号相同
+        // 5. 紧急联系方式：未满 18 岁必填（需求只要紧急联系方式一项，不强制姓名）；填了则不得与本人手机号相同
         int age = IdcardUtil.getAgeByIdCard(dto.getIdCardNo());
-        if (age < 18) {
-            if (!StringUtils.hasText(dto.getEmergencyContactName())
-                    || !StringUtils.hasText(dto.getEmergencyContactPhone())) {
-                throw new BusinessException("未成年志愿者须填写紧急联系人");
-            }
-            if (dto.getPhone().equals(dto.getEmergencyContactPhone())) {
-                throw new BusinessException("紧急联系人电话不能与本人手机号相同");
-            }
+        if (age < 18 && !StringUtils.hasText(dto.getEmergencyContactPhone())) {
+            throw new BusinessException("未成年志愿者须填写紧急联系方式");
+        }
+        if (StringUtils.hasText(dto.getEmergencyContactPhone())
+                && dto.getPhone().equals(dto.getEmergencyContactPhone())) {
+            throw new BusinessException("紧急联系方式不能与本人手机号相同");
         }
 
         // 6. 填充并加密落库
@@ -416,7 +423,12 @@ public class VolunteerAuthService {
         // 入库标记：记录注册时服务端当前的协议版本（手写签名图本身是签署凭据）
         volunteer.setSignedAgreementVersion(authProperties.getAgreementVersion());
         volunteer.setRegisterTime(LocalDateTime.now());
-        volunteerMapper.updateById(volunteer);
+        try {
+            volunteerMapper.updateById(volunteer);
+        } catch (DuplicateKeyException e) {
+            // 并发注册同号 / 残留旧逻辑删除占位未释放唯一字段：撞 uk_phone_hash 转明确业务错误，不抛 500
+            throw new BusinessException("该手机号已绑定账号，请使用手机号登录");
+        }
 
         return new LoginVO(StpUtil.getTokenValue(), true);
     }

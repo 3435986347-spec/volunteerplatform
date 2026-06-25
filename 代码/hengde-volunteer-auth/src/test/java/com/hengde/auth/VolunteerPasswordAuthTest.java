@@ -125,6 +125,53 @@ class VolunteerPasswordAuthTest {
         assertTrue(ex.getMessage().contains("禁用"));
     }
 
+    @Test
+    void smsLogin_cancelledAccount_rejected() {
+        // 注销态(status=2)是终态，也应拒绝（口径：status≠NORMAL 一律拒，不止 BANNED）
+        String phone = "13700000012";
+        insertPhoneVolunteer(phone, UserStatus.DELETED);
+        authService.sendSmsCode(phone, SmsScene.LOGIN, null);
+        String code = storedCode(SmsScene.LOGIN, phone);
+        BusinessException ex = assertThrows(BusinessException.class, () -> authService.smsLogin(phone, code, null));
+        assertTrue(ex.getMessage().contains("注销"));
+    }
+
+    @Test
+    void smsLogin_legacyDeletedRowSamePhone_businessErrorNotServerError() {
+        // 残留的旧逻辑删除行仍占着 uk_phone_hash（未释放唯一字段）→ 重登该号应得明确业务错误，而非 500
+        String phone = "13700000013";
+        Volunteer v = insertPhoneVolunteer(phone, UserStatus.NORMAL);
+        volunteerMapper.deleteById(v.getId());   // 逻辑删除但不释放 phone_hash（模拟旧数据）
+        authService.sendSmsCode(phone, SmsScene.LOGIN, null);
+        String code = storedCode(SmsScene.LOGIN, phone);
+        BusinessException ex = assertThrows(BusinessException.class, () -> authService.smsLogin(phone, code, null));
+        assertTrue(ex.getMessage().contains("暂不可用"));
+    }
+
+    @Test
+    void smsLogin_afterReleasedDelete_canReCreate() {
+        // 删除时释放唯一字段（openid 改 deleted:、phone_hash 置 null）后，同手机号可重新建号（可重注册）
+        String phone = "13700000014";
+        Volunteer v = insertPhoneVolunteer(phone, UserStatus.NORMAL);
+        volunteerMapper.update(null, com.baomidou.mybatisplus.core.toolkit.Wrappers.<Volunteer>lambdaUpdate()
+                .eq(Volunteer::getId, v.getId())
+                .set(Volunteer::getOpenid, "deleted:" + v.getId())
+                .set(Volunteer::getPhoneHash, null));
+        volunteerMapper.deleteById(v.getId());
+        authService.sendSmsCode(phone, SmsScene.LOGIN, null);
+        String code = storedCode(SmsScene.LOGIN, phone);
+        try {
+            authService.smsLogin(phone, code, null);
+        } catch (Exception ignored) {
+            // StpUtil.login 非 web 上下文抛错；新账号在此前已建好
+        }
+        Volunteer recreated = volunteerMapper.selectList(
+                com.baomidou.mybatisplus.core.toolkit.Wrappers.<Volunteer>lambdaQuery()
+                        .eq(Volunteer::getPhoneHash, cryptoUtil.hashPhone(phone))).stream().findFirst().orElse(null);
+        assertNotNull(recreated, "释放唯一字段后同号应能重新建号");
+        assertTrue(recreated.getOpenid().startsWith("p:"));
+    }
+
     // ---------- 设置/修改密码 ----------
 
     @Test

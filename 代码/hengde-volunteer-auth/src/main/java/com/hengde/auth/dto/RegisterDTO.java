@@ -50,10 +50,10 @@ public class RegisterDTO {
     /** 头像 URL */
     private String avatarUrl;
 
-    /** 紧急联系人姓名（未满 18 岁必填） */
+    /** 紧急联系人姓名（兼容历史字段；当前注册页只收紧急联系方式，不强制、也不再传此项） */
     private String emergencyContactName;
 
-    /** 紧急联系人电话（未满 18 岁必填，且需与本人手机号不同） */
+    /** 紧急联系方式（电话）：身份证未满 18 岁必填；填了则需与本人手机号不同 */
     private String emergencyContactPhone;
 
     /** 协议手写签名图片 URL */
