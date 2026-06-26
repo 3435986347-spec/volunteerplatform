@@ -8,11 +8,11 @@
     <view class="section-card">
       <view class="card-title">发布活动</view>
       <view class="form-row">
-        <text class="form-label">活动名称：</text>
+        <text class="form-label"><text class="req-star">*</text>活动名称：</text>
         <input class="form-input" value="{{form.title}}" data-field="title" bindinput="updateField" placeholder="请输入活动名称" />
       </view>
       <view class="form-row form-row-cover">
-        <text class="form-label">封面图：</text>
+        <text class="form-label"><text class="req-star">*</text>封面图：</text>
         <view class="cover-uploader">
           <image wx:if="{{form.coverImageUrl}}" class="cover-preview" src="{{form.coverImageUrl}}" mode="aspectFill" bindtap="chooseCover"></image>
           <view wx:else class="cover-placeholder" bindtap="chooseCover">
@@ -26,15 +26,17 @@
         </view>
       </view>
       <view class="form-row">
-        <text class="form-label">活动地点：</text>
-        <input class="form-input" value="{{form.location}}" data-field="location" bindinput="updateField" placeholder="请输入活动地点" />
+        <text class="form-label"><text class="req-star">*</text>活动地点：</text>
+        <input class="form-input" value="{{form.location}}" data-field="location" bindinput="updateField" placeholder="可输入或点右侧定位" />
+        <view class="locate-btn" catchtap="chooseActivityLocation">定位</view>
       </view>
+      <view wx:if="{{form.lat && form.lng}}" class="locate-hint">已获取定位坐标（经度 {{form.lng}}，纬度 {{form.lat}}）</view>
       <view class="form-row">
-        <text class="form-label">开始时间：</text>
+        <text class="form-label"><text class="req-star">*</text>开始时间：</text>
         <input class="form-input" value="{{form.startTime}}" data-field="startTime" bindinput="updateField" placeholder="2026-06-10 09:00" />
       </view>
       <view class="form-row">
-        <text class="form-label">结束时间：</text>
+        <text class="form-label"><text class="req-star">*</text>结束时间：</text>
         <input class="form-input" value="{{form.endTime}}" data-field="endTime" bindinput="updateField" placeholder="2026-06-10 12:00" />
       </view>
       <view class="form-row">
@@ -54,15 +56,15 @@
         <input class="form-input" value="{{form.enrollOpenVolunteer}}" data-field="enrollOpenVolunteer" bindinput="updateField" placeholder="2026-06-09 08:00" />
       </view>
       <view class="form-row">
-        <text class="form-label">岗位名称：</text>
+        <text class="form-label"><text class="req-star">*</text>岗位名称：</text>
         <input class="form-input" value="{{form.slotProjectName}}" data-field="slotProjectName" bindinput="updateField" placeholder="志愿者" />
       </view>
       <view class="form-row">
-        <text class="form-label">岗位人数：</text>
+        <text class="form-label"><text class="req-star">*</text>岗位人数：</text>
         <input class="form-input" type="number" value="{{form.slotNeedCount}}" data-field="slotNeedCount" bindinput="updateField" placeholder="20" />
       </view>
       <view class="form-row">
-        <text class="form-label">基础积分：</text>
+        <text class="form-label"><text class="req-star">*</text>基础积分：</text>
         <input class="form-input" type="digit" value="{{form.pointsBase}}" data-field="pointsBase" bindinput="updateField" placeholder="10" />
       </view>
       <view class="form-row">
@@ -82,7 +84,7 @@
         <textarea class="form-textarea" value="{{form.content}}" data-field="content" bindinput="updateField" placeholder="请输入活动内容"></textarea>
       </view>
       <view class="form-row form-row-textarea">
-        <text class="form-label">报名要求：</text>
+        <text class="form-label"><text class="req-star">*</text>报名要求：</text>
         <textarea class="form-textarea" value="{{form.requirement}}" data-field="requirement" bindinput="updateField" placeholder="请输入报名要求"></textarea>
       </view>
     </view>

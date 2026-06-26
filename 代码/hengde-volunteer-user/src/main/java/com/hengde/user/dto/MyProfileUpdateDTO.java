@@ -1,6 +1,7 @@
 package com.hengde.user.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
@@ -10,9 +11,9 @@ import lombok.Setter;
 /**
  * 志愿者端「我的资料」修改入参（{@code PATCH /v/user/profile}，本人改自己）。
  *
- * <p><b>部分更新语义</b>：仅对传入的非空字段更新，未传/留空不动（避免误清空）。可改（对齐 xlsx Row25「我的资料」
- * 可改清单）：头像 / 学校 / 年级 / 政治面貌 / 通讯地址 / 紧急联系方式。<b>手机号</b>需短信验证、走专用接口
- * {@code PUT /v/user/phone}；<b>姓名/身份证/i志愿者码/昵称等</b>「其他均不可以修改」（实名字段仅后台超管可改）。
+ * <p><b>部分更新语义</b>：仅对传入的非空字段更新，未传/留空不动（避免误清空）。可改：头像 / i志愿者码 /
+ * 昵称（全局唯一，重名拒绝）/ 学校 / 年级 / 政治面貌 / 通讯地址 / 紧急联系方式。<b>手机号</b>需短信验证、走专用接口
+ * {@code PUT /v/user/phone}；<b>姓名/身份证</b>等实名字段「不可以修改」（仅后台超管可改）。
  * 年级/政治面貌传 code。</p>
  *
  * <p>前端历史上会多带 nickName/phone/*Name 等字段，{@code @JsonIgnoreProperties(ignoreUnknown=true)}
@@ -28,6 +29,15 @@ public class MyProfileUpdateDTO {
     /** 头像 URL */
     @Size(max = 512, message = "头像地址过长")
     private String avatarUrl;
+
+    /** i志愿者码图片 URL（@JsonProperty 锁 JSON 名，避免 iV→IV 等 bean introspection 歧义） */
+    @JsonProperty("iVolunteerCodeUrl")
+    @Size(max = 512, message = "i志愿者码地址过长")
+    private String iVolunteerCodeUrl;
+
+    /** 昵称（全局唯一；非空才改，重名拒绝） */
+    @Size(max = 50, message = "昵称过长")
+    private String nickName;
 
     /** 学校 */
     @Size(max = 100, message = "学校名过长")

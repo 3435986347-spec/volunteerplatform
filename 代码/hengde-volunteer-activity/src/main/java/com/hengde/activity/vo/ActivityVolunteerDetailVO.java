@@ -125,6 +125,15 @@ public class ActivityVolunteerDetailVO {
     /** 签到半径（米，默认 500；前端「到点自动签到」用） */
     private Integer checkInRadiusM;
 
+    /** 招募名额总数（各时间段 need_count 之和；0=不限） */
+    private Integer needCount;
+
+    /** 已报名人数（活跃报名去重志愿者数：待审核 0 + 已通过 1） */
+    private Long enrolledCount;
+
+    /** 报名详情预览：活跃报名者（按报名时间正序、去重志愿者），仅露姓氏+报名时间 */
+    private List<ActivityRegistrantVO> registrants;
+
     /** 时间段/子项目 */
     private List<ActivitySlotVO> slots;
 }

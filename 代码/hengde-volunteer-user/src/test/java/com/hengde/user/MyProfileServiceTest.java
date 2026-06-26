@@ -106,7 +106,8 @@ class MyProfileServiceTest {
         assertTrue(vo.isRegistered(), "已实名");
         assertEquals("赵六", vo.getRealName());
         assertEquals(phone, vo.getPhone(), "手机号应解密回显");
-        assertEquals("1234", vo.getIdTail(), "身份证只回尾 4 位");
+        assertEquals("1234", vo.getIdTail(), "身份证保留脱敏尾 4 位");
+        assertEquals(idCard, vo.getIdCardNo(), "本人查看自己应回完整身份证号");
         assertEquals(Integer.valueOf(2), vo.getPoliticalStatus());
         assertEquals("共青团员", vo.getPoliticalStatusName());
         assertEquals(Integer.valueOf(10), vo.getGrade());
@@ -143,6 +144,9 @@ class MyProfileServiceTest {
         dto.setPoliticalStatus(4);        // 中共党员
         dto.setAddress("广东省湛江市雷州市");
         dto.setAvatarUrl("https://oss/avatar.png");
+        dto.setIVolunteerCodeUrl("https://oss/ivcode.png");
+        String nick = "昵称_" + System.nanoTime();
+        dto.setNickName(nick);
         String emergency = "137" + String.format("%08d", SEQ.incrementAndGet());
         dto.setEmergencyContactPhone(emergency);
 
@@ -154,7 +158,25 @@ class MyProfileServiceTest {
         assertEquals(PoliticalStatus.CPC_MEMBER, r.getPoliticalStatus());
         assertEquals("广东省湛江市雷州市", r.getAddress());
         assertEquals("https://oss/avatar.png", r.getAvatarUrl());
+        assertEquals("https://oss/ivcode.png", r.getIVolunteerCodeUrl(), "i志愿者码应可上传修改");
+        assertEquals(nick, r.getNickName(), "昵称应可修改");
         assertEquals(emergency, cryptoUtil.decrypt(r.getEmergencyContactPhone()), "紧急联系电话应加密落库");
+    }
+
+    @Test
+    void updateMyProfile_duplicateNickName_rejected() {
+        String nick = "占用昵称_" + System.nanoTime();
+        Volunteer taken = new Volunteer();
+        taken.setOpenid("p_nick_" + System.nanoTime() + "_" + SEQ.incrementAndGet());
+        taken.setNickName(nick);
+        taken.setStatus(0);
+        volunteerMapper.insert(taken);
+
+        Long id = insertGuestWithPhone(phone("133"));
+        MyProfileUpdateDTO dto = new MyProfileUpdateDTO();
+        dto.setNickName(nick); // 撞别人的昵称
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.updateMyProfile(id, dto));
+        assertTrue(ex.getMessage().contains("昵称"), "应提示昵称已被使用");
     }
 
     @Test

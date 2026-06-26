@@ -113,6 +113,16 @@
             <artifactId>easyexcel</artifactId>
         </dependency>
 
+        <!-- ZXing：QrCodeUtil 生成二维码（活动签到/签退码等）。core=编码、javase=BitMatrix→PNG（用 JDK java.desktop） -->
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>javase</artifactId>
+        </dependency>
+
         <!-- OpenAPI 注解：各领域 controller 用 @Tag/@Operation 标注，下沉到 common 供统一引用 -->
         <dependency>
             <groupId>io.swagger.core.v3</groupId>

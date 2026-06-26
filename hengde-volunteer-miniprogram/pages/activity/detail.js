@@ -20,14 +20,6 @@ const GUARANTEE_ORDER = [
   { key: "other", label: "其他", asset: "12-other" }
 ];
 
-const DEFAULT_REGISTRANTS = [
-  { id: "u001", name: "周怡汐", avatar: "/assets/icons/activity-logo.png" },
-  { id: "u002", name: "曾嘉豪", avatar: "/assets/icons/activity-logo.png" },
-  { id: "u003", name: "黄欣", avatar: "/assets/icons/activity-logo.png" },
-  { id: "u004", name: "李朝凤", avatar: "/assets/icons/activity-logo.png" },
-  { id: "u005", name: "陈凯纯", avatar: "/assets/icons/activity-logo.png" }
-];
-
 function parseDate(value) {
   if (!value) return null;
   const date = new Date(String(value).replace(/-/g, "/"));
@@ -144,7 +136,8 @@ function normalizeGuarantees(source) {
 }
 
 function normalizeRegistrants(source) {
-  const rows = Array.isArray(source) && source.length ? source : DEFAULT_REGISTRANTS;
+  // 无真实报名数据就返回空（不再用预置假人填充），由页面显示「暂无报名」空状态
+  const rows = Array.isArray(source) ? source : [];
   return rows.map((item, index) => ({
     id: item.id || `registrant-${index}`,
     name: item.name || item.realName || "志愿者",
@@ -213,6 +206,7 @@ function buildViewModel(activity, distanceText) {
     recruitRows,
     guarantees: normalizeGuarantees(activity.guarantees),
     registrants: normalizeRegistrants(activity.registrants),
+    quotaText: Number(activity.quota || 0) > 0 ? activity.quota : "不限",
     buttonTitle: signupButton.title,
     buttonSubtitle: signupButton.subtitle,
     buttonDisabled: signupButton.disabled,

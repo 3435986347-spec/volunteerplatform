@@ -18,12 +18,36 @@
   font-weight: 800;
 }
 
+/* 必填项星号：与「我的资料」一致的珊瑚粉 */
+.req-star {
+  color: #ef7d7d;
+  margin-right: 4rpx;
+  font-weight: 800;
+}
+
 .form-input {
   flex: 1;
   min-width: 0;
   height: 64rpx;
   font-size: 27rpx;
   color: #111111;
+}
+
+/* 活动地点「定位」按钮：调起微信地图选点获取经纬度 */
+.locate-btn {
+  flex: none;
+  margin-left: 12rpx;
+  padding: 8rpx 22rpx;
+  font-size: 24rpx;
+  color: #ffffff;
+  background: #f4a8b8;
+  border-radius: 28rpx;
+}
+
+.locate-hint {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #999999;
 }
 
 .form-row-cover {

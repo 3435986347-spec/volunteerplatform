@@ -164,13 +164,22 @@
 
 .info-card {
   padding: 0 24rpx;
+  /* 个人信息整体稍稍下移（不动行间距，仅加顶部留白） */
+  margin-top: 56rpx;
+}
+
+/* 必填项星号：与羽毛笔编辑图标同色（珊瑚粉） */
+.req-star {
+  color: #ef7d7d;
+  margin-right: 4rpx;
 }
 
 .info-row {
   min-height: 86rpx;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  /* 信息整体靠左对齐：标签与取值都从最左侧顺排，更整齐美观 */
+  justify-content: flex-start;
   gap: 24rpx;
   border-bottom: 1rpx solid #edf0f5;
   font-size: 27rpx;
@@ -202,6 +211,9 @@
 
 .info-label {
   flex: none;
+  /* 固定标签列宽（容纳最长标签「紧急联系方式：」+ 余量），让各行取值左端对齐成一列 */
+  width: 200rpx;
+  white-space: nowrap;
 }
 
 .info-input {
@@ -211,13 +223,13 @@
   color: #111111;
   font-size: 27rpx;
   line-height: 78rpx;
-  text-align: right;
+  text-align: left;
 }
 
 .info-input.text-value {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   color: #5c6470;
 }
 
@@ -230,7 +242,10 @@
 
 .select-value {
   display: flex;
+  flex: 1;
   align-items: center;
+  /* 取值靠左、箭头留在最右（保留选择器指示） */
+  justify-content: space-between;
   gap: 14rpx;
   min-width: 0;
   color: #111111;
@@ -245,20 +260,36 @@
   flex: none;
 }
 
-.avatar-row {
-  justify-content: flex-start;
+/* 通讯地址右侧定位按钮（放大点击热区，点开 wx.chooseLocation 地图选点） */
+.addr-locate {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 10rpx 6rpx 10rpx 16rpx;
 }
 
-.avatar-preview {
-  width: 72rpx;
-  height: 72rpx;
-  margin-left: auto;
-  border-radius: 50%;
+.addr-placeholder {
+  color: #b6bcc6;
+}
+
+/* i志愿者码 / 头像：标签在上，上传「+」框位于标签正下方 */
+.upload-row {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 20rpx 0;
+}
+
+.upload-box {
+  width: 140rpx;
+  height: 140rpx;
+  margin-top: 16rpx;
+  border: 3rpx solid #777777;
+  box-sizing: border-box;
   overflow: hidden;
-  background: #fff7f9;
 }
 
-.avatar-preview image {
+.upload-box image {
   width: 100%;
   height: 100%;
 }
@@ -819,12 +850,6 @@
 }
 
 /* 手机号改绑 */
-.phone-edit-link {
-  flex: 0 0 auto;
-  color: #f58ca8;
-  font-size: 26rpx;
-}
-
 .phone-edit-body {
   margin-top: 18rpx;
 }

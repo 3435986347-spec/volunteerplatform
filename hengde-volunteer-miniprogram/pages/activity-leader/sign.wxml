@@ -12,6 +12,18 @@
       <view class="info-line">活动时间：{{activity.time}}</view>
     </view>
 
+    <view class="section-card qr-card" wx:if="{{checkInQr}}">
+      <view class="center-title">活动签到二维码</view>
+      <image class="checkin-qr" src="{{checkInQr}}" mode="aspectFit" show-menu-by-longpress></image>
+      <view class="qr-hint">请志愿者扫描此码并在活动现场完成定位签到</view>
+    </view>
+
+    <view class="section-card qr-card" wx:if="{{checkOutQr}}">
+      <view class="center-title">活动签退二维码</view>
+      <image class="checkin-qr" src="{{checkOutQr}}" mode="aspectFit" show-menu-by-longpress></image>
+      <view class="qr-hint">活动结束时请志愿者扫描此码完成定位签退</view>
+    </view>
+
     <view class="section-card record-card sign-record-card">
       <view class="center-title">签到记录</view>
       <view class="table-head sign-grid">
@@ -32,7 +44,6 @@
       <view bindtap="openActivityDetail">活动详情</view>
       <view bindtap="startActivity">开始活动</view>
       <view bindtap="finishActivity">结束活动</view>
-      <view bindtap="openSignRecords">活动签到</view>
       <view class="danger" bindtap="emergencyReport">紧急上报</view>
       <view bindtap="openViolation">违规记录</view>
       <view bindtap="uploadPhoto">上传照片</view>

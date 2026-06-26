@@ -35,6 +35,9 @@ public class Volunteer extends BaseEntity {
     /** 姓名 */
     private String realName;
 
+    /** 昵称（用户可在「我的资料」自助修改，全局唯一 uk_nick_name，V21） */
+    private String nickName;
+
     /** 身份证号（AES-GCM 密文） */
     private String idCardNo;
 

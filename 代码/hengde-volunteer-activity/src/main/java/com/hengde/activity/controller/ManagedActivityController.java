@@ -63,6 +63,20 @@ public class ManagedActivityController {
         return Result.ok(attendanceService.leaderDetail(id));
     }
 
+    @Operation(summary = "活动签到二维码（PNG data URL，负责人展示供志愿者扫码）")
+    @GetMapping("/{id}/check-in-qr")
+    public Result<String> checkInQr(@PathVariable Long id) {
+        activityLeaderService.requireVolunteerLeader(id, StpUtil.getLoginIdAsLong());
+        return Result.ok(attendanceService.checkInQrDataUrl(id));
+    }
+
+    @Operation(summary = "活动签退二维码（PNG data URL，负责人展示供志愿者扫码签退）")
+    @GetMapping("/{id}/check-out-qr")
+    public Result<String> checkOutQr(@PathVariable Long id) {
+        activityLeaderService.requireVolunteerLeader(id, StpUtil.getLoginIdAsLong());
+        return Result.ok(attendanceService.checkOutQrDataUrl(id));
+    }
+
     @Operation(summary = "点击活动开始")
     @PostMapping("/{id}/start")
     public Result<Void> start(@PathVariable Long id) {

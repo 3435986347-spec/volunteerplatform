@@ -17,7 +17,6 @@
     "pages/activity-leader/detail",
     "pages/activity-leader/publish",
     "pages/activity-leader/sign",
-    "pages/activity-leader/sign-records",
     "pages/activity-leader/violation",
     "pages/organization/groups",
     "pages/organization/group-detail",

@@ -17,7 +17,7 @@
       <image class="meta-icon people-icon" src="/assets/activity/meta-people.png" mode="aspectFit" />
       <text>已报名</text>
       <text class="accent">{{activity.joined}}</text>
-      <text>/{{activity.quota}}</text>
+      <text>/{{activity.quotaText}}</text>
       <text class="activity-no">{{activity.activityNo}}</text>
     </view>
     <view class="location-line">
@@ -111,12 +111,13 @@
       </view>
       <view class="more-link" bindtap="viewRegistrants">查看更多 ></view>
     </view>
-    <view class="registrant-list">
+    <view class="registrant-list" wx:if="{{activity.registrants.length}}">
       <view class="registrant-item" wx:for="{{activity.registrants}}" wx:key="id">
         <image class="registrant-avatar" src="{{item.avatar}}" mode="aspectFill" />
         <view class="registrant-name">{{item.name}}</view>
       </view>
     </view>
+    <view wx:else class="registrant-empty">暂无报名</view>
   </view>
 
   <view class="signup-service-tail"></view>

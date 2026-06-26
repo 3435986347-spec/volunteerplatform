@@ -5,13 +5,37 @@ Page({
   data: {
     activityId: "",
     activity: {},
-    records: []
+    records: [],
+    checkInQr: "",
+    checkOutQr: ""
   },
 
   async onLoad(query = {}) {
     if (!auth.requireLogin()) return;
     this.setData({ activityId: query.id || "" });
     this.loadDetail();
+    this.loadCheckInQr();
+    this.loadCheckOutQr();
+  },
+
+  // 活动签到二维码（后端 ZXing 生成 PNG data URL）；加载失败不阻塞页面
+  async loadCheckInQr() {
+    try {
+      const checkInQr = await dataService.getManagedCheckInQr(this.data.activityId);
+      this.setData({ checkInQr });
+    } catch (error) {
+      this.setData({ checkInQr: "" });
+    }
+  },
+
+  // 活动签退二维码（后端 ZXing 生成 PNG data URL）；加载失败不阻塞页面
+  async loadCheckOutQr() {
+    try {
+      const checkOutQr = await dataService.getManagedCheckOutQr(this.data.activityId);
+      this.setData({ checkOutQr });
+    } catch (error) {
+      this.setData({ checkOutQr: "" });
+    }
   },
 
   async loadDetail() {
@@ -53,10 +77,6 @@ Page({
     } catch (error) {
       wx.showToast({ title: "结束活动失败", icon: "none" });
     }
-  },
-
-  openSignRecords() {
-    wx.redirectTo({ url: `/pages/activity-leader/sign-records?id=${this.data.activity.id}` });
   },
 
   async confirmAttendance(event) {

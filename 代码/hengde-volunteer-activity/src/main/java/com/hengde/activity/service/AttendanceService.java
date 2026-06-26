@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.hengde.activity.config.ActivityProperties;
 import com.hengde.activity.constant.ActivityStatus;
 import com.hengde.activity.constant.AttendStatus;
+import com.hengde.activity.constant.AttendanceQr;
 import com.hengde.activity.constant.EnrollmentStatus;
 import com.hengde.activity.constant.LeaderType;
 import com.hengde.activity.constant.RunStatus;
@@ -24,6 +25,7 @@ import com.hengde.activity.vo.ViolationRecordVO;
 import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.auth.vo.VolunteerDisplayView;
 import com.hengde.common.exception.BusinessException;
+import com.hengde.common.qrcode.QrCodeUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -146,6 +148,21 @@ public class AttendanceService {
         a.setRunStatus(RUN_ENDED);
         a.setActualEndTime(LocalDateTime.now());
         activityMapper.updateById(a);
+    }
+
+    /**
+     * 生成本活动「签到二维码」的 PNG data URL，供负责人端展示、志愿者扫码（内容见 {@link AttendanceQr#checkInContent}）。
+     * 鉴权（限本活动负责人）在 controller 完成；二维码非鉴权凭据，真正门槛是签到时的 GPS 距离 + 时间窗 + 报名校验。
+     */
+    public String checkInQrDataUrl(Long activityId) {
+        return QrCodeUtil.toPngDataUrl(AttendanceQr.checkInContent(activityId), 360);
+    }
+
+    /**
+     * 生成本活动「签退二维码」的 PNG data URL（内容见 {@link AttendanceQr#checkOutContent}）。鉴权同签到码在 controller。
+     */
+    public String checkOutQrDataUrl(Long activityId) {
+        return QrCodeUtil.toPngDataUrl(AttendanceQr.checkOutContent(activityId), 360);
     }
 
     // ---------- 签到（志愿者自助 GPS） ----------
@@ -340,13 +357,65 @@ public class AttendanceService {
         List<ActivityAttendance> list = attendanceMapper.selectList(wrapper);
         int count = 0;
         for (ActivityAttendance att : list) {
-            att.setCheckOutTime(now);
-            att.setCheckOutBy(operatorId);
-            att.setServiceMinutes(computeMinutes(att, now));
-            attendanceMapper.updateById(att);
-            count++;
+            // 条件更新防并发：期间该行可能已被志愿者自助签退；CAS（checkOutTime is null）失败则跳过、不覆盖其签退数据。
+            // wrapper 更新不走 MetaObjectHandler 自动填充，显式 set update_time。
+            int affected = attendanceMapper.update(null, Wrappers.<ActivityAttendance>lambdaUpdate()
+                    .eq(ActivityAttendance::getId, att.getId())
+                    .isNull(ActivityAttendance::getCheckOutTime)
+                    .set(ActivityAttendance::getCheckOutTime, now)
+                    .set(ActivityAttendance::getCheckOutBy, operatorId)
+                    .set(ActivityAttendance::getServiceMinutes, computeMinutes(att, now))
+                    .set(ActivityAttendance::getUpdateTime, now));
+            if (affected > 0) {
+                count++;
+            }
         }
         return count;
+    }
+
+    /**
+     * 志愿者自助签退：扫「签退二维码」+ GPS 校验后调用。须本人已签到、未签退；活动须有坐标、{@code now ≤ 结束后2h}、
+     * 距离 ≤ 半径。服务时长 = 签退 − 签到。GPS 仅作实时门禁不落库（无 check_out 坐标列）。
+     *
+     * <p>用条件更新（{@code checkOutTime is null}）CAS，affected==0 视为并发已签退——防双击 / 与负责人
+     * {@link #bulkCheckOut} 互相覆盖 checkOutTime/serviceMinutes/checkOutBy。</p>
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void selfCheckOut(Long activityId, Long volunteerId, BigDecimal lat, BigDecimal lng) {
+        Activity a = requirePublished(activityId);
+        if (a.getLat() == null || a.getLng() == null) {
+            throw new BusinessException("活动未设置签到坐标，无法签退");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        if (a.getEndTime() != null && now.isAfter(a.getEndTime().plusHours(CHECKOUT_WINDOW_AFTER_HOURS))) {
+            throw new BusinessException("已过签退时间（活动结束 2 小时内签退）");
+        }
+        requireValidCoord(lat, lng);
+        int radius = a.getCheckInRadiusM() == null ? 500 : a.getCheckInRadiusM();
+        double dist = distanceMeters(lat, lng, a.getLat(), a.getLng());
+        if (dist > radius) {
+            throw new BusinessException("您距活动地点约 " + Math.round(dist) + " 米，超出签退范围（" + radius + " 米）");
+        }
+        ActivityAttendance att = findAttendance(activityId, volunteerId);
+        if (att == null || att.getCheckInTime() == null) {
+            throw new BusinessException("您还未签到，无法签退");
+        }
+        if (att.getCheckOutTime() != null) {
+            throw new BusinessException("您已签退");
+        }
+        int minutes = computeMinutes(att, now);
+        int affected = attendanceMapper.update(null, Wrappers.<ActivityAttendance>lambdaUpdate()
+                .eq(ActivityAttendance::getActivityId, activityId)
+                .eq(ActivityAttendance::getVolunteerId, volunteerId)
+                .isNull(ActivityAttendance::getCheckOutTime)
+                .isNotNull(ActivityAttendance::getCheckInTime)
+                .set(ActivityAttendance::getCheckOutTime, now)
+                .set(ActivityAttendance::getCheckOutBy, volunteerId)
+                .set(ActivityAttendance::getServiceMinutes, minutes)
+                .set(ActivityAttendance::getUpdateTime, now));
+        if (affected == 0) {
+            throw new BusinessException("您已签退");
+        }
     }
 
     // ---------- 确认到家 / 双向评价 / 活动总结（第 2 批） ----------

@@ -348,6 +348,12 @@
   overflow: hidden;
 }
 
+.registrant-empty {
+  margin-top: 24rpx;
+  font-size: 25rpx;
+  color: #999999;
+}
+
 .registrant-item {
   flex: 0 0 96rpx;
   text-align: center;

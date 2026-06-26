@@ -466,7 +466,7 @@ function buildActivityPublishPayload(form = {}) {
     enrollNotice: form.enrollNotice || "",
     contactName: form.contactName || "",
     contactPhone: form.contactPhone || "",
-    publisherDeptName: form.publisherDeptName || "组织部",
+    publisherDeptName: form.publisherDeptName || "",
     enrollOpenManager: normalizeDateTimeForSubmit(form.enrollOpenManager) || enrollOpenVolunteer,
     enrollOpenLeader: normalizeDateTimeForSubmit(form.enrollOpenLeader) || enrollOpenVolunteer,
     enrollOpenVolunteer,
@@ -672,6 +672,11 @@ function uploadProfileImage(tempFilePath) {
   return uploadImageTo(tempFilePath, ENDPOINTS.volunteer.files.profileImage, "avatar");
 }
 
+// 上传 i志愿者码（dir=ivcode，任意登录志愿者，复用 /v/files/profile-image）
+function uploadVolunteerCode(tempFilePath) {
+  return uploadImageTo(tempFilePath, ENDPOINTS.volunteer.files.profileImage, "ivcode");
+}
+
 // 修改/换绑手机号（需新手机号短信验证，scene=change-phone）
 async function changePhone(data) {
   if (useMockApi()) return { success: true };
@@ -729,6 +734,20 @@ async function getManagedActivity(id) {
   return normalizeManagedActivity(source);
 }
 
+// 活动签到二维码（负责人端展示供志愿者扫描）：后端 ZXing 生成 PNG，返回 data URL 字符串
+async function getManagedCheckInQr(id) {
+  if (useMockApi()) return "";
+  const response = await request({ url: ENDPOINTS.volunteer.activity.managedCheckInQr(id) });
+  return payloadOf(response) || "";
+}
+
+// 活动签退二维码（负责人端展示供志愿者扫描签退）：后端 ZXing 生成 PNG，返回 data URL 字符串
+async function getManagedCheckOutQr(id) {
+  if (useMockApi()) return "";
+  const response = await request({ url: ENDPOINTS.volunteer.activity.managedCheckOutQr(id) });
+  return payloadOf(response) || "";
+}
+
 function managedPost(url, data) {
   if (useMockApi()) return Promise.resolve({ success: true });
   return request({ url, method: "POST", data });
@@ -776,6 +795,15 @@ async function checkInActivity(id, data) {
   if (useMockApi()) return { success: true, message: "静态 mock：签到成功" };
   return request({
     url: ENDPOINTS.volunteer.activity.checkIn(id),
+    method: "POST",
+    data
+  });
+}
+
+async function checkOutActivity(id, data) {
+  if (useMockApi()) return { success: true, message: "静态 mock：签退成功" };
+  return request({
+    url: ENDPOINTS.volunteer.activity.checkOut(id),
     method: "POST",
     data
   });
@@ -1074,6 +1102,7 @@ module.exports = {
   cancelEnrollActivity,
   proxyEnrollActivity,
   checkInActivity,
+  checkOutActivity,
   confirmHomeActivity,
   getAgreement,
   getActivity,
@@ -1099,6 +1128,8 @@ module.exports = {
   listStructure,
   listServiceRecords,
   getManagedActivity,
+  getManagedCheckInQr,
+  getManagedCheckOutQr,
   getUserProfile,
   loadMyPermissions,
   startManagedActivity,
@@ -1115,6 +1146,7 @@ module.exports = {
   publishActivity,
   uploadActivityImage,
   uploadProfileImage,
+  uploadVolunteerCode,
   reviewActivity,
   search,
   normalizeActivity

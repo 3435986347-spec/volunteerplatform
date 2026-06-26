@@ -6,6 +6,7 @@ const STATUS_META = {
   "待录取": "pending-admit",
   "待开展": "pending-start",
   "活动中": "in-progress",
+  "开展中": "in-progress",
   "已结束": "finished"
 };
 
@@ -15,11 +16,16 @@ const ACTION_ICONS = {
   checkout: "/assets/mine-v2/activity-checkout.png"
 };
 
+// 负责人出示的签到/签退二维码内容前缀（须与后端 constant/AttendanceQr 一致）
+const CHECKIN_QR_PREFIX = "hengde-activity-checkin:";
+const CHECKOUT_QR_PREFIX = "hengde-activity-checkout:";
+
 const ACTION_BUTTONS = [
   { text: "活动详情", action: "detail" },
   { text: "联系负责人", action: "contact" },
   { text: "取消活动", action: "cancel" },
   { text: "活动签到", action: "checkin" },
+  { text: "活动签退", action: "checkout" },
   { text: "紧急上报", action: "report", danger: true },
   { text: "确认到家", action: "home" },
   { text: "活动投诉", action: "complaint" },
@@ -41,12 +47,23 @@ function minutesText(value) {
   return rest ? `${hours}小时${rest}分钟` : `${hours}小时`;
 }
 
+// 是否已过某时间点（与首页 displayStatus 判「已结束」同口径用）
+function isPast(value) {
+  if (!value) return false;
+  const t = Date.parse(String(value).replace("T", " ").replace(/-/g, "/"));
+  return !Number.isNaN(t) && t < Date.now();
+}
+
+// 与首页 displayStatus 统一口径派生「我的活动」分栏，避免首页显示已结束、这里却显示待开展。
 function tabOf(activity) {
-  const status = String(activity.status || activity.runStatus || "");
-  if (activity.status === "已结束" || status === "4" || status === "FINISHED") return "已结束";
-  if (activity.checkInTime && !activity.checkOutTime) return "开展中";
-  if (activity.checkInStatus || activity.attendanceStatus) return "开展中";
-  if (activity.canCheckIn) return "开展中";
+  // 已结束 = 现场已结束(runStatus=2) 或已过活动结束时间 或本人已签退
+  if (Number(activity.runStatus) === 2 || activity.checkOutTime || isPast(activity.endTime)) {
+    return "已结束";
+  }
+  // 开展中 = 现场进行中(runStatus=1) 或本人已签到未签退 或当前可签到
+  if (Number(activity.runStatus) === 1 || (activity.checkInTime && !activity.checkOutTime) || activity.canCheckIn) {
+    return "开展中";
+  }
   return "待开展";
 }
 
@@ -79,6 +96,7 @@ function buildMyActivity(row) {
     detailMode: row.checkInTime || row.checkOutTime ? "attendance" : "none",
     canCancel: tab === "待开展",
     canCheckIn: row.canCheckIn || (!row.checkInTime && tab === "开展中"),
+    canCheckOut: Boolean(row.checkInTime && !row.checkOutTime),
     canConfirmHome: Boolean(row.canConfirmHome),
     canContactLeader: Boolean(row.leaderPhone || row.contactPhone),
     canLeave: tab !== "已结束",
@@ -90,6 +108,23 @@ function buildMyActivity(row) {
     checkInTimeText: formatDateTime(row.checkInTime),
     checkOutTimeText: formatDateTime(row.checkOutTime)
   });
+}
+
+// 详情操作按钮按所选活动状态过滤（否则「活动签退」等会对未签到/已签退/未开始活动也显示）
+function buildDetailActions(activity) {
+  const visible = {
+    detail: true,
+    contact: !!activity.canContactLeader,
+    cancel: !!activity.canCancel,
+    checkin: !!activity.canCheckIn,
+    checkout: !!activity.canCheckOut,
+    report: true,
+    home: !!activity.canConfirmHome,
+    complaint: !!activity.canComplaint,
+    upload: !!activity.canUpload,
+    evaluate: !!activity.canEvaluate
+  };
+  return ACTION_BUTTONS.filter((btn) => visible[btn.action]);
 }
 
 function currentLocation() {
@@ -150,9 +185,13 @@ Page({
   async loadActivities() {
     try {
       const activities = (await dataService.listMyActivities()).map(buildMyActivity);
+      // 用当前 id 找 fresh row 替换 selectedActivity（否则签退/签到成功重拉后详情仍是旧 checkOut/InTime、按钮残留）
+      const prevId = this.data.selectedActivity.id;
+      const selectedActivity = (prevId && activities.find((item) => item.id === prevId)) || activities[0] || {};
       this.setData({
         activities,
-        selectedActivity: this.data.selectedActivity.id ? this.data.selectedActivity : activities[0] || {}
+        selectedActivity,
+        detailActionButtons: buildDetailActions(selectedActivity)
       }, () => this.applyFilter());
     } catch (error) {
       wx.showToast({ title: "我的活动暂不可用", icon: "none" });
@@ -203,7 +242,8 @@ Page({
     this.setData({
       mode: "detail",
       navTitle: "我的活动",
-      selectedActivity
+      selectedActivity,
+      detailActionButtons: buildDetailActions(selectedActivity || {})
     });
   },
 
@@ -211,7 +251,7 @@ Page({
     const type = event.currentTarget.dataset.type;
     const id = event.currentTarget.dataset.id;
     const selectedActivity = this.data.activities.find((item) => item.id === id) || this.data.activities[0];
-    this.setData({ selectedActivity });
+    this.setData({ selectedActivity, detailActionButtons: buildDetailActions(selectedActivity || {}) });
 
     if (type === "cancel") {
       this.cancelActivity();
@@ -222,7 +262,7 @@ Page({
       return;
     }
     if (type === "checkout") {
-      wx.showToast({ title: "待签退", icon: "none" });
+      this.checkOut();
       return;
     }
     this.setData({
@@ -255,28 +295,82 @@ Page({
     this.closeConfirmDialog();
   },
 
-  // 【签到】方式有二维码签到、负责人签到；【签退】方式有负责人签到。
-  // 自助签到表示志愿者到达活动地点后在小程序中自己签到。
-  // 签到逻辑后续通过地址定位判断距离，例如 500m 或 1km。
-  // 是否开启自助签到、判断距离多远等功能，都由后台创建活动时设置。
-  // 【活动签到】打开扫一扫；【活动签退】由负责人在管理版块点击。
+  // 自助签到：扫描负责人出示的「活动签到二维码」(内容 hengde-activity-checkin:{activityId}) + 上报当前 GPS。
+  // 先校验扫到的码确属本活动，再取定位调后端——后端按 Haversine 距活动坐标 ≤ 签到半径(默认500m) + 时间窗 + 报名校验放行。
+  // method=1 扫码签到；签退由负责人在管理端统一操作。
+  // 注：开发者工具无摄像头，wx.scanCode 会提示「上传二维码图片」，真机上是打开摄像头扫码，属正常表现。
   async checkIn() {
     const activity = this.data.selectedActivity || {};
     if (!activity.id) return;
+    if (!wx.scanCode) {
+      wx.showToast({ title: "当前版本不支持扫码", icon: "none" });
+      return;
+    }
     wx.scanCode({
       success: async (scanResult) => {
+        const content = (scanResult && scanResult.result) || "";
+        if (content !== CHECKIN_QR_PREFIX + activity.id) {
+          wx.showToast({ title: "请扫描本活动的签到二维码", icon: "none" });
+          return;
+        }
+        wx.showLoading({ title: "定位中", mask: true });
         try {
           const location = await currentLocation();
           await dataService.checkInActivity(activity.id, {
             lat: location.latitude,
             lng: location.longitude,
-            qrCode: scanResult.result || ""
+            method: 1
           });
+          wx.hideLoading();
           wx.showToast({ title: "签到成功", icon: "none" });
           this.loadActivities();
         } catch (error) {
-          wx.showToast({ title: error.message || "签到失败", icon: "none" });
+          wx.hideLoading();
+          wx.showToast({ title: error.message || "签到失败，请确认已到现场并允许定位", icon: "none" });
         }
+      },
+      fail: (err) => {
+        if (err && /cancel/i.test(err.errMsg || "")) return;
+        wx.showToast({ title: "扫码失败", icon: "none" });
+      }
+    });
+  },
+
+  // 自助签退：扫描负责人「活动签退二维码」(内容 hengde-activity-checkout:{activityId}) + 上报当前 GPS。
+  // 校验码确属本活动后取定位调后端——后端按 Haversine 距活动 ≤ 半径 + 结束后2h内放行、算服务时长(签退−签到)。
+  async checkOut() {
+    const activity = this.data.selectedActivity || {};
+    if (!activity.id) return;
+    if (!wx.scanCode) {
+      wx.showToast({ title: "当前版本不支持扫码", icon: "none" });
+      return;
+    }
+    wx.scanCode({
+      success: async (scanResult) => {
+        const content = (scanResult && scanResult.result) || "";
+        if (content !== CHECKOUT_QR_PREFIX + activity.id) {
+          wx.showToast({ title: "请扫描本活动的签退二维码", icon: "none" });
+          return;
+        }
+        wx.showLoading({ title: "定位中", mask: true });
+        try {
+          const location = await currentLocation();
+          await dataService.checkOutActivity(activity.id, {
+            lat: location.latitude,
+            lng: location.longitude,
+            method: 1
+          });
+          wx.hideLoading();
+          wx.showToast({ title: "签退成功", icon: "none" });
+          this.loadActivities();
+        } catch (error) {
+          wx.hideLoading();
+          wx.showToast({ title: error.message || "签退失败，请确认已到现场并允许定位", icon: "none" });
+        }
+      },
+      fail: (err) => {
+        if (err && /cancel/i.test(err.errMsg || "")) return;
+        wx.showToast({ title: "扫码失败", icon: "none" });
       }
     });
   },
@@ -316,6 +410,7 @@ Page({
     if (action === "contact") return this.contactLeader();
     if (action === "cancel") return this.cancelActivity();
     if (action === "checkin") return this.checkIn();
+    if (action === "checkout") return this.checkOut();
     if (action === "report") return this.emergencyReport();
     if (action === "home") return this.confirmHome();
     if (action === "complaint") return this.goComplaint();

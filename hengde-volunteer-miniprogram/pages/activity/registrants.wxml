@@ -20,5 +20,5 @@
     </view>
   </view>
 
-  <view class="empty" wx:if="{{!rows.length}}">没有更多了</view>
+  <view class="empty" wx:if="{{!rows.length}}">暂无报名</view>
 </view>

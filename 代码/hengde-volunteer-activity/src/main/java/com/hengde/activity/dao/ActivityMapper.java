@@ -44,4 +44,14 @@ public interface ActivityMapper extends BaseMapper<Activity> {
             ORDER BY has_quota DESC, a.start_time DESC, a.id DESC
             """)
     IPage<RecommendActivityVO> selectRecommendPage(IPage<RecommendActivityVO> page, @Param("keyword") String keyword);
+
+    /**
+     * 某活动的活跃报名人数（去重志愿者：待审核 0 + 已通过 1，排除逻辑删除）。
+     * 与 {@link #selectRecommendPage} 的 enrolled_count 口径一致，供志愿者端详情「已报名 X/Y」用。
+     */
+    @Select("""
+            SELECT COUNT(DISTINCT volunteer_id) FROM activity_enrollment
+            WHERE activity_id = #{activityId} AND status IN (0, 1) AND is_deleted = 0
+            """)
+    long countActiveEnrollVolunteers(@Param("activityId") Long activityId);
 }

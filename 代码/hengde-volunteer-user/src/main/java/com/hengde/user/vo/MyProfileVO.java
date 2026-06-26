@@ -11,7 +11,8 @@ import java.time.LocalDateTime;
  * 志愿者端「我的资料」（{@code GET /v/user/profile}）：当前登录志愿者本人的完整资料 + 跨域统计/归属。
  *
  * <p>游客（{@code registerTime} 为空）也可取，仅实名相关字段为空、{@link #registered} 为 false。
- * 身份证仅回尾号（{@link #idTail}）不回全文，与管理端详情同口径，避免明文 PII 出网。
+ * 这是<b>本人查看自己</b>的资料，故身份证回<b>完整号</b>（{@link #idCardNo}，本人对自己的实名信息有知情权，
+ * 类同银行/政务 App 显示本人完整证件号）并保留脱敏尾号（{@link #idTail}）供需要时用；后台他人查看仍只回尾号。
  * 字段名对齐小程序 {@code normalizeUserProfile} 读取的别名。</p>
  *
  * @author hengde
@@ -26,10 +27,16 @@ public class MyProfileVO {
     /** 姓名（实名后有） */
     private String realName;
 
+    /** 昵称（用户可改，全局唯一） */
+    private String nickName;
+
     /** 手机号（解密明文，本人可见） */
     private String phone;
 
-    /** 身份证后 4 位（脱敏） */
+    /** 身份证完整号（解密明文，本人查看自己时回全文） */
+    private String idCardNo;
+
+    /** 身份证后 4 位（脱敏，保留兼容） */
     private String idTail;
 
     /** 性别 code 0未知/1男/2女 */

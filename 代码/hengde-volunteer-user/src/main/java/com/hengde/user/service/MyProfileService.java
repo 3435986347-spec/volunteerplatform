@@ -87,8 +87,11 @@ public class MyProfileService {
         MyProfileVO vo = new MyProfileVO();
         vo.setRegistered(v.getRegisterTime() != null);
         vo.setRealName(v.getRealName());
+        vo.setNickName(v.getNickName());
         vo.setPhone(decrypt(v.getPhone()));
         String idCard = decrypt(v.getIdCardNo());
+        // 本人查看自己：回完整身份证号；同时保留脱敏尾号兼容
+        vo.setIdCardNo(idCard);
         if (idCard != null && idCard.length() >= 4) {
             vo.setIdTail(idCard.substring(idCard.length() - 4));
         }
@@ -143,6 +146,22 @@ public class MyProfileService {
             uw.set(Volunteer::getAvatarUrl, dto.getAvatarUrl().trim());
             any = true;
         }
+        if (StringUtils.hasText(dto.getIVolunteerCodeUrl())) {
+            uw.set(Volunteer::getIVolunteerCodeUrl, dto.getIVolunteerCodeUrl().trim());
+            any = true;
+        }
+        if (StringUtils.hasText(dto.getNickName())) {
+            String nn = dto.getNickName().trim();
+            // 去重：昵称全局唯一，不能与其它账号撞（先查重给友好提示，DB uk_nick_name 兜底并发）
+            Long clash = volunteerMapper.selectCount(Wrappers.<Volunteer>lambdaQuery()
+                    .eq(Volunteer::getNickName, nn)
+                    .ne(Volunteer::getId, volunteerId));
+            if (clash != null && clash > 0) {
+                throw new BusinessException("该昵称已被使用，请换一个");
+            }
+            uw.set(Volunteer::getNickName, nn);
+            any = true;
+        }
         if (StringUtils.hasText(dto.getSchool())) {
             uw.set(Volunteer::getSchool, dto.getSchool().trim());
             any = true;
@@ -175,7 +194,12 @@ public class MyProfileService {
         }
         // wrapper 更新不触发 MetaObjectHandler 自动填充，须显式写审计时间
         uw.set(Volunteer::getUpdateTime, LocalDateTime.now());
-        volunteerMapper.update(null, uw);
+        try {
+            volunteerMapper.update(null, uw);
+        } catch (DuplicateKeyException e) {
+            // 并发竞态：两账号同时改成同一昵称，先查重后更新仍可能撞 uk_nick_name；转明确业务错误而非 500
+            throw new BusinessException("该昵称已被使用，请换一个");
+        }
     }
 
     /**

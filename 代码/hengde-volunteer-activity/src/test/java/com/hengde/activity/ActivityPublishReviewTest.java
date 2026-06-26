@@ -266,6 +266,69 @@ class ActivityPublishReviewTest {
         assertTrue(ex.getMessage().contains("不超过"), "service 层兜底拦超长驳回原因");
     }
 
+    @Test
+    void submitForReview_missingRequiredFields_rejected() {
+        // 接口层兜底：志愿者提交流对封面/地点/要求/积分/需求人数缺失或非法一律拒绝（防绕过前端 * 直发空值）
+        Long vid = insertVolunteer("缺必填");
+
+        ActivityCreateDTO noCover = base();
+        noCover.setCoverImageUrl("  ");
+        assertTrue(assertThrows(BusinessException.class,
+                () -> activityService.submitForReview(noCover, vid)).getMessage().contains("封面"));
+
+        ActivityCreateDTO noLoc = base();
+        noLoc.setLocation(null);
+        assertThrows(BusinessException.class, () -> activityService.submitForReview(noLoc, vid));
+
+        ActivityCreateDTO noReq = base();
+        noReq.setRequirement("");
+        assertThrows(BusinessException.class, () -> activityService.submitForReview(noReq, vid));
+
+        ActivityCreateDTO noPoints = base();
+        noPoints.setPointsBase(null);
+        assertThrows(BusinessException.class, () -> activityService.submitForReview(noPoints, vid));
+
+        ActivityCreateDTO badNeed = base();
+        badNeed.getSlots().get(0).setNeedCount(0);
+        assertTrue(assertThrows(BusinessException.class,
+                () -> activityService.submitForReview(badNeed, vid)).getMessage().contains("需求人数"));
+
+        // service 边界兜底：slots=null/[]/[null] 走友好业务异常，不落到下游 NPE（防内部直调绕过 @NotEmpty/@Valid）
+        ActivityCreateDTO nullSlots = base();
+        nullSlots.setSlots(null);
+        assertTrue(assertThrows(BusinessException.class,
+                () -> activityService.submitForReview(nullSlots, vid)).getMessage().contains("时间段"));
+
+        ActivityCreateDTO emptySlots = base();
+        emptySlots.setSlots(List.of());
+        assertThrows(BusinessException.class, () -> activityService.submitForReview(emptySlots, vid));
+
+        ActivityCreateDTO nullElem = base();
+        nullElem.setSlots(java.util.Collections.singletonList((ActivitySlotDTO) null));
+        assertThrows(BusinessException.class, () -> activityService.submitForReview(nullElem, vid));
+    }
+
+    @Test
+    void directPublish_lenientOnVolunteerRequiredFields() {
+        // 后台 /a 直发保留 override：缺封面/地点/要求/积分（志愿者端必填）仍可发布、走默认值
+        LocalDateTime start = LocalDateTime.now().plusDays(1).withHour(9).withMinute(0).withSecond(0).withNano(0);
+        ActivitySlotDTO slot = new ActivitySlotDTO();
+        slot.setProjectName("项目A");
+        slot.setStartTime(start);
+        slot.setEndTime(start.plusHours(1));
+        slot.setNeedCount(5);
+        ActivityCreateDTO minimal = new ActivityCreateDTO();
+        minimal.setTitle("最小直发_" + System.nanoTime());
+        minimal.setStartTime(start);
+        minimal.setEndTime(start.plusHours(2));
+        minimal.setSlots(List.of(slot));
+
+        Long id = activityService.publish(minimal, ADMIN);
+        Activity a = activityMapper.selectById(id);
+        assertEquals(STATUS_PUBLISHED, a.getStatus(), "后台直发不受志愿者端必填约束");
+        assertEquals(0, a.getPointsBase(), "缺积分走默认 0");
+    }
+
     // ---------- helpers ----------
 
     private Long insertVolunteer(String name) {
@@ -277,7 +340,7 @@ class ActivityPublishReviewTest {
         return v.getId();
     }
 
-    /** 模板：明天 09:00~11:00，一个 09:00~10:00 的时间段。 */
+    /** 模板：明天 09:00~11:00，一个 09:00~10:00 的时间段。含志愿者端必填项（封面/地点/要求/积分/需求人数）。 */
     private ActivityCreateDTO base() {
         LocalDateTime start = LocalDateTime.now().plusDays(1).withHour(9).withMinute(0).withSecond(0).withNano(0);
         ActivitySlotDTO slot = new ActivitySlotDTO();
@@ -290,6 +353,10 @@ class ActivityPublishReviewTest {
         dto.setTitle("待审活动_" + System.nanoTime());
         dto.setStartTime(start);
         dto.setEndTime(start.plusHours(2));
+        dto.setCoverImageUrl("https://example.com/cover.jpg");
+        dto.setLocation("御景雅苑");
+        dto.setRequirement("完成实名注册即可报名");
+        dto.setPointsBase(10);
         dto.setSlots(List.of(slot));
         return dto;
     }

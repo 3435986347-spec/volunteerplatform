@@ -151,6 +151,8 @@ Page({
     newPhone: "",
     phoneChangeCode: "",
     phoneCodeSending: false,
+    nickNameDirty: false,
+    uploadingImageCount: 0,
     editAvatar: "",
     editAvatarUrl: "",
     politicsOptions: POLITICS,
@@ -258,9 +260,10 @@ Page({
   updateInfoField(event) {
     const field = event.currentTarget.dataset.field;
     if (!field) return;
-    this.setData({
-      [`info.${field}`]: event.detail.value
-    });
+    const patch = { [`info.${field}`]: event.detail.value };
+    // 昵称只在用户真正编辑过时才提交（避免把微信昵称默认值回写、撞别人的唯一昵称）
+    if (field === "nickName") patch.nickNameDirty = true;
+    this.setData(patch);
   },
 
   // 顶层字段输入（手机号改绑用 newPhone / phoneChangeCode）
@@ -285,14 +288,70 @@ Page({
         const file = res.tempFiles ? res.tempFiles[0] : res.tempFilePaths && { tempFilePath: res.tempFilePaths[0] };
         const tempFilePath = file && file.tempFilePath;
         if (!tempFilePath) return;
-        this.setData({ editAvatarUrl: tempFilePath }); // 本地预览
-        wx.showLoading({ title: "上传中" });
+        // 临时路径仅用于证件照编辑框预览；info.avatar（提交字段）只在上传成功后写入，绝不写临时路径
+        this.setData({ editAvatarUrl: tempFilePath, uploadingImageCount: this.data.uploadingImageCount + 1 });
+        wx.showLoading({ title: "上传中", mask: true });
         dataService.uploadProfileImage(tempFilePath).then((url) => {
           this.setData({ editAvatarUrl: url, "info.avatar": url });
         }).catch((e) => {
           this.setData({ editAvatarUrl: this.data.info.avatar || "" });
           wx.showToast({ title: (e && e.message) || "头像上传失败", icon: "none" });
-        }).then(() => wx.hideLoading());
+        }).then(() => {
+          this.setData({ uploadingImageCount: Math.max(0, this.data.uploadingImageCount - 1) });
+          wx.hideLoading();
+        });
+      }
+    });
+  },
+
+  // 选 i志愿者码图片 → 真实上传换 URL（存到 ivcode 目录）。框内只显示「+」不预览，故不写临时路径；
+  // info.volunteerCode（提交字段）仅在上传成功后写入，避免上传中点保存把临时路径提交到后端。
+  chooseVolunteerCode() {
+    const chooseMedia = wx.chooseMedia || wx.chooseImage;
+    if (!chooseMedia) {
+      wx.showToast({ title: "当前版本不支持上传图片", icon: "none" });
+      return;
+    }
+    chooseMedia({
+      count: 1,
+      mediaType: ["image"],
+      sourceType: ["album", "camera"],
+      success: (res) => {
+        const file = res.tempFiles ? res.tempFiles[0] : res.tempFilePaths && { tempFilePath: res.tempFilePaths[0] };
+        const tempFilePath = file && file.tempFilePath;
+        if (!tempFilePath) return;
+        this.setData({ uploadingImageCount: this.data.uploadingImageCount + 1 });
+        wx.showLoading({ title: "上传中", mask: true });
+        dataService.uploadVolunteerCode(tempFilePath).then((url) => {
+          this.setData({ "info.volunteerCode": url });
+        }).catch((e) => {
+          wx.showToast({ title: (e && e.message) || "上传失败", icon: "none" });
+        }).then(() => {
+          this.setData({ uploadingImageCount: Math.max(0, this.data.uploadingImageCount - 1) });
+          wx.hideLoading();
+        });
+      }
+    });
+  },
+
+  // 通讯地址：点右侧箭头调起微信地图选点（与注册页同款），回填地址文本；仍可在输入框手动改
+  chooseAddressLocation() {
+    if (!wx.chooseLocation) {
+      wx.showToast({ title: "当前版本不支持地图选点，可直接手写地址", icon: "none" });
+      return;
+    }
+    wx.chooseLocation({
+      success: (res) => {
+        const name = res.name || "";
+        const address = res.address || "";
+        const locationText = address && name && address.includes(name)
+          ? address
+          : [address, name].filter(Boolean).join(" ");
+        this.setData({ "info.address": locationText });
+      },
+      fail: (err) => {
+        if (err && /cancel/i.test(err.errMsg || "")) return;
+        wx.showToast({ title: "地图选点失败，可直接手写地址", icon: "none" });
       }
     });
   },
@@ -397,6 +456,10 @@ Page({
   },
 
   saveEdit() {
+    if (this.data.uploadingImageCount > 0) {
+      wx.showToast({ title: "图片上传中，请稍候", icon: "none" });
+      return;
+    }
     if (!this.data.editAvatarUrl) {
       wx.showToast({ title: "请先上传一寸证件照", icon: "none" });
       return;
@@ -409,23 +472,33 @@ Page({
   },
 
   async saveBasic() {
+    if (this.data.uploadingImageCount > 0) {
+      wx.showToast({ title: "图片上传中，请稍候", icon: "none" });
+      return;
+    }
     const politicsIdx = POLITICS.indexOf(this.data.info.politics);
     const gradeIdx = GRADES.indexOf(this.data.info.grade);
     // 字段名/类型对齐后端 MyProfileUpdateDTO（PATCH /v/user/profile，部分更新）。
     // GRADES 为倒序展示（毕业在前），后端 Grade code 正序，故 code = 18 - index；找不到则不传（不改）。
-    // 手机号改绑需短信验证，不在此提交。
-    // 手机号走独立改绑流程、i志愿者码/姓名/身份证/昵称不可改（xlsx Row25「其他均不可以修改」），均不在此提交
+    // 手机号改绑需短信验证，走独立流程不在此提交；姓名/身份证/昵称不可改（xlsx Row25「其他均不可以修改」）。
+    // 头像、i志愿者码支持上传修改：均传已上传的 URL（上传时已换成可访问地址）。
     const payload = {
-      avatarUrl: this.data.info.avatar || this.data.editAvatarUrl || "",
+      avatarUrl: this.data.info.avatar || "",
       school: this.data.info.school,
       address: this.data.info.address
     };
     if (politicsIdx >= 0) payload.politicalStatus = politicsIdx + 1;
     if (gradeIdx >= 0) payload.grade = 18 - gradeIdx;
     if (this.data.info.emergencyPhone) payload.emergencyContactPhone = this.data.info.emergencyPhone;
+    if (this.data.info.volunteerCode) payload.iVolunteerCodeUrl = this.data.info.volunteerCode;
+    // 昵称仅在用户改过时才提交（全局唯一，重名后端拒绝）
+    if (this.data.nickNameDirty && this.data.info.nickName && this.data.info.nickName.trim()) {
+      payload.nickName = this.data.info.nickName.trim();
+    }
     try {
       await dataService.updateUserProfile(payload);
       wx.showToast({ title: "已修改", icon: "none" });
+      this.setData({ nickNameDirty: false });
       this.loadProfile();
     } catch (error) {
       wx.showToast({ title: error.message || "资料接口暂不可用", icon: "none" });

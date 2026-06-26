@@ -10,13 +10,16 @@
 var ACT_STATUS = { 0: ['草稿', 'default'], 1: ['已发布', 'success'], 2: ['已结束', 'default'], 3: ['已取消', 'error'], 4: ['待审核', 'warning'], 5: ['已驳回', 'error'] };
 function actStatusTag(s) { var m = ACT_STATUS[s] || ['—', 'default']; return React.createElement(Tag, { color: m[1] }, m[0]); }
 
-/* ---- 日期时间格式互转（后端 LocalDateTime = "yyyy-MM-dd HH:mm:ss"） ---- */
+/* ---- 日期时间格式互转 ----
+   入参统一用 ISO-8601「yyyy-MM-ddTHH:mm:ss」(带 T)：Spring Boot 4 的 web 层默认用 Jackson 默认 LocalDateTime
+   解析器(ISO，需 T)，自定义 JacksonConfig 的「空格」格式在 MVC 层并未生效；小程序端本就发 T 格式。
+   读取后端返回值用 slice/replace 容错，space 或 T 均可解析。 */
 function padSec(t) { return (t && t.length === 5) ? t + ':00' : t; }
-function joinDT(date, time) { return (date && time) ? date + ' ' + padSec(time) : null; }          // date+time 输入 → LDT
-function fromLocal(s) { if (!s) return null; s = String(s).replace('T', ' '); return s.length === 16 ? s + ':00' : s; } // datetime-local → LDT
+function joinDT(date, time) { return (date && time) ? date + 'T' + padSec(time) : null; }            // date+time 输入 → LDT(ISO)
+function fromLocal(s) { if (!s) return null; s = String(s); return s.length === 16 ? s + ':00' : s; }  // datetime-local(本就带 T) → LDT(ISO)
 function datePart(s) { return s ? String(s).slice(0, 10) : ''; }
-function timePart(s) { return s ? String(s).slice(11, 16) : ''; }
-function toLocalInput(s) { return s ? String(s).replace(' ', 'T').slice(0, 16) : ''; }                // LDT → datetime-local
+function timePart(s) { return s ? String(s).replace('T', ' ').slice(11, 16) : ''; }
+function toLocalInput(s) { return s ? String(s).replace(' ', 'T').slice(0, 16) : ''; }                // LDT(space|T) → datetime-local
 function fmtRange(a, b) { if (!a) return '—'; return datePart(a) + ' ' + timePart(a) + (b ? '–' + timePart(b) : ''); }
 function numOrNull(v) { return (v === '' || v == null) ? null : Number(v); }
 function ymd(d) { var m = d.getMonth() + 1, day = d.getDate(); return d.getFullYear() + '-' + (m < 10 ? '0' + m : m) + '-' + (day < 10 ? '0' + day : day); } // 本地时区 yyyy-MM-dd（避免 toISOString 跨时区错位）
@@ -411,8 +414,8 @@ function LocationField(props) {
       window.message.success('已读取当前位置坐标');
     }, function (err) {
       setLocating(false);
-      props.onSet('110.097200', '20.921300');
-      window.message.warning('定位失败（' + (err.message || '权限被拒绝') + '），已填入默认坐标，请用「地图选点」微调');
+      // 失败不再填默认坐标——经纬度手填入口已收掉，默认值会被误存导致 GPS 签到启用在错误地点
+      window.message.warning('定位失败（' + (err.message || '权限被拒绝') + '），请改用「地图选点」');
     }, { enableHighAccuracy: true, timeout: 8000 });
   }
   var hasCoord = props.lng && props.lat;
@@ -420,11 +423,11 @@ function LocationField(props) {
     React.createElement('div', { style: { display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' } },
       React.createElement(Btn, { type: 'primary', icon: 'target', onClick: locate, disabled: locating }, locating ? '定位中…' : '定位当前位置'),
       React.createElement(Btn, { icon: 'mapPin', onClick: function () { setMapOpen(true); } }, '地图选点'),
-      hasCoord ? React.createElement('span', { className: 'crop-ratio-note', style: { alignSelf: 'center' } },
-        React.createElement(Icon, { name: 'mapPin', size: 13 }), '已定位 ' + props.lng + ', ' + props.lat) : null),
+      hasCoord ? React.createElement(Btn, { onClick: function () { props.onSet('', ''); } }, '清除定位') : null),
     React.createElement('div', { className: 'field-row' },
-      React.createElement(Field, { label: '经度', hint: '可手动微调' }, React.createElement(Input, { value: props.lng, onChange: function (v) { props.onSet(v, props.lat); }, placeholder: '110.097200' })),
-      React.createElement(Field, { label: '纬度' }, React.createElement(Input, { value: props.lat, onChange: function (v) { props.onSet(props.lng, v); }, placeholder: '20.921300' })),
+      // 坐标只读：由「定位当前位置」或「地图选点」自动获取，避免管理员不知经纬度格式手填出错
+      React.createElement(Field, { label: '坐标', hint: '点上方「定位当前位置」或「地图选点」自动获取，无需手填' },
+        React.createElement(Input, { value: hasCoord ? (props.lng + ', ' + props.lat) : '', disabled: true, placeholder: '未获取（留空则不启用 GPS 签到）' })),
       React.createElement(Field, { label: '签到半径(米)', hint: '超出范围不可签到' }, React.createElement(Input, { type: 'number', value: props.radius, onChange: props.onRadius }))),
     mapOpen ? React.createElement(MapPickModal, { lng: props.lng, lat: props.lat, radius: props.radius,
       onCancel: function () { setMapOpen(false); },

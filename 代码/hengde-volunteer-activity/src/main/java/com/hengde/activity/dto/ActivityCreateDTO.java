@@ -1,5 +1,6 @@
 package com.hengde.activity.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
@@ -20,6 +21,7 @@ import java.util.List;
  * @author hengde
  */
 @Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class ActivityCreateDTO {
 
     /** 活动名称 */

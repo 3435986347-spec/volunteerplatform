@@ -7,8 +7,11 @@ import com.hengde.activity.entity.Activity;
 import com.hengde.activity.entity.ActivityEnrollment;
 import com.hengde.activity.entity.ActivitySlot;
 import com.hengde.activity.service.ActivityService;
+import com.hengde.activity.vo.ActivityRegistrantVO;
 import com.hengde.activity.vo.ActivityVolunteerDetailVO;
 import com.hengde.activity.vo.RecommendActivityVO;
+import com.hengde.auth.dao.VolunteerMapper;
+import com.hengde.auth.entity.Volunteer;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
@@ -51,6 +54,8 @@ class VolunteerActivityQueryTest {
     private ActivitySlotMapper activitySlotMapper;
     @Autowired
     private ActivityEnrollmentMapper enrollmentMapper;
+    @Autowired
+    private VolunteerMapper volunteerMapper;
 
     @Test
     void listForVolunteer_onlyReturnsPublished() {
@@ -82,6 +87,38 @@ class VolunteerActivityQueryTest {
         assertNotNull(vo);
         assertEquals(id, vo.getId());
         assertEquals(2, vo.getSlots().size(), "详情应带出 2 个时间段");
+    }
+
+    @Test
+    void detailForVolunteer_exposesNeedCountAndEnrolledCount() {
+        // 详情页「已报名 X/Y」：Y=各时间段 need_count 之和，X=活跃报名去重人数（之前 VO 未暴露致前端显示 X/0）
+        Long id = insertActivity("DETAILCOUNT_" + System.nanoTime(), STATUS_PUBLISHED);
+        Long slot1 = insertSlotReturning(id, 20);
+        Long slot2 = insertSlotReturning(id, 5);
+        Long zhou = insertVolunteer("周怡汐");
+        Long li = insertVolunteer("李明");
+        insertActiveEnrollment(id, slot1, zhou);
+        insertActiveEnrollment(id, slot2, li);
+
+        ActivityVolunteerDetailVO vo = activityService.detailForVolunteer(id);
+
+        assertEquals(25, vo.getNeedCount().intValue(), "招募名额=各时间段 need_count 之和");
+        assertEquals(2L, vo.getEnrolledCount().longValue(), "已报名=活跃报名去重志愿者数");
+        // 报名详情：去掉预置假人后回真实报名者，仅露姓氏（需求「报名人的第1个姓」）
+        assertEquals(2, vo.getRegistrants().size(), "报名详情应含两名报名人");
+        List<String> surnames = vo.getRegistrants().stream().map(ActivityRegistrantVO::getName).toList();
+        assertTrue(surnames.contains("周") && surnames.contains("李"), "报名详情仅露姓氏");
+    }
+
+    @Test
+    void detailForVolunteer_needCountUnlimitedWhenAnySlotZero() {
+        // 任一时间段 need_count=0（不限）→ 详情总名额返回 0（前端显示「不限」），不被 sum 吞成 5
+        Long id = insertActivity("UNLIMITED_" + System.nanoTime(), STATUS_PUBLISHED);
+        insertSlotReturning(id, 0);
+        insertSlotReturning(id, 5);
+
+        ActivityVolunteerDetailVO vo = activityService.detailForVolunteer(id);
+        assertEquals(0, vo.getNeedCount().intValue(), "任一段不限则整场不限(0)");
     }
 
     @Test
@@ -157,6 +194,15 @@ class VolunteerActivityQueryTest {
         slot.setNeedCount(needCount);
         activitySlotMapper.insert(slot);
         return slot.getId();
+    }
+
+    private Long insertVolunteer(String realName) {
+        Volunteer v = new Volunteer();
+        v.setOpenid("test:reg:" + System.nanoTime());
+        v.setRealName(realName);
+        v.setStatus(0);
+        volunteerMapper.insert(v);
+        return v.getId();
     }
 
     private void insertActiveEnrollment(Long activityId, Long slotId, Long volunteerId) {

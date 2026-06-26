@@ -3,6 +3,7 @@ package com.hengde.activity.controller;
 import cn.dev33.satoken.stp.StpUtil;
 import com.hengde.activity.dto.ActivityReviewDTO;
 import com.hengde.activity.dto.CheckInDTO;
+import com.hengde.activity.dto.CheckOutDTO;
 import com.hengde.activity.dto.ConfirmHomeDTO;
 import com.hengde.activity.service.AttendanceService;
 import com.hengde.activity.service.ServiceRecordService;
@@ -48,6 +49,13 @@ public class AttendanceController {
     @PostMapping("/activities/{id}/check-in")
     public Result<Void> checkIn(@PathVariable Long id, @RequestBody @Valid CheckInDTO dto) {
         attendanceService.checkIn(id, StpUtil.getLoginIdAsLong(), dto.getLat(), dto.getLng(), dto.getMethod());
+        return Result.ok();
+    }
+
+    @Operation(summary = "自助签退（扫签退码 + GPS 距活动 ≤ 半径 + 结束后2h内；算服务时长）")
+    @PostMapping("/activities/{id}/check-out")
+    public Result<Void> checkOut(@PathVariable Long id, @RequestBody @Valid CheckOutDTO dto) {
+        attendanceService.selfCheckOut(id, StpUtil.getLoginIdAsLong(), dto.getLat(), dto.getLng());
         return Result.ok();
     }
 

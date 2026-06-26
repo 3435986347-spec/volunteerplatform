@@ -17,9 +17,11 @@ import com.hengde.activity.entity.ActivityEnrollment;
 import com.hengde.activity.entity.ActivitySlot;
 import com.hengde.activity.vo.ActivityAdminDetailVO;
 import com.hengde.activity.vo.ActivityListVO;
+import com.hengde.activity.vo.ActivityRegistrantVO;
 import com.hengde.activity.vo.ActivitySlotVO;
 import com.hengde.activity.vo.ActivityVolunteerDetailVO;
 import com.hengde.activity.vo.RecommendActivityVO;
+import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
@@ -36,7 +38,9 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -79,6 +83,12 @@ public class ActivityService {
     private ActivityMapper activityMapper;
     private ActivitySlotMapper activitySlotMapper;
     private ActivityEnrollmentMapper activityEnrollmentMapper;
+    private VolunteerQueryService volunteerQueryService;
+
+    @Autowired
+    public void setVolunteerQueryService(VolunteerQueryService volunteerQueryService) {
+        this.volunteerQueryService = volunteerQueryService;
+    }
 
     @Autowired
     public void setActivityMapper(ActivityMapper activityMapper) {
@@ -110,7 +120,43 @@ public class ActivityService {
      */
     @Transactional
     public Long submitForReview(ActivityCreateDTO dto, Long volunteerId) {
+        validateVolunteerPublish(dto);
         return publishOne(dto, volunteerId, STATUS_PENDING_REVIEW, false);
+    }
+
+    /**
+     * 志愿者（管理团队）端提交活动的额外必填校验（仅 {@link #submitForReview} 走，<b>后台 {@code /a} 直发不校验</b>，
+     * 保留管理端 override）。前端 publish 页对这些字段已加粉色 {@code *} 并拦截，这里是接口层兜底，防绕过前端直发空值。
+     *
+     * <p>必填集对齐需求文档「活动发布·必填项」：封面图(活动照片)、活动地点、活动要求、积分、需求人数。
+     * 活动名称/起止时间/时间段/项目名称已由 Bean Validation（{@code @NotBlank}/{@code @NotNull}）覆盖，此处不重复。
+     * 截止报名/报名审核/参加门槛等「不填默认」项不强制。</p>
+     */
+    private void validateVolunteerPublish(ActivityCreateDTO dto) {
+        if (!StringUtils.hasText(dto.getCoverImageUrl())) {
+            throw new BusinessException("请上传活动封面图");
+        }
+        if (!StringUtils.hasText(dto.getLocation())) {
+            throw new BusinessException("活动地点不能为空");
+        }
+        if (!StringUtils.hasText(dto.getRequirement())) {
+            throw new BusinessException("活动要求不能为空");
+        }
+        if (dto.getPointsBase() == null) {
+            throw new BusinessException("积分不能为空");
+        }
+        // 显式校验时间段：service 边界兜底。HTTP 入口虽有 @NotEmpty/@Valid，但防内部直调传 null/[]/[null] 落到下游 NPE。
+        if (dto.getSlots() == null || dto.getSlots().isEmpty()) {
+            throw new BusinessException("至少需要一个时间段");
+        }
+        for (ActivitySlotDTO slot : dto.getSlots()) {
+            if (slot == null) {
+                throw new BusinessException("时间段不能为空");
+            }
+            if (slot.getNeedCount() == null || slot.getNeedCount() < 1) {
+                throw new BusinessException("需求人数必须大于0");
+            }
+        }
     }
 
     /**
@@ -490,8 +536,45 @@ public class ActivityService {
         }
         ActivityVolunteerDetailVO vo = new ActivityVolunteerDetailVO();
         BeanUtils.copyProperties(activity, vo);
-        vo.setSlots(loadSlotVOs(id));
+        List<ActivitySlotVO> slots = loadSlotVOs(id);
+        vo.setSlots(slots);
+        // 招募名额：任一时间段不限(need_count=0/空)则整场视为不限、返回 0（前端显示「不限」），与列表 has_quota 口径一致；
+        // 否则取各段之和——直接 sum 会把「不限」段当 0 吞掉，[0,5] 误显示为「X/5」。已报名=活跃报名去重人数。
+        // 之前 VO 未暴露这两项致前端只能读到顶层 quota=0、显示「X/0」。
+        boolean unlimited = slots.stream().anyMatch(s -> s.getNeedCount() == null || s.getNeedCount() == 0);
+        vo.setNeedCount(unlimited ? 0 : slots.stream().mapToInt(ActivitySlotVO::getNeedCount).sum());
+        vo.setEnrolledCount(activityMapper.countActiveEnrollVolunteers(id));
+        vo.setRegistrants(loadRegistrants(id));
         return vo;
+    }
+
+    /**
+     * 报名详情预览：活跃报名（status 0/1）去重志愿者、按报名时间正序，仅露<b>姓氏</b>+报名时间
+     * （需求「报名列表：显示报名时间和报名人的第1个姓」，隐私收敛不露全名/手机号）。
+     */
+    private List<ActivityRegistrantVO> loadRegistrants(Long activityId) {
+        List<ActivityEnrollment> rows = activityEnrollmentMapper.selectList(Wrappers.<ActivityEnrollment>lambdaQuery()
+                .eq(ActivityEnrollment::getActivityId, activityId)
+                .in(ActivityEnrollment::getStatus, 0, 1)
+                .orderByAsc(ActivityEnrollment::getEnrollTime));
+        // 去重志愿者（一人报多个 slot 只显示一行），保留最早一条报名
+        LinkedHashMap<Long, ActivityEnrollment> firstByVolunteer = new LinkedHashMap<>();
+        for (ActivityEnrollment e : rows) {
+            firstByVolunteer.putIfAbsent(e.getVolunteerId(), e);
+        }
+        if (firstByVolunteer.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, String> nameById = volunteerQueryService.listNamesByIds(firstByVolunteer.keySet());
+        List<ActivityRegistrantVO> list = new ArrayList<>(firstByVolunteer.size());
+        for (ActivityEnrollment e : firstByVolunteer.values()) {
+            ActivityRegistrantVO r = new ActivityRegistrantVO();
+            String name = nameById.get(e.getVolunteerId());
+            r.setName(name != null && !name.isEmpty() ? name.substring(0, 1) : "志愿者");
+            r.setEnrollTime(e.getEnrollTime());
+            list.add(r);
+        }
+        return list;
     }
 
     private List<ActivitySlotVO> loadSlotVOs(Long activityId) {

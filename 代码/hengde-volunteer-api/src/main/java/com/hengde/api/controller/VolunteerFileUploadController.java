@@ -42,6 +42,9 @@ public class VolunteerFileUploadController {
     /** 个人头像（任意登录志愿者） */
     private static final String DIR_AVATAR = "avatar";
 
+    /** i志愿者码（任意登录志愿者，「我的资料」上传修改） */
+    private static final String DIR_IVCODE = "ivcode";
+
     private FileStorageService fileStorageService;
     private OssProperties ossProperties;
 
@@ -67,12 +70,12 @@ public class VolunteerFileUploadController {
         return Result.ok(store(file, dir));
     }
 
-    @Operation(summary = "上传个人头像（任意登录志愿者；仅 dir=avatar、限图片）")
+    @Operation(summary = "上传个人头像 / i志愿者码（任意登录志愿者；仅 dir=avatar|ivcode、限图片）")
     @PostMapping("/profile-image")
     public Result<FileUploadVO> uploadProfileImage(@RequestParam("file") MultipartFile file,
                                                    @RequestParam("dir") String dir) {
-        // 无 @SaCheckPermission：仅 /v/** 路由级登录校验即可（普通志愿者「我的资料」改头像）
-        if (!DIR_AVATAR.equals(dir)) {
+        // 无 @SaCheckPermission：仅 /v/** 路由级登录校验即可（普通志愿者「我的资料」改头像 / 传 i志愿者码）
+        if (!DIR_AVATAR.equals(dir) && !DIR_IVCODE.equals(dir)) {
             throw new BusinessException("不支持的上传目录：" + dir);
         }
         FileValidator.validate(file, FileValidator.IMAGE_EXTENSIONS, ossProperties.getMaxFileSize());

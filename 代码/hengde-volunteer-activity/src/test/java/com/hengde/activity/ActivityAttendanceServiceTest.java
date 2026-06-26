@@ -233,6 +233,98 @@ class ActivityAttendanceServiceTest {
         assertTrue(ex.getMessage().contains("已签到"));
     }
 
+    // ---------- 自助签退（扫码 + GPS） ----------
+
+    @Test
+    void selfCheckOut_success_computesMinutes() {
+        Long aid = insertInProgressActivity();
+        Long vid = insertVolunteer();
+        approveEnroll(aid, vid);
+        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 1);
+
+        attendanceService.selfCheckOut(aid, vid, ACT_LAT, ACT_LNG);
+
+        ActivityAttendance att = findAtt(aid, vid);
+        assertNotNull(att.getCheckOutTime(), "应落签退时间");
+        assertEquals(vid, att.getCheckOutBy(), "自助签退人 = 本人");
+        assertNotNull(att.getServiceMinutes());
+        assertTrue(att.getServiceMinutes() >= 0);
+    }
+
+    @Test
+    void selfCheckOut_notCheckedIn_rejected() {
+        Long aid = insertInProgressActivity();
+        Long vid = insertVolunteer();
+        approveEnroll(aid, vid);   // 报名但没签到
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> attendanceService.selfCheckOut(aid, vid, ACT_LAT, ACT_LNG));
+        assertTrue(ex.getMessage().contains("还未签到"));
+    }
+
+    @Test
+    void selfCheckOut_duplicate_rejected() {
+        Long aid = insertInProgressActivity();
+        Long vid = insertVolunteer();
+        approveEnroll(aid, vid);
+        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 1);
+        attendanceService.selfCheckOut(aid, vid, ACT_LAT, ACT_LNG);
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> attendanceService.selfCheckOut(aid, vid, ACT_LAT, ACT_LNG));
+        assertTrue(ex.getMessage().contains("已签退"));
+    }
+
+    @Test
+    void selfCheckOut_outOfRadius_rejected() {
+        Long aid = insertInProgressActivity();
+        Long vid = insertVolunteer();
+        approveEnroll(aid, vid);
+        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 1);
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> attendanceService.selfCheckOut(aid, vid, FAR_LAT, ACT_LNG));
+        assertTrue(ex.getMessage().contains("签退范围"));
+    }
+
+    @Test
+    void selfCheckOut_coordOutOfRange_rejected() {
+        Long aid = insertInProgressActivity();
+        Long vid = insertVolunteer();
+        approveEnroll(aid, vid);
+        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 1);
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> attendanceService.selfCheckOut(aid, vid, ACT_LAT.add(BigDecimal.valueOf(360)), ACT_LNG));
+        assertTrue(ex.getMessage().contains("坐标"));
+    }
+
+    @Test
+    void selfCheckOut_afterWindow_rejected() {
+        // 活动结束已超 2h（签退窗 end+2h 已过）——窗口校验在读考勤行之前触发
+        Long aid = insertActivity(LocalDateTime.now().minusHours(4), LocalDateTime.now().minusHours(3));
+        Long vid = insertVolunteer();
+        approveEnroll(aid, vid);
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> attendanceService.selfCheckOut(aid, vid, ACT_LAT, ACT_LNG));
+        assertTrue(ex.getMessage().contains("已过签退时间"));
+    }
+
+    @Test
+    void bulkCheckOut_doesNotOverwriteSelfCheckedOut() {
+        // 志愿者已自助签退后，负责人统一签退不得覆盖其签退数据，且计数不含该行（条件更新 CAS）
+        Long aid = insertInProgressActivity();
+        Long vid = insertVolunteer();
+        approveEnroll(aid, vid);
+        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 1);
+        attendanceService.selfCheckOut(aid, vid, ACT_LAT, ACT_LNG);
+        ActivityAttendance afterSelf = findAtt(aid, vid);
+
+        int count = attendanceService.bulkCheckOut(aid, null, 999L);
+        assertEquals(0, count, "已自助签退的行不应被统一签退计入");
+
+        ActivityAttendance afterBulk = findAtt(aid, vid);
+        assertEquals(vid, afterBulk.getCheckOutBy(), "签退人仍是本人，未被负责人覆盖");
+        assertEquals(afterSelf.getCheckOutTime(), afterBulk.getCheckOutTime(), "签退时间未被覆盖");
+        assertEquals(afterSelf.getServiceMinutes(), afterBulk.getServiceMinutes(), "时长未被覆盖");
+    }
+
     // ---------- 到位状态 / 违规 ----------
 
     @Test

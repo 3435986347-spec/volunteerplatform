@@ -2,6 +2,7 @@ package com.hengde.activity.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.hengde.activity.config.ActivityProperties;
+import com.hengde.activity.constant.AttendanceQr;
 import com.hengde.activity.constant.EnrollmentStatus;
 import com.hengde.activity.dao.ActivityAttendanceMapper;
 import com.hengde.activity.dao.ActivityEnrollmentMapper;
@@ -38,8 +39,6 @@ public class MyActivityService {
     private static final int ENROLL_APPROVED = EnrollmentStatus.APPROVED;
     /** 确认到家「超时」分界：活动结束后 1 小时 */
     private static final long CONFIRM_HOME_WINDOW_HOURS = 1;
-    /** 签到二维码内容前缀（占位，前端据此识别并打开 GPS 签到页） */
-    private static final String CHECKIN_QR_PREFIX = "hengde-activity-checkin:";
 
     private ActivityEnrollmentMapper enrollmentMapper;
     private ActivityMapper activityMapper;
@@ -121,7 +120,7 @@ public class MyActivityService {
         vo.setLng(a.getLng());
         vo.setCheckInRadiusM(a.getCheckInRadiusM());
         vo.setLeaders(leaders);
-        vo.setCheckInQrContent(CHECKIN_QR_PREFIX + activityId);
+        vo.setCheckInQrContent(AttendanceQr.checkInContent(activityId));
         vo.setEmergencyPhone(activityProperties.getEmergencyPhone());
         if (att != null) {
             vo.setConfirmHomeTime(att.getConfirmHomeTime());

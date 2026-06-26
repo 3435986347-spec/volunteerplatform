@@ -1,17 +1,18 @@
 const dataService = require("../../utils/data-service");
 
-const DEFAULT_ROWS = [
-  { id: "u001", name: "周怡汐", avatar: "/assets/icons/activity-logo.png", signupTime: "2026/06/01 18:20", postTime: "2026/06/15 17:00-19:00" },
-  { id: "u002", name: "曾嘉豪", avatar: "/assets/icons/activity-logo.png", signupTime: "2026/06/01 18:32", postTime: "2026/06/15 17:00-19:00" }
-];
+function formatDateTime(value) {
+  if (!value) return "";
+  return String(value).replace("T", " ").slice(0, 16);
+}
 
 function normalizeRows(rows) {
-  const source = Array.isArray(rows) && rows.length ? rows : DEFAULT_ROWS;
+  // 无真实报名数据返回空（不再用预置假人填充），由页面显示空状态
+  const source = Array.isArray(rows) ? rows : [];
   return source.map((item, index) => ({
     id: item.id || `registrant-${index}`,
     name: item.name || item.realName || "志愿者",
     avatar: item.avatar || item.avatarUrl || "/assets/icons/activity-logo.png",
-    signupTime: item.signupTime || "待记录",
+    signupTime: formatDateTime(item.signupTime || item.enrollTime) || "待记录",
     postTime: item.postTime || item.slotTime || "待安排",
     checkinTime: item.checkinTime || item.signInTime || "待签到",
     checkoutTime: item.checkoutTime || item.signOutTime || "待签退"

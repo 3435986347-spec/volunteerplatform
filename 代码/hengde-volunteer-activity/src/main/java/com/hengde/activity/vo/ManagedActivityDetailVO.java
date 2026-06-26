@@ -7,7 +7,8 @@ import java.util.List;
 
 /**
  * 负责人「活动详情」：活动概要 + 现场运行态 + 志愿者考勤名单。
- * 签到/签退二维码由前端按 activityId 生成，后端不返图。
+ * 签到/签退二维码不在此 VO，分别经 {@code GET /v/activity/managed-activities/{id}/check-in-qr}、
+ * {@code .../check-out-qr} 由后端 ZXing 生成 PNG data URL 返回。
  *
  * @author hengde
  */

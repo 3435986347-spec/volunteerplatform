@@ -6,27 +6,28 @@ Page({
     submitting: false,
     uploadingCover: false,
     permissionUnknown: false,
+    // 表单默认全空，由负责人逐项填写；只保留无可见输入项、payload 需要的隐藏配置默认值（倍率/半径/审核/范围/门槛）
     form: {
-      title: "公益书屋项目书籍整理活动",
+      title: "",
       coverImageUrl: "",
-      location: "御景雅苑（东方三路）",
-      startTime: "2026-06-10 09:00",
-      endTime: "2026-06-10 12:00",
-      enrollDeadline: "2026-06-09 18:00",
-      enrollOpenManager: "2026-06-09 08:00",
-      enrollOpenLeader: "2026-06-09 08:00",
-      enrollOpenVolunteer: "2026-06-09 08:00",
-      pointsBase: "10",
+      location: "",
+      startTime: "",
+      endTime: "",
+      enrollDeadline: "",
+      enrollOpenManager: "",
+      enrollOpenLeader: "",
+      enrollOpenVolunteer: "",
+      pointsBase: "",
       managerMultiplier: "1.2",
-      leaderMultiplier: "1.1",
-      slotProjectName: "志愿者",
-      slotNeedCount: "20",
-      contactName: "邝大程",
-      contactPhone: "15766508094",
-      publisherDeptName: "组织部",
-      content: "请按岗位时间到达现场，服从负责人安排。",
-      requirement: "完成实名注册即可报名。",
-      enrollNotice: "报名成功后请准时参加。",
+      leaderMultiplier: "1.4",
+      slotProjectName: "",
+      slotNeedCount: "",
+      contactName: "",
+      contactPhone: "",
+      publisherDeptName: "",
+      content: "",
+      requirement: "",
+      enrollNotice: "",
       requireMinJoinCount: "0",
       requireMinJoinMinutes: "0",
       checkInRadiusM: "500",
@@ -59,9 +60,13 @@ Page({
   updateField(event) {
     const field = event.currentTarget.dataset.field;
     if (!field) return;
-    this.setData({
-      [`form.${field}`]: event.detail.value
-    });
+    const patch = { [`form.${field}`]: event.detail.value };
+    // 手动改地点会让之前「定位」选的经纬度失效——清掉旧坐标，避免「文字是新地址、GPS 签到点还是旧坐标」
+    if (field === "location") {
+      patch["form.lat"] = "";
+      patch["form.lng"] = "";
+    }
+    this.setData(patch);
   },
 
   // 选图 → 按 16:9 居中裁剪 → 传到 /v/files/upload → 回填 form.coverImageUrl（存服务器 URL）。
@@ -159,10 +164,63 @@ Page({
     this.setData({ "form.coverImageUrl": "" });
   },
 
+  // 活动地点：点「定位」调起微信地图选点（与注册/资料页同款），回填地址文本 + 经纬度（GPS 签到用）；仍可手动改地址
+  chooseActivityLocation() {
+    if (!wx.chooseLocation) {
+      wx.showToast({ title: "当前版本不支持地图选点，可直接手写地点", icon: "none" });
+      return;
+    }
+    wx.chooseLocation({
+      success: (res) => {
+        const name = res.name || "";
+        const address = res.address || "";
+        const locationText = address && name && address.includes(name)
+          ? address
+          : [address, name].filter(Boolean).join(" ");
+        const patch = {};
+        if (locationText) patch["form.location"] = locationText;
+        if (typeof res.latitude === "number") patch["form.lat"] = String(res.latitude);
+        if (typeof res.longitude === "number") patch["form.lng"] = String(res.longitude);
+        this.setData(patch);
+      },
+      fail: (err) => {
+        if (err && /cancel/i.test(err.errMsg || "")) return;
+        wx.showToast({ title: "地图选点失败，可直接手写地点", icon: "none" });
+      }
+    });
+  },
+
   async submitPublish() {
-    const { title, location, startTime, endTime, slotNeedCount } = this.data.form;
-    if (!title || !location || !startTime || !endTime || !slotNeedCount) {
-      wx.showToast({ title: "请填写完整活动信息", icon: "none" });
+    const f = this.data.form;
+    // 必填项（与表单粉色 * 一一对应，须真正拦截，避免 * 形同虚设）：
+    // 活动照片/封面、活动名称、活动地点、活动时间、活动要求、活动项目名称、需求人数、积分。
+    // 截止报名/报名审核/参加次数等有默认值，按需求「不填默认」处理，不强制。
+    const required = [
+      [f.title, "活动名称"],
+      [f.coverImageUrl, "活动封面图"],
+      [f.location, "活动地点"],
+      [f.startTime, "开始时间"],
+      [f.endTime, "结束时间"],
+      [f.requirement, "活动要求"],
+      [f.slotProjectName, "活动项目名称"],
+      [f.slotNeedCount, "需求人数"],
+      [f.pointsBase, "积分"]
+    ];
+    const missing = required.find(([v]) => v === undefined || v === null || String(v).trim() === "");
+    if (missing) {
+      wx.showToast({ title: `请填写${missing[1]}`, icon: "none" });
+      return;
+    }
+    // 数值项再挡非法输入（如 "." / "10.5" / "abc"），否则会被 data-service 的 numberOrDefault 静默回落成默认值，
+    // 让“非空但非法”绕过必填。积分=非负整数，需求人数=正整数。
+    const points = Number(f.pointsBase);
+    if (!Number.isFinite(points) || !Number.isInteger(points) || points < 0) {
+      wx.showToast({ title: "积分需为不小于0的整数", icon: "none" });
+      return;
+    }
+    const need = Number(f.slotNeedCount);
+    if (!Number.isFinite(need) || !Number.isInteger(need) || need < 1) {
+      wx.showToast({ title: "需求人数需为大于0的整数", icon: "none" });
       return;
     }
     if (!this.data.permissionUnknown && !auth.hasPermission("activity:publish")) {

@@ -76,8 +76,8 @@
 
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | /v/user/profile | 获取本人完整资料（姓名/手机号/身份证尾号/政治面貌/学校/年级/地址/紧急联系方式 + 时长/积分/参与活动数/所在小组/归属分队）；游客也可取（实名字段为空、`registered:false`） | 需登录 |
-| PATCH | /v/user/profile | 更新可修改项（头像/学校/年级/政治面貌/通讯地址/紧急联系方式，**部分更新**仅传非空字段，对齐 xlsx Row25 可改清单）；**手机号走 `PUT /v/user/phone`**；姓名/身份证/i志愿者码/昵称「其他均不可以修改」（实名字段仅后台超管 `PUT /a/user/volunteers/{id}` 可改） | 需登录 |
+| GET | /v/user/profile | 获取本人完整资料（姓名/昵称/手机号/身份证完整号[本人查看自己]/政治面貌/学校/年级/地址/紧急联系方式 + 时长/积分/参与活动数/所在小组/归属分队）；游客也可取（实名字段为空、`registered:false`） | 需登录 |
+| PATCH | /v/user/profile | 更新可修改项（头像/i志愿者码/昵称[全局唯一去重]/学校/年级/政治面貌/通讯地址/紧急联系方式，**部分更新**仅传非空字段）；**手机号走 `PUT /v/user/phone`**；姓名/身份证「不可修改」（实名字段仅后台超管 `PUT /a/user/volunteers/{id}` 可改） | 需登录 |
 | PUT | /v/user/phone | 修改/换绑手机号（`{phone, smsCode}`，新号需 scene=change-phone 短信验证；查重不可撞其它账号；账号=手机号，同步改 phone 密文+phoneHash） | 需登录 |
 | GET | /v/user/volunteer-card | 获取电子志愿者证（类身份证样式，含内嵌小程序码） | 需登录 |
 
@@ -117,7 +117,8 @@
 | GET | /v/activity/my-enrollments | 我的报名列表 | 需登录 |
 | GET | /v/activity/my-activities | 我的活动（名称/时间段/负责人/签到状态/是否违规/考勤） | 需登录 |
 | GET | /v/activity/my-activities/{id} | 我的活动详情（含考勤 + 签到二维码数据 + 紧急上报电话 `emergencyPhone`） | 需登录 |
-| POST | /v/activity/activities/{id}/check-in | 自助签到（body: lat/lng；GPS 距活动 ≤ 签到半径 且在签到时间窗口内） | 需登录 |
+| POST | /v/activity/activities/{id}/check-in | 自助签到（扫负责人签到码后调；body: lat/lng/method；GPS 距活动 ≤ 签到半径 且在签到时间窗口内） | 需登录 |
+| POST | /v/activity/activities/{id}/check-out | 自助签退（扫负责人签退码后调；body: lat/lng/method；GPS ≤ 签退半径 且活动结束后 2h 内；算服务时长=签退−签到；签退坐标仅校验不留存） | 需登录 |
 | POST | /v/activity/activities/{id}/confirm-home | 确认到家（body: lat/lng；活动结束后；超时仅记录不拒绝） | 需登录 |
 | POST | /v/activity/activities/{id}/review | 评价活动与负责人（body: 活动评分1~5/负责人评分1~5/评论；须实际签到、活动结束后；可覆盖） | 需登录 |
 | GET | /v/activity/service-records | 我的服务记录（活动名称/签到/签退/时长） | 需登录 |
@@ -129,7 +130,9 @@
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
 | GET | /v/activity/managed-activities | 我负责的活动场次列表 | 需登录（活动负责人） |
-| GET | /v/activity/managed-activities/{id} | 负责详情（志愿者名单含名字/电话/学校 + 签到/签退二维码 + 紧急上报电话 `emergencyPhone`；名单 roster 即「签到记录」数据：签到/签退时间、到位状态、违规数） | 需登录（活动负责人） |
+| GET | /v/activity/managed-activities/{id} | 负责详情（志愿者名单含名字/电话/学校 + 紧急上报电话 `emergencyPhone`；名单 roster 即「签到记录」数据：签到/签退时间、到位状态、违规数。二维码不在此，见下 check-in-qr/check-out-qr） | 需登录（活动负责人） |
+| GET | /v/activity/managed-activities/{id}/check-in-qr | 活动签到二维码（后端 ZXing 生成，返回 PNG `data:image/png;base64,...`；负责人展示供志愿者扫码，内容 `hengde-activity-checkin:{id}`，志愿者扫码校验后再 GPS 签到） | 需登录（活动负责人） |
+| GET | /v/activity/managed-activities/{id}/check-out-qr | 活动签退二维码（后端 ZXing 生成 PNG data URL；负责人展示供志愿者扫码，内容 `hengde-activity-checkout:{id}`，志愿者扫码校验后再 GPS 签退） | 需登录（活动负责人） |
 | POST | /v/activity/managed-activities/{id}/start | 点击活动开始 | 需登录（活动负责人） |
 | POST | /v/activity/managed-activities/{id}/finish | 点击活动结束 | 需登录（活动负责人） |
 | POST | /v/activity/managed-activities/{id}/check-outs | 统一签退（全部或指定志愿者；活动结束后 2h 内） | 需登录（活动负责人） |

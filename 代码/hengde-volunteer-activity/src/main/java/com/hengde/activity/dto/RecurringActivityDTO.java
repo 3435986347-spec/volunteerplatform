@@ -1,5 +1,6 @@
 package com.hengde.activity.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
@@ -18,6 +19,7 @@ import java.util.List;
  * @author hengde
  */
 @Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class RecurringActivityDTO {
 
     /** 活动模板（字段同发布活动） */

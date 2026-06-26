@@ -56,9 +56,9 @@
 
 ### 微信小程序（志愿者端）
 
-| 首页 | 活动详情与报名 | GPS 签到 | 我的服务记录 |
-|:---:|:---:|:---:|:---:|
-| ![小程序-首页](docs/screenshots/mp-home.png) | ![小程序-活动详情](docs/screenshots/mp-activity.png) | ![小程序-签到](docs/screenshots/mp-checkin.png) | ![小程序-服务记录](docs/screenshots/mp-records.png) |
+| 首页 | 活动详情与报名 | GPS 签到 |
+|:---:|:---:|:---:|
+| ![小程序-首页](docs/screenshots/mp-home.png) | ![小程序-活动详情](docs/screenshots/mp-activity.png) | ![小程序-签到](docs/screenshots/mp-checkin.png) |
 
 ### Web 管理后台
 
