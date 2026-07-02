@@ -96,6 +96,16 @@ class ActivityAttendanceServiceTest {
         assertTrue(leaderService.isVolunteerLeader(aid, vid));
     }
 
+    @Test
+    void assignLeader_managerVolunteerNotEnrolled_ok() {
+        // A1：管理团队志愿者（manager_flag=1）即便未报名本活动，也可被指派为负责人（leaderType=1）
+        Long aid = insertInProgressActivity();
+        Long mid = insertManagerVolunteer();   // 未报名
+        Long leaderId = leaderService.assign(aid, 1, mid, 100L);
+        assertNotNull(leaderId);
+        assertTrue(leaderService.isVolunteerLeader(aid, mid));
+    }
+
     // ---------- 主干闭环 happy path ----------
 
     @Test

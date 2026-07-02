@@ -21,6 +21,7 @@
     "pages/organization/groups",
     "pages/organization/group-detail",
     "pages/organization/group-create",
+    "pages/organization/manager-apply",
     "pages/organization/squads",
     "pages/organization/squad-detail",
     "pages/publicity/notices",

@@ -141,7 +141,9 @@ public class EnrollmentService {
         if (activity.getEnrollOpenVolunteer() != null && now.isBefore(activity.getEnrollOpenVolunteer())) {
             throw new BusinessException("尚未开放报名");
         }
-        if (activity.getEnrollDeadline() != null && now.isAfter(activity.getEnrollDeadline())) {
+        // 报名截止：留空/脏数据按活动结束时间兜底（活动结束只改 run_status、status 仍=已发布，否则会允许活动后继续报名）
+        LocalDateTime enrollDl = activity.getEnrollDeadline() != null ? activity.getEnrollDeadline() : activity.getEndTime();
+        if (enrollDl != null && now.isAfter(enrollDl)) {
             throw new BusinessException("报名已截止");
         }
 
@@ -307,7 +309,9 @@ public class EnrollmentService {
         if (activity.getEnrollOpenVolunteer() != null && now.isBefore(activity.getEnrollOpenVolunteer())) {
             throw new BusinessException("尚未开放报名");
         }
-        if (activity.getEnrollDeadline() != null && now.isAfter(activity.getEnrollDeadline())) {
+        // 报名截止：留空/脏数据按活动结束时间兜底（与自助报名同口径）
+        LocalDateTime enrollDl = activity.getEnrollDeadline() != null ? activity.getEnrollDeadline() : activity.getEndTime();
+        if (enrollDl != null && now.isAfter(enrollDl)) {
             throw new BusinessException("报名已截止");
         }
 
@@ -386,7 +390,9 @@ public class EnrollmentService {
         if (!Integer.valueOf(STATUS_ACTIVITY_PUBLISHED).equals(activity.getStatus())) {
             throw new BusinessException("活动已结束或已取消，无法取消报名");
         }
-        if (activity.getCancelDeadline() != null && LocalDateTime.now().isAfter(activity.getCancelDeadline())) {
+        // 取消截止：留空/脏数据按活动结束时间兜底（status 不随活动结束改变，否则活动后仍可取消）
+        LocalDateTime cancelDl = activity.getCancelDeadline() != null ? activity.getCancelDeadline() : activity.getEndTime();
+        if (cancelDl != null && LocalDateTime.now().isAfter(cancelDl)) {
             throw new BusinessException("已过取消报名截止时间");
         }
         List<ActivityEnrollment> active = enrollmentMapper.selectList(Wrappers.<ActivityEnrollment>lambdaQuery()

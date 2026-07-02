@@ -53,7 +53,7 @@ var MAPS = {
   acct: { 0: ['正常使用', 'success'], 1: ['已禁用', 'default'], 2: ['已注销', 'default'] },
   groupStatus: { 0: ['待审批', 'warning'], 1: ['正常', 'success'], 2: ['已解散', 'default'] },
   linkType: { 0: ['无跳转', 'default'], 1: ['网页/推文', 'blue'], 2: ['小程序', 'cyan'] },
-  leaderType: { 1: ['报名志愿者', 'blue'], 2: ['管理团队', 'purple'] },
+  leaderType: { 1: ['志愿者负责人', 'blue'], 2: ['后台账号', 'purple'] },
   pubReview: { 4: ['待审核', 'warning'], 1: ['已通过/上线', 'success'], 5: ['已驳回', 'error'] },
 };
 function StatusTag(props) {

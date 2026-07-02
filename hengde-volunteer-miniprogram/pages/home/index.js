@@ -12,7 +12,7 @@ const quickActions = [
   { label: "圆梦微心愿", icon: "/assets/icons/wish.png" },
   { label: "名单公示", icon: "/assets/icons/publicity.png", url: "/pages/publicity/notices" },
   { label: "项目众筹", icon: "/assets/icons/crowdfunding.png" },
-  { label: "临时负责人申请", icon: "/assets/icons/leader.png" },
+  { label: "报名管理团队", icon: "/assets/icons/leader.png", url: "/pages/organization/manager-apply" },
   { label: "文件下载", icon: "/assets/icons/download.png" },
   { label: "爱心企业", icon: "/assets/icons/enterprise.png" },
   { label: "排行榜", icon: "/assets/icons/ranking.png" },
@@ -42,8 +42,12 @@ const ROLE_LABEL_MAP = {
 };
 
 function withStatusClass(activity) {
+  const quota = Number(activity.quota || 0);
+  const joined = Number(activity.joined || 0);
   return Object.assign({}, activity, {
-    statusClass: STATUS_CLASS_MAP[activity.status] || ""
+    statusClass: STATUS_CLASS_MAP[activity.status] || "",
+    // 名额总数 0=不限（与详情页同口径），避免显示「X/0」
+    enrollText: quota > 0 ? `${joined}/${quota} 人` : `已报名 ${joined} 人`
   });
 }
 

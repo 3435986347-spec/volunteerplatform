@@ -22,6 +22,7 @@ var NAV_GROUPS = [
     { key: 'groups', label: '志愿小组', icon: 'team', code: ['org:group-manage', 'org:group-audit'], badge: 'group' },
     { key: 'squads', label: '归属分队', icon: 'squad', code: ['org:squad-manage', 'org:squad-audit'], badge: 'squad' },
     { key: 'flag', label: '志愿者标记与授权', icon: 'userCheck', code: 'org:manager-flag' },
+    { key: 'managerApply', label: '报名管理团队', icon: 'checkCircle', code: 'org:manager-flag', badge: 'managerApply' },
     { key: 'subaccounts', label: '子账号与权限', icon: 'key', code: 'org:sub-account' },
   ]},
   { label: '信息公示', items: [
@@ -35,7 +36,7 @@ var PAGE_TITLES = {
   overview: ['概览', null], volunteers: ['志愿者管理', '用户管理'], activities: ['活动列表/发布', '活动管理'], activityReview: ['活动发布审核', '活动管理'], enroll: ['报名管理', '活动管理'],
   service: ['服务记录与积分', '活动管理'], attendance: ['考勤变更审核', '活动管理'],
   backfill: ['活动补录审核', '活动管理'], groups: ['志愿小组', '组织管理'], squads: ['归属分队', '组织管理'],
-  flag: ['志愿者标记与授权', '组织管理'], subaccounts: ['子账号与权限', '组织管理'],
+  flag: ['志愿者标记与授权', '组织管理'], managerApply: ['报名管理团队', '组织管理'], subaccounts: ['子账号与权限', '组织管理'],
   banners: ['轮播图', '信息公示'], announcements: ['公告', '信息公示'], files: ['文件下载', '信息公示'],
 };
 
@@ -47,6 +48,7 @@ var PAGE_TITLES = {
 var TODO_SOURCES = {
   publishReview: { path: '/a/activity/activities/pending-reviews', query: { status: 4, page: 1, size: 1 }, countPerm: 'activity:publish-audit' },
   enroll:        { path: '/a/activity/enrollments',                query: { status: 0, page: 1, size: 1 }, countPerm: 'activity:enroll-view' },
+  managerApply:  { path: '/a/organization/manager-applications',   query: { status: 0, page: 1, size: 1 }, countPerm: 'org:manager-flag' },
   service:       { path: '/a/activity/service-records/pending',    query: { page: 1, size: 1 },            countPerm: 'activity:service-confirm' },
   attendance:    { path: '/a/activity/attendance-changes',         query: { status: 0, page: 1, size: 1 }, countPerm: 'activity:attendance-audit' },
   backfill:      { path: '/a/activity/backfills',                  query: { status: 0, page: 1, size: 1 }, countPerm: 'activity:backfill-audit' },

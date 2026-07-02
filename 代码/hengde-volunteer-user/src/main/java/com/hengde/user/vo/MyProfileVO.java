@@ -21,6 +21,9 @@ import java.time.LocalDateTime;
 @Setter
 public class MyProfileVO {
 
+    /** 志愿者编号（= volunteer.id 字符串，小程序「我的」页顶部展示；Long 经 Jackson 已转字符串，这里显式 String 保证稳定） */
+    private String no;
+
     /** 是否已实名（registerTime 非空） */
     private boolean registered;
 

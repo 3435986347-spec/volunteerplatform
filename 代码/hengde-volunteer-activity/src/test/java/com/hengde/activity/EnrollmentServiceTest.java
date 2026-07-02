@@ -340,6 +340,55 @@ class EnrollmentServiceTest {
         assertTrue(ex.getMessage().contains("时间冲突"));
     }
 
+    @Test
+    void enroll_nullDeadline_pastEndTime_rejected() {
+        // 报名截止留空（脏数据 null）但活动已结束（endTime 过去）→ 按 endTime 兜底，拒绝报名
+        Long vid = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
+        Long aid = insertActivity(a -> {
+            a.setNeedAudit(0);
+            a.setStartTime(LocalDateTime.now().minusHours(3));
+            a.setEndTime(LocalDateTime.now().minusHours(1));   // 已结束，enrollDeadline 不设=null
+        });
+        Long slot = insertSlot(aid, LocalDateTime.now().minusHours(3), LocalDateTime.now().minusHours(1));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> enrollmentService.enroll(aid, List.of(slot), vid));
+        assertEquals("报名已截止", ex.getMessage());
+    }
+
+    @Test
+    void enroll_duringActivity_allowed() {
+        // 进行中活动（开始过去、结束未来），报名截止留空=结束时间兜底 → 仍可报名（修复「进行中报名已截止」）
+        Long vid = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
+        Long aid = insertActivity(a -> {
+            a.setNeedAudit(0);
+            a.setStartTime(LocalDateTime.now().minusHours(1));
+            a.setEndTime(LocalDateTime.now().plusHours(2));
+        });
+        Long slot = insertSlot(aid, LocalDateTime.now().minusHours(1), LocalDateTime.now().plusHours(2));
+
+        assertEquals(1, enrollmentService.enroll(aid, List.of(slot), vid),
+                "进行中活动(截止默认=结束)仍可报名");
+    }
+
+    @Test
+    void cancel_nullDeadline_pastEndTime_rejected() {
+        // 取消截止留空（null）；活动结束（endTime 过去）但 status 仍=1（结束只改 run_status）→ 按 endTime 兜底拒绝
+        Long vid = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
+        Long aid = insertActivity(a -> a.setNeedAudit(0));   // endTime 未来，先能报名；cancelDeadline=null
+        Long slot = insertSlot(aid, A_START, A_START.plusHours(2));
+        enrollmentService.enroll(aid, List.of(slot), vid);
+
+        // 把结束时间移到过去（status 保持 1），模拟「活动已结束但发布态未变」
+        Activity a = activityMapper.selectById(aid);
+        a.setEndTime(LocalDateTime.now().minusHours(1));
+        activityMapper.updateById(a);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> enrollmentService.cancel(aid, vid));
+        assertEquals("已过取消报名截止时间", ex.getMessage());
+    }
+
     // ---------- 代报名 ----------
 
     @Test

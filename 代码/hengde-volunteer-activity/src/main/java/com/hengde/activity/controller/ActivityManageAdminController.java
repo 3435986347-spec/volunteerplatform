@@ -1,6 +1,7 @@
 package com.hengde.activity.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import cn.dev33.satoken.annotation.SaMode;
 import com.hengde.activity.constant.PermissionCode;
 import com.hengde.activity.dto.ActivitySummaryDTO;
 import com.hengde.activity.dto.AssignLeaderDTO;
@@ -60,7 +61,9 @@ public class ActivityManageAdminController {
     }
 
     @Operation(summary = "负责人列表")
-    @SaCheckPermission(value = PermissionCode.ACTIVITY_MANAGE, type = "admin")
+    // 读负责人名单：现场管理(activity:manage) 或 指派权(activity:leader-assign) 任一即可——
+    // 否则只有指派权的组织部账号既看不到名单、也没法去重指派（前端板块同口径渲染：manage || leader-assign）。
+    @SaCheckPermission(value = {PermissionCode.ACTIVITY_MANAGE, PermissionCode.ACTIVITY_LEADER_ASSIGN}, mode = SaMode.OR, type = "admin")
     @GetMapping("/activities/{id}/leaders")
     public Result<List<ActivityLeaderVO>> leaders(@PathVariable Long id) {
         return Result.ok(activityLeaderService.list(id));

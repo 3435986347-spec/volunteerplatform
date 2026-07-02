@@ -30,7 +30,7 @@ var PAGE_COMPONENTS = {
   overview: OverviewPage, activities: ActivitiesPage, activityReview: ActivityReviewPage, enroll: EnrollPage,
   volunteers: VolunteersPage,
   service: ServicePage, attendance: AttendanceChangePage, backfill: BackfillPage,
-  groups: GroupsPage, squads: SquadsPage, flag: FlagPage, subaccounts: SubAccountsPage,
+  groups: GroupsPage, squads: SquadsPage, flag: FlagPage, managerApply: ManagerApplicationsPage, subaccounts: SubAccountsPage,
   banners: BannersPage, announcements: AnnouncementsPage, files: FilesPage,
 };
 

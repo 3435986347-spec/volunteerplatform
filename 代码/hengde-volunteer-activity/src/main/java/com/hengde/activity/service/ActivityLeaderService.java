@@ -82,13 +82,17 @@ public class ActivityLeaderService {
         leader.setAssignedBy(adminId);
         leader.setAssignedTime(LocalDateTime.now());
         if (Integer.valueOf(LEADER_TYPE_VOLUNTEER).equals(leaderType)) {
-            // 必须是本活动的报名志愿者（活跃报名：待审核/已通过）
+            // 负责人来源（两类，均落 leaderType=1 志愿者负责人、用小程序现场签到/统一签退）：
+            //  ① 本活动的报名志愿者（活跃报名：待审核/已通过）；
+            //  ② 「管理团队」志愿者（manager_flag，可不报名直接安排，不占活动报名人数）。
+            // 取 isActiveManager（活跃且 manager_flag=1）口径，与志愿者端 RBAC 一致：取消标记/停用即不可再被指派。
             Long enrolled = enrollmentMapper.selectCount(Wrappers.<ActivityEnrollment>lambdaQuery()
                     .eq(ActivityEnrollment::getActivityId, activityId)
                     .eq(ActivityEnrollment::getVolunteerId, refId)
                     .in(ActivityEnrollment::getStatus, ENROLL_PENDING, ENROLL_APPROVED));
-            if (enrolled == null || enrolled == 0) {
-                throw new BusinessException("只能从本活动报名志愿者中选负责人");
+            boolean isEnrolled = enrolled != null && enrolled > 0;
+            if (!isEnrolled && !volunteerQueryService.isActiveManager(refId)) {
+                throw new BusinessException("只能从本活动报名志愿者或管理团队志愿者中选负责人");
             }
             leader.setLeaderType(LEADER_TYPE_VOLUNTEER);
             leader.setVolunteerId(refId);

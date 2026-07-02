@@ -33,4 +33,7 @@ public class VolunteerQueryDTO extends PageQuery {
 
     /** 年级 code 1~18（见 {@link com.hengde.common.constant.Grade}）。非法值由 service 校验抛业务异常 */
     private Integer grade;
+
+    /** 管理团队标记筛选：传 1 仅返回「管理团队」志愿者（manager_flag=1），供后台从管理团队中选活动负责人；为空不限 */
+    private Integer managerFlag;
 }

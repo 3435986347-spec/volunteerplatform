@@ -35,7 +35,7 @@
         <view>{{item.school}}</view>
         <view>
           <text class="status-tag {{item.statusClass}}" data-id="{{item.id}}" bindtap="confirmAttendance">{{item.status || '确认签到'}}</text>
-          <text class="status-tag purple" data-id="{{item.id}}" bindtap="checkOutVolunteer">签退</text>
+          <text wx:if="{{item.canCheckOut}}" class="status-tag purple" data-id="{{item.id}}" bindtap="checkOutVolunteer">签退</text>
         </view>
       </view>
     </view>

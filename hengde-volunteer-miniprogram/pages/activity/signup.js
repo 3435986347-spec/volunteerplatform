@@ -1,9 +1,9 @@
 const dataService = require("../../utils/data-service");
 
 const DEFAULT_PERSON = {
-  name: "邝大程",
-  phone: "13800000001",
-  school: "雷州市第二中学"
+  name: "",
+  phone: "",
+  school: ""
 };
 
 const CLASSMATES = [];
@@ -141,6 +141,24 @@ Page({
       wx.showToast({ title: "活动信息暂不可用", icon: "none" });
     }
     this.loadClassmates();
+    this.loadPerson();
+  },
+
+  // 报名人信息自动带出本人真实姓名/电话/学校（取不到则保留空占位，不阻塞报名）
+  async loadPerson() {
+    try {
+      const profile = await dataService.getUserProfile();
+      const info = (profile && profile.info) || {};
+      this.setData({
+        person: {
+          name: info.name || "",
+          phone: info.phone || "",
+          school: info.school || ""
+        }
+      });
+    } catch (error) {
+      // 忽略：保留空占位
+    }
   },
 
   async loadClassmates() {
@@ -229,16 +247,22 @@ Page({
       wx.showToast({ title: "请选择活动场次", icon: "none" });
       return;
     }
+    // slot id 须为正整数；mock/兜底场次 id（"slot-0"/"20250204-am"→NaN，""/null→0）一律拦下，避免无效 slotId 触发后端 400
+    const selectedSlotIds = this.data.selectedSessionIds.map(Number);
+    if (!selectedSlotIds.every((id) => Number.isInteger(id) && id > 0)) {
+      wx.showToast({ title: "活动场次不可用，请刷新后重试", icon: "none" });
+      return;
+    }
     this.setData({ submitting: true });
     try {
       if (this.data.selectedClassmateId) {
         await dataService.proxyEnrollActivity(this.data.activityId, {
           volunteerIds: [Number(this.data.selectedClassmateId)],
-          slotIds: this.data.selectedSessionIds.map((item) => Number(item))
+          slotIds: selectedSlotIds
         });
       } else {
         await dataService.enrollActivity(this.data.activityId, {
-          slotIds: this.data.selectedSessionIds
+          slotIds: selectedSlotIds
         });
       }
     } catch (error) {

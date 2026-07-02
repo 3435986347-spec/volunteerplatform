@@ -1,5 +1,6 @@
 const auth = require("../../utils/auth");
 const dataService = require("../../utils/data-service");
+const { GUARANTEE_ORDER, guaranteeIcon } = require("../../utils/service-guarantees");
 
 Page({
   data: {
@@ -11,8 +12,6 @@ Page({
       title: "",
       coverImageUrl: "",
       location: "",
-      startTime: "",
-      endTime: "",
       enrollDeadline: "",
       enrollOpenManager: "",
       enrollOpenLeader: "",
@@ -20,8 +19,8 @@ Page({
       pointsBase: "",
       managerMultiplier: "1.2",
       leaderMultiplier: "1.4",
-      slotProjectName: "",
-      slotNeedCount: "",
+      // 活动场次（可多个）：每个 {projectName, startTime, endTime, needCount}；活动整体起止由各场次最早~最晚派生
+      slots: [{ projectName: "", startTime: "", endTime: "", needCount: "" }],
       contactName: "",
       contactPhone: "",
       publisherDeptName: "",
@@ -35,7 +34,11 @@ Page({
       enrollScope: "0",
       lat: "",
       lng: ""
-    }
+    },
+    // 服务保障 12 选 N（与详情页同源常量）；提交时取 selected 的 key
+    guarantees: GUARANTEE_ORDER.map((g) => ({
+      key: g.key, label: g.label, asset: g.asset, selected: false, iconUrl: guaranteeIcon(g.asset, false)
+    }))
   },
 
   async onLoad() {
@@ -67,6 +70,25 @@ Page({
       patch["form.lng"] = "";
     }
     this.setData(patch);
+  },
+
+  // 多场次：改某个场次的某字段 / 增 / 删
+  updateSlot(event) {
+    const { index, field } = event.currentTarget.dataset;
+    if (index == null || !field) return;
+    const i = Number(index);
+    const slots = this.data.form.slots.map((s, idx) => (idx === i ? Object.assign({}, s, { [field]: event.detail.value }) : s));
+    this.setData({ "form.slots": slots });
+  },
+
+  addSlot() {
+    this.setData({ "form.slots": this.data.form.slots.concat([{ projectName: "", startTime: "", endTime: "", needCount: "" }]) });
+  },
+
+  removeSlot(event) {
+    if (this.data.form.slots.length <= 1) return;
+    const i = Number(event.currentTarget.dataset.index);
+    this.setData({ "form.slots": this.data.form.slots.filter((s, idx) => idx !== i) });
   },
 
   // 选图 → 按 16:9 居中裁剪 → 传到 /v/files/upload → 回填 form.coverImageUrl（存服务器 URL）。
@@ -164,6 +186,16 @@ Page({
     this.setData({ "form.coverImageUrl": "" });
   },
 
+  // 服务保障不定项选择：点选切换红/灰图标
+  toggleGuarantee(event) {
+    const key = event.currentTarget.dataset.key;
+    if (!key) return;
+    const guarantees = this.data.guarantees.map((g) =>
+      g.key === key ? { ...g, selected: !g.selected, iconUrl: guaranteeIcon(g.asset, !g.selected) } : g
+    );
+    this.setData({ guarantees });
+  },
+
   // 活动地点：点「定位」调起微信地图选点（与注册/资料页同款），回填地址文本 + 经纬度（GPS 签到用）；仍可手动改地址
   chooseActivityLocation() {
     if (!wx.chooseLocation) {
@@ -193,34 +225,53 @@ Page({
   async submitPublish() {
     const f = this.data.form;
     // 必填项（与表单粉色 * 一一对应，须真正拦截，避免 * 形同虚设）：
-    // 活动照片/封面、活动名称、活动地点、活动时间、活动要求、活动项目名称、需求人数、积分。
+    // 活动照片/封面、活动名称、活动地点、活动要求、积分 + 每个场次的项目名称/开始/结束/需求人数。
     // 截止报名/报名审核/参加次数等有默认值，按需求「不填默认」处理，不强制。
     const required = [
       [f.title, "活动名称"],
       [f.coverImageUrl, "活动封面图"],
       [f.location, "活动地点"],
-      [f.startTime, "开始时间"],
-      [f.endTime, "结束时间"],
       [f.requirement, "活动要求"],
-      [f.slotProjectName, "活动项目名称"],
-      [f.slotNeedCount, "需求人数"],
       [f.pointsBase, "积分"]
     ];
-    const missing = required.find(([v]) => v === undefined || v === null || String(v).trim() === "");
+    const isBlank = (v) => v === undefined || v === null || String(v).trim() === "";
+    const missing = required.find(([v]) => isBlank(v));
     if (missing) {
       wx.showToast({ title: `请填写${missing[1]}`, icon: "none" });
       return;
     }
-    // 数值项再挡非法输入（如 "." / "10.5" / "abc"），否则会被 data-service 的 numberOrDefault 静默回落成默认值，
-    // 让“非空但非法”绕过必填。积分=非负整数，需求人数=正整数。
+    // 逐场次校验：每个场次的项目名称/开始/结束/需求人数必填，需求人数=正整数。
+    // 数值项挡非法输入（如 "." / "10.5" / "abc"），否则会被 data-service 的 numberOrDefault 静默回落成默认值，
+    // 让“非空但非法”绕过必填。
+    const slots = Array.isArray(f.slots) ? f.slots : [];
+    if (!slots.length) {
+      wx.showToast({ title: "请至少添加一个场次", icon: "none" });
+      return;
+    }
+    for (let i = 0; i < slots.length; i += 1) {
+      const s = slots[i];
+      const prefix = slots.length > 1 ? `场次${i + 1}` : "";
+      const slotRequired = [
+        [s.projectName, "项目名称"],
+        [s.startTime, "开始时间"],
+        [s.endTime, "结束时间"],
+        [s.needCount, "需求人数"]
+      ];
+      const miss = slotRequired.find(([v]) => isBlank(v));
+      if (miss) {
+        wx.showToast({ title: `请填写${prefix}${miss[1]}`, icon: "none" });
+        return;
+      }
+      const need = Number(s.needCount);
+      if (!Number.isFinite(need) || !Number.isInteger(need) || need < 1) {
+        wx.showToast({ title: `${prefix}需求人数需为大于0的整数`, icon: "none" });
+        return;
+      }
+    }
+    // 积分=非负整数
     const points = Number(f.pointsBase);
     if (!Number.isFinite(points) || !Number.isInteger(points) || points < 0) {
       wx.showToast({ title: "积分需为不小于0的整数", icon: "none" });
-      return;
-    }
-    const need = Number(f.slotNeedCount);
-    if (!Number.isFinite(need) || !Number.isInteger(need) || need < 1) {
-      wx.showToast({ title: "需求人数需为大于0的整数", icon: "none" });
       return;
     }
     if (!this.data.permissionUnknown && !auth.hasPermission("activity:publish")) {
@@ -230,7 +281,8 @@ Page({
 
     this.setData({ submitting: true });
     try {
-      await dataService.publishActivity(this.data.form);
+      const serviceGuarantees = this.data.guarantees.filter((g) => g.selected).map((g) => g.key);
+      await dataService.publishActivity(Object.assign({}, this.data.form, { serviceGuarantees }));
       wx.showToast({ title: "发布成功", icon: "success" });
       setTimeout(() => wx.redirectTo({ url: "/pages/activity-leader/index" }), 700);
     } catch (error) {

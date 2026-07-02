@@ -140,6 +140,9 @@ public class ActivityAdminDetailVO {
     /** 签到半径（米，默认 500） */
     private Integer checkInRadiusM;
 
+    /** 服务保障项 key 列表（对齐前端 GUARANTEE_ORDER；后台回显/将来 round-trip 用） */
+    private List<String> serviceGuarantees;
+
     /** 时间段/子项目 */
     private List<ActivitySlotVO> slots;
 

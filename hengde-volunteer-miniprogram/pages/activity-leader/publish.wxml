@@ -31,14 +31,31 @@
         <view class="locate-btn" catchtap="chooseActivityLocation">定位</view>
       </view>
       <view wx:if="{{form.lat && form.lng}}" class="locate-hint">已获取定位坐标（经度 {{form.lng}}，纬度 {{form.lat}}）</view>
-      <view class="form-row">
-        <text class="form-label"><text class="req-star">*</text>开始时间：</text>
-        <input class="form-input" value="{{form.startTime}}" data-field="startTime" bindinput="updateField" placeholder="2026-06-10 09:00" />
+      <!-- 活动场次（可多个）：活动整体起止时间由各场次最早开始~最晚结束自动派生 -->
+      <view class="slot-section-title">活动场次</view>
+      <view class="slot-card" wx:for="{{form.slots}}" wx:key="index">
+        <view class="slot-card-head">
+          <text class="slot-card-name">场次{{index + 1}}</text>
+          <text wx:if="{{form.slots.length > 1}}" class="slot-remove" data-index="{{index}}" catchtap="removeSlot">删除</text>
+        </view>
+        <view class="form-row">
+          <text class="form-label"><text class="req-star">*</text>项目名称：</text>
+          <input class="form-input" value="{{item.projectName}}" data-index="{{index}}" data-field="projectName" bindinput="updateSlot" placeholder="志愿者" />
+        </view>
+        <view class="form-row">
+          <text class="form-label"><text class="req-star">*</text>开始时间：</text>
+          <input class="form-input" value="{{item.startTime}}" data-index="{{index}}" data-field="startTime" bindinput="updateSlot" placeholder="2026-06-10 09:00" />
+        </view>
+        <view class="form-row">
+          <text class="form-label"><text class="req-star">*</text>结束时间：</text>
+          <input class="form-input" value="{{item.endTime}}" data-index="{{index}}" data-field="endTime" bindinput="updateSlot" placeholder="2026-06-10 12:00" />
+        </view>
+        <view class="form-row">
+          <text class="form-label"><text class="req-star">*</text>需求人数：</text>
+          <input class="form-input" type="number" value="{{item.needCount}}" data-index="{{index}}" data-field="needCount" bindinput="updateSlot" placeholder="20" />
+        </view>
       </view>
-      <view class="form-row">
-        <text class="form-label"><text class="req-star">*</text>结束时间：</text>
-        <input class="form-input" value="{{form.endTime}}" data-field="endTime" bindinput="updateField" placeholder="2026-06-10 12:00" />
-      </view>
+      <view class="slot-add" bindtap="addSlot">+ 添加场次</view>
       <view class="form-row">
         <text class="form-label">截止报名：</text>
         <input class="form-input" value="{{form.enrollDeadline}}" data-field="enrollDeadline" bindinput="updateField" placeholder="2026-06-09 18:00" />
@@ -54,14 +71,6 @@
       <view class="form-row">
         <text class="form-label">志愿者开放：</text>
         <input class="form-input" value="{{form.enrollOpenVolunteer}}" data-field="enrollOpenVolunteer" bindinput="updateField" placeholder="2026-06-09 08:00" />
-      </view>
-      <view class="form-row">
-        <text class="form-label"><text class="req-star">*</text>岗位名称：</text>
-        <input class="form-input" value="{{form.slotProjectName}}" data-field="slotProjectName" bindinput="updateField" placeholder="志愿者" />
-      </view>
-      <view class="form-row">
-        <text class="form-label"><text class="req-star">*</text>岗位人数：</text>
-        <input class="form-input" type="number" value="{{form.slotNeedCount}}" data-field="slotNeedCount" bindinput="updateField" placeholder="20" />
       </view>
       <view class="form-row">
         <text class="form-label"><text class="req-star">*</text>基础积分：</text>
@@ -86,6 +95,17 @@
       <view class="form-row form-row-textarea">
         <text class="form-label"><text class="req-star">*</text>报名要求：</text>
         <textarea class="form-textarea" value="{{form.requirement}}" data-field="requirement" bindinput="updateField" placeholder="请输入报名要求"></textarea>
+      </view>
+    </view>
+
+    <view class="section-card">
+      <view class="card-title">服务保障</view>
+      <view class="guarantee-tip">可多选，勾选后报名详情页对应图标显示为红色</view>
+      <view class="guarantee-grid">
+        <view class="guarantee-item {{item.selected ? 'selected' : ''}}" wx:for="{{guarantees}}" wx:key="key" data-key="{{item.key}}" bindtap="toggleGuarantee">
+          <image class="guarantee-icon" src="{{item.iconUrl}}" mode="aspectFit" />
+          <text>{{item.label}}</text>
+        </view>
       </view>
     </view>
 

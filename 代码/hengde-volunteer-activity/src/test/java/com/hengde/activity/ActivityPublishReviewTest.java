@@ -329,6 +329,56 @@ class ActivityPublishReviewTest {
         assertEquals(0, a.getPointsBase(), "缺积分走默认 0");
     }
 
+    @Test
+    void serviceGuarantees_roundTrip_normalizedOnPublish() {
+        ActivityCreateDTO dto = base();
+        dto.setServiceGuarantees(List.of("other", "water", "zzz", "insurance")); // 乱序 + 未知 key
+        Long id = activityService.publish(dto, ADMIN);
+
+        Activity a = activityMapper.selectById(id);
+        assertEquals("water,insurance,other", a.getServiceGuarantees(), "发布按规范顺序存 CSV、过滤未知 key");
+        ActivityAdminDetailVO d = activityService.detailForAdmin(id);
+        assertEquals(List.of("water", "insurance", "other"), d.getServiceGuarantees(), "管理端详情回 List<key>");
+    }
+
+    @Test
+    void update_serviceGuarantees_nullKeeps_emptyClears() {
+        ActivityCreateDTO dto = base();
+        dto.setServiceGuarantees(List.of("water", "meal"));
+        Long id = activityService.publish(dto, ADMIN);
+
+        // 不传（null）→ 保留原值（模拟后台编辑不带该字段，不应误清小程序所选）
+        ActivityUpdateDTO keep = baseUpdate();
+        keep.setServiceGuarantees(null);
+        activityService.update(id, keep);
+        assertEquals("water,meal", activityMapper.selectById(id).getServiceGuarantees(),
+                "update 不传 serviceGuarantees 应保留原值");
+
+        // 传 []（显式清空）→ 清成 null
+        ActivityUpdateDTO clear = baseUpdate();
+        clear.setServiceGuarantees(List.of());
+        activityService.update(id, clear);
+        assertNull(activityMapper.selectById(id).getServiceGuarantees(), "update 传空数组应清空");
+    }
+
+    @Test
+    void enrollDeadline_endTime_allowedAndDefaulted() {
+        // 显式报名/取消截止=活动结束时间应被接受（旧规则只允许 ≤ 开始时间）
+        ActivityCreateDTO explicit = base();
+        explicit.setEnrollDeadline(explicit.getEndTime());
+        explicit.setCancelDeadline(explicit.getEndTime());
+        Long id = activityService.publish(explicit, ADMIN);
+        assertEquals(explicit.getEndTime(), activityMapper.selectById(id).getEnrollDeadline(),
+                "显式报名截止=结束时间应被接受");
+
+        // 留空 → 默认到活动结束时间（报名/取消持续到结束）
+        ActivityCreateDTO blank = base();
+        Long id2 = activityService.publish(blank, ADMIN);
+        Activity a2 = activityMapper.selectById(id2);
+        assertEquals(blank.getEndTime(), a2.getEnrollDeadline(), "报名截止留空默认=活动结束时间");
+        assertEquals(blank.getEndTime(), a2.getCancelDeadline(), "取消截止留空默认=活动结束时间");
+    }
+
     // ---------- helpers ----------
 
     private Long insertVolunteer(String name) {
@@ -356,6 +406,27 @@ class ActivityPublishReviewTest {
         dto.setCoverImageUrl("https://example.com/cover.jpg");
         dto.setLocation("御景雅苑");
         dto.setRequirement("完成实名注册即可报名");
+        dto.setPointsBase(10);
+        dto.setSlots(List.of(slot));
+        return dto;
+    }
+
+    /** 改活动模板（ActivityUpdateDTO），字段同 base()，供 update 用例。 */
+    private ActivityUpdateDTO baseUpdate() {
+        LocalDateTime start = LocalDateTime.now().plusDays(1).withHour(9).withMinute(0).withSecond(0).withNano(0);
+        ActivitySlotDTO slot = new ActivitySlotDTO();
+        slot.setProjectName("项目A");
+        slot.setStartTime(start);
+        slot.setEndTime(start.plusHours(1));
+        slot.setNeedCount(10);
+
+        ActivityUpdateDTO dto = new ActivityUpdateDTO();
+        dto.setTitle("改_" + System.nanoTime());
+        dto.setStartTime(start);
+        dto.setEndTime(start.plusHours(2));
+        dto.setCoverImageUrl("https://example.com/cover.jpg");
+        dto.setLocation("御景雅苑");
+        dto.setRequirement("xx");
         dto.setPointsBase(10);
         dto.setSlots(List.of(slot));
         return dto;

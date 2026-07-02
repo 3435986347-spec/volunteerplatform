@@ -8,6 +8,7 @@ import com.hengde.activity.dao.ActivitySlotMapper;
 import com.hengde.activity.constant.ActivityDisplayStatus;
 import com.hengde.activity.constant.ActivityStatus;
 import com.hengde.activity.constant.RunStatus;
+import com.hengde.activity.constant.ServiceGuarantee;
 import com.hengde.activity.dto.ActivityCreateDTO;
 import com.hengde.activity.dto.ActivitySlotDTO;
 import com.hengde.activity.dto.ActivityUpdateDTO;
@@ -213,6 +214,8 @@ public class ActivityService {
 
         Activity activity = new Activity();
         BeanUtils.copyProperties(dto, activity, "slots");
+        // serviceGuarantees 是 List<String>↔String(CSV)，类型不同 BeanUtils 不拷贝，显式转换
+        activity.setServiceGuarantees(ServiceGuarantee.toCsv(dto.getServiceGuarantees()));
         applyDefaults(activity);
         activity.setStatus(status);
         activity.setCreateBy(adminId);
@@ -328,8 +331,20 @@ public class ActivityService {
         validateDto(dto);
 
         BeanUtils.copyProperties(dto, activity, "slots");
+        // 服务保障 null=保留原值（后台编辑不传该字段时不清空小程序所选），传 []=显式清空、具体值=覆盖
+        boolean clearGuarantees = false;
+        if (dto.getServiceGuarantees() != null) {
+            activity.setServiceGuarantees(ServiceGuarantee.toCsv(dto.getServiceGuarantees()));
+            clearGuarantees = activity.getServiceGuarantees() == null; // 传 [] 或全非法 key → 需清成 null
+        }
         applyDefaults(activity);
         activityMapper.updateById(activity);
+        // updateById 默认跳过 null 字段，无法把 serviceGuarantees 清成 null，故清空场景显式 set null
+        if (clearGuarantees) {
+            activityMapper.update(null, Wrappers.<Activity>lambdaUpdate()
+                    .eq(Activity::getId, id)
+                    .set(Activity::getServiceGuarantees, null));
+        }
 
         activitySlotMapper.delete(Wrappers.<ActivitySlot>lambdaQuery()
                 .eq(ActivitySlot::getActivityId, id));
@@ -523,6 +538,7 @@ public class ActivityService {
         ActivityAdminDetailVO vo = new ActivityAdminDetailVO();
         BeanUtils.copyProperties(activity, vo);
         vo.setSlots(loadSlotVOs(activity.getId()));
+        vo.setServiceGuarantees(ServiceGuarantee.fromCsv(activity.getServiceGuarantees()));
         return vo;
     }
 
@@ -536,6 +552,7 @@ public class ActivityService {
         }
         ActivityVolunteerDetailVO vo = new ActivityVolunteerDetailVO();
         BeanUtils.copyProperties(activity, vo);
+        vo.setServiceGuarantees(ServiceGuarantee.fromCsv(activity.getServiceGuarantees()));
         List<ActivitySlotVO> slots = loadSlotVOs(id);
         vo.setSlots(slots);
         // 招募名额：任一时间段不限(need_count=0/空)则整场视为不限、返回 0（前端显示「不限」），与列表 has_quota 口径一致；
@@ -549,8 +566,8 @@ public class ActivityService {
     }
 
     /**
-     * 报名详情预览：活跃报名（status 0/1）去重志愿者、按报名时间正序，仅露<b>姓氏</b>+报名时间
-     * （需求「报名列表：显示报名时间和报名人的第1个姓」，隐私收敛不露全名/手机号）。
+     * 报名详情预览：活跃报名（status 0/1）去重志愿者、按报名时间正序，露<b>完整姓名</b>+报名时间
+     * （2026-06-27 用户要求由「仅姓氏」改为完整姓名；仍只取姓名列、不解密手机号）。
      */
     private List<ActivityRegistrantVO> loadRegistrants(Long activityId) {
         List<ActivityEnrollment> rows = activityEnrollmentMapper.selectList(Wrappers.<ActivityEnrollment>lambdaQuery()
@@ -570,7 +587,7 @@ public class ActivityService {
         for (ActivityEnrollment e : firstByVolunteer.values()) {
             ActivityRegistrantVO r = new ActivityRegistrantVO();
             String name = nameById.get(e.getVolunteerId());
-            r.setName(name != null && !name.isEmpty() ? name.substring(0, 1) : "志愿者");
+            r.setName(name != null && !name.isEmpty() ? name : "志愿者");
             r.setEnrollTime(e.getEnrollTime());
             list.add(r);
         }
@@ -613,7 +630,11 @@ public class ActivityService {
 
     private void applyDefaults(Activity activity) {
         if (activity.getEnrollDeadline() == null) {
-            activity.setEnrollDeadline(activity.getStartTime().minusHours(24));
+            // 留空＝报名持续到活动结束（发布者可显式填更早的截止）；与取消截止同口径
+            activity.setEnrollDeadline(activity.getEndTime());
+        }
+        if (activity.getCancelDeadline() == null) {
+            activity.setCancelDeadline(activity.getEndTime());
         }
         if (activity.getLeaderMultiplier() == null) {
             activity.setLeaderMultiplier(DEFAULT_LEADER_MULTIPLIER);
@@ -661,11 +682,11 @@ public class ActivityService {
         if ((dto.getLat() == null) != (dto.getLng() == null)) {
             throw new BusinessException("签到坐标经纬度必须同时填写");
         }
-        if (dto.getEnrollDeadline() != null && dto.getEnrollDeadline().isAfter(start)) {
-            throw new BusinessException("报名截止时间不能晚于活动开始时间");
+        if (dto.getEnrollDeadline() != null && dto.getEnrollDeadline().isAfter(end)) {
+            throw new BusinessException("报名截止时间不能晚于活动结束时间");
         }
-        if (dto.getCancelDeadline() != null && dto.getCancelDeadline().isAfter(start)) {
-            throw new BusinessException("取消报名截止时间不能晚于活动开始时间");
+        if (dto.getCancelDeadline() != null && dto.getCancelDeadline().isAfter(end)) {
+            throw new BusinessException("取消报名截止时间不能晚于活动结束时间");
         }
         if (dto.getRequireMinAge() != null && dto.getRequireMaxAge() != null
                 && dto.getRequireMinAge() > dto.getRequireMaxAge()) {

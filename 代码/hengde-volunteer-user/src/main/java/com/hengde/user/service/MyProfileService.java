@@ -85,6 +85,7 @@ public class MyProfileService {
             throw new BusinessException("登录态异常，请重新登录");
         }
         MyProfileVO vo = new MyProfileVO();
+        vo.setNo(v.getId() == null ? null : String.valueOf(v.getId()));
         vo.setRegistered(v.getRegisterTime() != null);
         vo.setRealName(v.getRealName());
         vo.setNickName(v.getNickName());

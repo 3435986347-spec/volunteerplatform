@@ -98,10 +98,10 @@ Page({
     const volunteerId = event.currentTarget.dataset.id;
     if (!volunteerId) return;
     try {
-      await dataService.checkOutManagedActivity(this.data.activity.id, {
+      const count = await dataService.checkOutManagedActivity(this.data.activity.id, {
         volunteerIds: [Number(volunteerId)]
       });
-      wx.showToast({ title: "已签退", icon: "none" });
+      wx.showToast({ title: count > 0 ? "已签退" : "该志愿者未签到或已签退", icon: "none" });
       this.loadDetail();
     } catch (error) {
       wx.showToast({ title: "签退失败", icon: "none" });

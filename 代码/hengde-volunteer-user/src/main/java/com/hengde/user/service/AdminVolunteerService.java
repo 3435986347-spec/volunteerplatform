@@ -280,6 +280,9 @@ public class AdminVolunteerService {
         if (dto.getSquad() != null) {
             wrapper.eq(Volunteer::getSquadId, dto.getSquad());
         }
+        if (dto.getManagerFlag() != null) {
+            wrapper.eq(Volunteer::getManagerFlag, dto.getManagerFlag());
+        }
         if (StringUtils.hasText(dto.getSchool())) {
             wrapper.like(Volunteer::getSchool, dto.getSchool().trim());
         }

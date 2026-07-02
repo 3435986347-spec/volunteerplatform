@@ -104,10 +104,23 @@ class VolunteerActivityQueryTest {
 
         assertEquals(25, vo.getNeedCount().intValue(), "招募名额=各时间段 need_count 之和");
         assertEquals(2L, vo.getEnrolledCount().longValue(), "已报名=活跃报名去重志愿者数");
-        // 报名详情：去掉预置假人后回真实报名者，仅露姓氏（需求「报名人的第1个姓」）
+        // 报名详情：去掉预置假人后回真实报名者，显示完整姓名（2026-06-27 用户改：原仅姓氏）
         assertEquals(2, vo.getRegistrants().size(), "报名详情应含两名报名人");
-        List<String> surnames = vo.getRegistrants().stream().map(ActivityRegistrantVO::getName).toList();
-        assertTrue(surnames.contains("周") && surnames.contains("李"), "报名详情仅露姓氏");
+        List<String> names = vo.getRegistrants().stream().map(ActivityRegistrantVO::getName).toList();
+        assertTrue(names.contains("周怡汐") && names.contains("李明"), "报名详情显示完整姓名");
+    }
+
+    @Test
+    void detailForVolunteer_parsesServiceGuarantees() {
+        // 服务保障：DB 存逗号分隔 key → 详情回 List<key>，过滤未知 key、按规范顺序输出
+        Long id = insertActivity("GUARANTEE_" + System.nanoTime(), STATUS_PUBLISHED);
+        Activity a = activityMapper.selectById(id);
+        a.setServiceGuarantees("other,water,zzz,insurance"); // 乱序 + 未知 key
+        activityMapper.updateById(a);
+
+        ActivityVolunteerDetailVO vo = activityService.detailForVolunteer(id);
+        assertEquals(List.of("water", "insurance", "other"), vo.getServiceGuarantees(),
+                "服务保障按规范顺序返回、未知 key(zzz) 被过滤");
     }
 
     @Test
@@ -169,6 +182,9 @@ class VolunteerActivityQueryTest {
         // 报名人数带出
         assertEquals(1L, records.get(0).getEnrolledCount().longValue());
         assertEquals(1L, records.get(1).getEnrolledCount().longValue());
+        // 招募名额总数带出（home 卡片「X/Y」的 Y，修复此前恒显示 X/0）
+        assertEquals(5, records.get(0).getNeedCount().intValue(), "有名额活动名额=各段 need_count 之和");
+        assertEquals(1, records.get(1).getNeedCount().intValue());
     }
 
     private Long insertActivity(String title, int status) {

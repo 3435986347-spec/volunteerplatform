@@ -89,7 +89,7 @@
           <view class="activity-title">{{item.title}}</view>
           <view class="activity-meta">活动时间：{{item.date}}</view>
           <view class="activity-meta">报名截止：{{item.enrollDeadline}}</view>
-          <view class="activity-meta">报名人数：{{item.joined}}/{{item.quota}} 人</view>
+          <view class="activity-meta">报名人数：{{item.enrollText}}</view>
         </view>
       </view>
     </view>

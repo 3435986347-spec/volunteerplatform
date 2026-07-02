@@ -1,23 +1,9 @@
 const dataService = require("../../utils/data-service");
+const { GUARANTEE_ORDER, guaranteeIcon } = require("../../utils/service-guarantees");
 
 const DEFAULT_COVERS = [
   "/assets/activity/detail-cover-1.png",
   "/assets/login/leizhou-hero-transparent.png"
-];
-
-const GUARANTEE_ORDER = [
-  { key: "clothing", label: "志愿者服装", asset: "01-clothing" },
-  { key: "water", label: "提供饮水", asset: "02-water" },
-  { key: "certificate", label: "志愿服务证书", asset: "03-certificate" },
-  { key: "training", label: "专项培训", asset: "04-training" },
-  { key: "insurance", label: "志愿者保险", asset: "05-insurance" },
-  { key: "traffic", label: "交通补贴", asset: "06-traffic" },
-  { key: "meal", label: "餐饮或食物", asset: "07-meal" },
-  { key: "bus", label: "集中乘车", asset: "08-bus" },
-  { key: "hotel", label: "提供住宿", asset: "09-hotel" },
-  { key: "tool", label: "志愿服务工具", asset: "10-tool" },
-  { key: "checkup", label: "免费体检", asset: "11-checkup" },
-  { key: "other", label: "其他", asset: "12-other" }
 ];
 
 function parseDate(value) {
@@ -54,41 +40,37 @@ function formatOpenCountdown(openAt) {
   return `${pad(days)}天${pad(hours)}时${pad(minutes)}分后开放报名`;
 }
 
-function getSignupOpenAt(activity, signupRows) {
+// 报名开放时间：仅读后端真实字段（不含 signupRows 的硬编码展示兜底）。无值=立即开放。
+function getEnrollOpenAt(activity) {
   const signupTimes = activity.signupTimes || {};
   return activity.signupStartTime
     || activity.enrollStartTime
     || activity.registrationStartTime
     || activity.applyStartTime
     || signupTimes.volunteer
-    || signupTimes.leader
-    || signupTimes.temporaryLeader
-    || signupTimes.manager
-    || signupRows && signupRows[2] && signupRows[2].value
     || "";
 }
 
-function buildSignupButton(activity, deadline, signupRows) {
+// 能否报名按「真实开放/截止时间」判定，不再用 displayStatus（活动中>报名中 的优先级会把未截止的进行中活动也禁掉）。
+function buildSignupButton(activity, deadline) {
   const status = activity.status || "";
-  if (status === "未开放") {
-    return {
-      title: "未开放报名",
-      subtitle: formatOpenCountdown(getSignupOpenAt(activity, signupRows)),
-      disabled: true
-    };
+  // 活动本身已结束 → 不可报名
+  if (status === "已结束") {
+    return { title: "活动已结束", subtitle: "", disabled: true };
   }
-  if (["报名截止", "活动中", "已结束"].includes(status)) {
-    return {
-      title: "报名截止",
-      subtitle: "",
-      disabled: true
-    };
+  const now = Date.now();
+  // 未到报名开放时间（无值=立即开放）
+  const openAt = parseDate(getEnrollOpenAt(activity));
+  if (openAt && now < openAt.getTime()) {
+    return { title: "未开放报名", subtitle: formatOpenCountdown(getEnrollOpenAt(activity)), disabled: true };
   }
-  return {
-    title: "我要报名",
-    subtitle: formatCountdown(deadline),
-    disabled: false
-  };
+  // 实际截止：留空按活动结束时间兜底（与后端 endTime 口径一致）；「活动中」但未到截止仍可报名
+  const effectiveDeadline = activity.enrollDeadline || activity.endTime || deadline || "";
+  const dl = parseDate(effectiveDeadline);
+  if (dl && now > dl.getTime()) {
+    return { title: "报名截止", subtitle: "", disabled: true };
+  }
+  return { title: "我要报名", subtitle: formatCountdown(effectiveDeadline), disabled: false };
 }
 
 function formatPeriod(slot, index) {
@@ -130,7 +112,7 @@ function normalizeGuarantees(source) {
     return {
       ...item,
       enabled,
-      iconUrl: `/assets/activity/guarantee/${item.asset}-${enabled ? "red" : "gray"}.png`
+      iconUrl: guaranteeIcon(item.asset, enabled)
     };
   });
 }
@@ -167,11 +149,12 @@ function buildViewModel(activity, distanceText) {
     leader: "2026/06/01 12:00",
     volunteer: "2026/06/01 18:00"
   });
-  const signupButton = buildSignupButton(activity, deadline, signupRows);
-  const timeSlotRows = activity.timeSlots && activity.timeSlots.length
-    ? activity.timeSlots
-    : activity.slots && activity.slots.length
-      ? activity.slots
+  const signupButton = buildSignupButton(activity, deadline);
+  // 优先用已归一化的 slots（其 time 带日期，修「07:00-07:00」丢日期）；回退原始 timeSlots
+  const timeSlotRows = activity.slots && activity.slots.length
+    ? activity.slots
+    : activity.timeSlots && activity.timeSlots.length
+      ? activity.timeSlots
       : [{ name: "时间段一", text: `${activity.date || ""} ${activity.time || ""}` }];
   const recruitRows = [
     { label: "报名截止时间", value: deadline || "待定" },
@@ -253,7 +236,7 @@ Page({
     this.countdownTimer = setInterval(() => {
       const activity = this.data.activity;
       const deadline = activity.enrollDeadline || activity.recruitRows && activity.recruitRows[0] && activity.recruitRows[0].value;
-      const signupButton = buildSignupButton(activity, deadline, activity.signupRows);
+      const signupButton = buildSignupButton(activity, deadline);
       this.setData({
         "activity.buttonTitle": signupButton.title,
         "activity.buttonSubtitle": signupButton.subtitle,

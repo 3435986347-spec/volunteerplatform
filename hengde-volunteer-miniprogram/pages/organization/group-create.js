@@ -6,11 +6,30 @@ Page({
     logo: "",
     name: "",
     intro: "",
-    points: mock.profile.points || 0,
+    points: 0,
     sponsor: {
-      name: mock.profile.name || "邝大程",
-      phone: mock.profile.phone || "138****7788",
-      school: "雷州市第二中学"
+      name: "",
+      phone: "",
+      school: ""
+    }
+  },
+
+  onLoad() {
+    this.loadSponsor();
+  },
+
+  // 发起人资料自动带出本人真实姓名/电话/学校 + 积分（取不到保留空，不阻塞）
+  async loadSponsor() {
+    try {
+      const profile = await dataService.getUserProfile();
+      const info = (profile && profile.info) || {};
+      const p = (profile && profile.profile) || {};
+      this.setData({
+        sponsor: { name: info.name || "", phone: info.phone || "", school: info.school || "" },
+        points: Number(p.points || 0)
+      });
+    } catch (error) {
+      // 忽略：保留默认
     }
   },
 

@@ -76,7 +76,7 @@
 
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | /v/user/profile | 获取本人完整资料（姓名/昵称/手机号/身份证完整号[本人查看自己]/政治面貌/学校/年级/地址/紧急联系方式 + 时长/积分/参与活动数/所在小组/归属分队）；游客也可取（实名字段为空、`registered:false`） | 需登录 |
+| GET | /v/user/profile | 获取本人完整资料（`no` 编号[=志愿者 id 字符串，「我的」页顶部展示]/姓名/昵称/手机号/身份证完整号[本人查看自己]/政治面貌/学校/年级/地址/紧急联系方式 + 时长/积分/参与活动数/所在小组/归属分队）；游客也可取（实名字段为空、`registered:false`） | 需登录 |
 | PATCH | /v/user/profile | 更新可修改项（头像/i志愿者码/昵称[全局唯一去重]/学校/年级/政治面貌/通讯地址/紧急联系方式，**部分更新**仅传非空字段）；**手机号走 `PUT /v/user/phone`**；姓名/身份证「不可修改」（实名字段仅后台超管 `PUT /a/user/volunteers/{id}` 可改） | 需登录 |
 | PUT | /v/user/phone | 修改/换绑手机号（`{phone, smsCode}`，新号需 scene=change-phone 短信验证；查重不可撞其它账号；账号=手机号，同步改 phone 密文+phoneHash） | 需登录 |
 | GET | /v/user/volunteer-card | 获取电子志愿者证（类身份证样式，含内嵌小程序码） | 需登录 |
@@ -85,7 +85,7 @@
 
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | /a/user/volunteers | 志愿者列表（`?keyword=&gender=&squad=&political=&school=&grade=&page=&size=`；keyword 纯数字按手机号 HMAC 精确，否则姓名/学校模糊；仅返回已实名志愿者） | `user:list` |
+| GET | /a/user/volunteers | 志愿者列表（`?keyword=&gender=&squad=&political=&school=&grade=&managerFlag=&page=&size=`；keyword 纯数字按手机号 HMAC 精确，否则姓名/学校模糊；`managerFlag=1` 只出管理团队志愿者[负责人选人用]；仅返回已实名志愿者） | `user:list` |
 | GET | /a/user/volunteers/{id} | 志愿者详情（含明文手机号、身份证尾号；仅已实名） | `user:list` |
 | PUT | /a/user/volunteers/{id} | 修改志愿者全量信息（实名敏感字段，全量 PUT 可清空字段） | **仅超管**（`user:edit`，不入权限点表、不可分配，service 手写 `is_super_admin` 校验） |
 | PATCH | /a/user/volunteers/{id}/status | 暂停/恢复志愿者账号（body: `{"status": 0/1}`，仅 0正常/1禁用） | `user:status` |
@@ -164,8 +164,8 @@
 | POST | /a/activity/enrollments/{id}/approve | 审核通过 | 需登录（activity:enroll-audit） |
 | POST | /a/activity/enrollments/{id}/reject | 审核拒绝（body 填拒绝原因） | 需登录（activity:enroll-audit） |
 | DELETE | /a/activity/enrollments/{id} | 删除报名记录 | 需登录（activity:enroll-delete） |
-| POST | /a/activity/activities/{id}/leaders | 指派活动负责人（志愿者或管理团队；不占人数；待审核/驳回活动不可指派） | 需登录（activity:leader-assign，组织部） |
-| GET | /a/activity/activities/{id}/leaders | 负责人列表 | 需登录 |
+| POST | /a/activity/activities/{id}/leaders | 指派活动负责人（leaderType 1=志愿者负责人[本活动报名志愿者**或**管理团队志愿者，refId=volunteer.id]/2=后台账号[refId=admin_user.id]；不占人数；待审核/驳回活动不可指派） | 需登录（activity:leader-assign，组织部） |
+| GET | /a/activity/activities/{id}/leaders | 负责人列表 | 需登录（activity:manage **或** activity:leader-assign，SaMode.OR） |
 | DELETE | /a/activity/activities/{id}/leaders/{leaderId} | 取消指派 | 需登录（activity:leader-assign） |
 | POST | /a/activity/activities/{id}/start | 活动开始（管理团队负责人） | 需登录（activity:manage） |
 | POST | /a/activity/activities/{id}/finish | 活动结束 | 需登录（activity:manage） |
@@ -252,6 +252,15 @@
 |---|---|---|---|
 | GET | /v/organization/my-permissions | 我的权限码集合（如 `["activity:publish","activity:manage"]`） | 需登录 |
 
+### 报名管理团队 — 志愿者端 `/v/organization/manager-applications`
+
+> **V23**：志愿者在小程序提交「报名管理团队」问卷/简历（理由/经历/期望部门），后台审核通过即置 `volunteer.manager_flag=1`（仅标记、不自动授权限点，功能权限仍由超管在授权页单独给）。仅**正常且已实名**账号可申请；已有待审申请或已是管理团队则拒。按 volunteerId 上分布式锁防双击重复提交。
+
+| Method | URL | 说明 | 鉴权 |
+|---|---|---|---|
+| POST | /v/organization/manager-applications | 提交报名管理团队申请（body `reason` 必填 + `experience`/`expectDepartment` 可空；游客/禁用/注销拒，已有待审或已是管理团队拒） | 需登录 |
+| GET | /v/organization/manager-applications/mine | 本人最近一条申请（含状态 0待审/1通过/2驳回 + 驳回原因，供小程序回显） | 需登录 |
+
 ### 子账号与权限 — 管理端 `/a/organization/sub-accounts`
 
 | Method | URL | 说明 | 鉴权 |
@@ -301,6 +310,16 @@
 | PUT | /a/organization/volunteers/{id}/manager-flag | 设置/取消志愿者「管理团队」标记（body `flag` 0取消/1设为；设为 1 仅限已实名、取消 0 不限；积分 ×1.2 倍率通道；记录操作人/时间） | 需登录（org:manager-flag） |
 | GET | /a/organization/volunteers/{id}/permissions | 志愿者已分配的权限点（与授权写入口同超管边界） | 需登录（仅超管） |
 | PUT | /a/organization/volunteers/{id}/permissions | 全量替换志愿者权限（body `permissionIds`；**仅超管**；**目标须已标记管理团队 `manager_flag=1`**[防误授普通/游客态志愿者]；只接受活动域子集白名单，非白名单点拒；传空 `permissionIds`=清空，不要求 manager_flag[便于降级后清理 stale 授权]） | 需登录（仅超管） |
+
+### 报名管理团队审核 — 管理端 `/a/organization/manager-applications`
+
+> **V23**：审核志愿者在小程序提交的「报名管理团队」申请。**通过即置 `volunteer.manager_flag=1`**（顺序钉死：校验仍 active+registered → setManagerFlag → CAS 待审→通过，affected≠1 整事务回滚含标记；**仅标记、不自动授权限点**，功能权限仍由超管在「子账号/权限」授权页单独给）；驳回回退并记原因。复用既有 `org:manager-flag` 权限点（与手动开关同域，不新增）。
+
+| Method | URL | 说明 | 鉴权 |
+|---|---|---|---|
+| GET | /a/organization/manager-applications | 报名管理团队申请列表（`status` 默认 0待审，可传 1已通过/2已驳回；带申请人姓名） | 需登录（org:manager-flag） |
+| POST | /a/organization/manager-applications/{id}/approve | 通过申请（置 `manager_flag=1` 标记为管理团队） | 需登录（org:manager-flag） |
+| POST | /a/organization/manager-applications/{id}/reject | 驳回申请（body 可填 `reason` ≤512，回退给申请人） | 需登录（org:manager-flag） |
 
 ---
 
@@ -353,6 +372,6 @@
 | GET /v/social/** | 社区（帖子/私信/互动） | V1 暂缓 |
 | POST /v/activity/activities/{id}/photos | 活动相册（上传照片+评论，默认发交流平台） | 依赖社区(social)，推迟到 social 落地一起做 |
 | GET /v/donate/** | 积分兑换/众筹/捐书/微心愿/助学结对 | V1 暂缓 |
-| /a/organization/manager-applications/** | 报名管理团队（问卷式申请+批量下载，回写 volunteer.manager_flag；标记本身已可经上方 manager-flag 接口手动开关） | V1.1 预留，本期不建 |
+| /a/organization/manager-applications/** | 报名管理团队**批量下载/导出** + **动态问卷构建器**（单选/多选/文件上传等自定义题型） | V1.1 预留；**固定表单的申请+审核已实现（V23，见上方组织域）**，仅导出与动态问卷未建 |
 | GET /v/organization/exams/** | 活动临时负责人考试（达分获资格/主观题人工审核/历史考试/评价过低组织部审核取消） | V1 暂缓 |
 | GET /e/** | 爱心企业端全部接口 | V1 暂缓 |

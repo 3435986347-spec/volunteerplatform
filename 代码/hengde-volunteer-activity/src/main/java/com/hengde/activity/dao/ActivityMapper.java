@@ -37,7 +37,9 @@ public interface ActivityMapper extends BaseMapper<Activity> {
                          AND (s.need_count = 0
                               OR s.need_count > (SELECT COUNT(*) FROM activity_enrollment e
                                                  WHERE e.slot_id = s.id AND e.status IN (0, 1) AND e.is_deleted = 0))
-                   ) THEN 1 ELSE 0 END AS has_quota
+                   ) THEN 1 ELSE 0 END AS has_quota,
+                   (SELECT CASE WHEN MIN(s2.need_count) = 0 THEN 0 ELSE COALESCE(SUM(s2.need_count), 0) END
+                      FROM activity_slot s2 WHERE s2.activity_id = a.id AND s2.is_deleted = 0) AS need_count
             FROM activity a
             WHERE a.status = 1 AND a.is_deleted = 0
               AND (#{keyword} IS NULL OR a.title LIKE CONCAT('%', #{keyword}, '%'))

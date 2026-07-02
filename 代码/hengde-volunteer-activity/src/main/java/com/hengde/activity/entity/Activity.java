@@ -45,10 +45,10 @@ public class Activity extends BaseEntity {
     /** 活动整体结束时间 */
     private LocalDateTime endTime;
 
-    /** 报名截止时间（默认活动开始前24h，公示后则为公示时） */
+    /** 报名截止时间（不填默认活动结束时间，即报名持续到活动结束） */
     private LocalDateTime enrollDeadline;
 
-    /** 取消报名截止（此后不可取消；null=随时可取消） */
+    /** 取消报名截止（此后不可取消；不填默认活动结束时间，取消接口对 null 亦按结束时间兜底） */
     private LocalDateTime cancelDeadline;
 
     /** 积分基数 */
@@ -166,6 +166,9 @@ public class Activity extends BaseEntity {
 
     /** 0普通活动/1历史补录活动（V16；历史活动补录只记时长不发积分） */
     private Integer isHistorical;
+
+    /** 服务保障项（逗号分隔 key，对齐 ServiceGuarantee 常量；发布时不定项选择，详情页据此图标红/灰；V22） */
+    private String serviceGuarantees;
 
     // ---------- V19 活动发布审核（小程序提交的活动需后台审核） ----------
 

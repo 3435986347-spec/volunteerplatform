@@ -48,10 +48,10 @@ public class ActivityCreateDTO {
     @NotNull(message = "活动结束时间不能为空")
     private LocalDateTime endTime;
 
-    /** 报名截止时间（不填默认活动开始前24h） */
+    /** 报名截止时间（不填默认活动结束时间，即报名持续到活动结束；不晚于结束时间） */
     private LocalDateTime enrollDeadline;
 
-    /** 取消报名截止（null=随时可取消） */
+    /** 取消报名截止（不填默认活动结束时间；不晚于结束时间） */
     private LocalDateTime cancelDeadline;
 
     /** 积分基数 */
@@ -163,6 +163,9 @@ public class ActivityCreateDTO {
     @Min(value = 1, message = "签到半径必须大于0")
     @Max(value = 50000, message = "签到半径过大")
     private Integer checkInRadiusM;
+
+    /** 服务保障项 key 列表（不定项选择，12 选 N；key 对齐 ServiceGuarantee，未知 key 后端过滤；update 时 null=保留原值、[]=清空） */
+    private List<String> serviceGuarantees;
 
     /** 时间段/子项目（至少一个） */
     @NotEmpty(message = "至少需要一个时间段")

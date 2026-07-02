@@ -63,9 +63,10 @@ function ActivitiesPage(props) {
     }},
     { title: '时间', key: 'date', width: 180, render: function (r) {
       return React.createElement('div', null, React.createElement('div', null, fmtRange(r.startTime, r.endTime)),
-        React.createElement('div', { className: 'cell-sub' }, r.enrollDeadline ? '报名截止 ' + datePart(r.enrollDeadline) : '报名截止不限'));
+        React.createElement('div', { className: 'cell-sub' }, r.enrollDeadline ? '报名截止 ' + datePart(r.enrollDeadline) : '报名截止 至活动结束'));
     }},
-    { title: '审核', key: 'audit', width: 90, align: 'center', render: function (r) {
+    { title: '报名审核', key: 'audit', width: 96, align: 'center', render: function (r) {
+      // 这是「报名是否需审核」(needAudit)，与「活动发布审核」(status 4→1) 是两回事——后者通过后活动状态即「已发布」
       return r.needAudit === 1 ? React.createElement(Tag, { color: 'blue' }, '需审核') : React.createElement('span', { className: 'muted' }, '免审');
     }},
     { title: '状态', key: 'status', width: 100, align: 'center', render: function (r) { return actStatusTag(r.status); } },
@@ -106,18 +107,78 @@ function ActivitiesPage(props) {
       onEdit: function (aid) { setDetailId(null); setEditDrawer({ mode: 'edit', id: aid }); } }) : null);
 }
 
-/* ---------- 发布/编辑活动抽屉（slice 1：基础信息 + 封面 + 时间 + 地点 + 门槛/联系人） ---------- */
+/* ---------- 服务保障 12 项（key/顺序对齐后端 ServiceGuarantee 与小程序 utils/service-guarantees.js） ---------- */
+var GUARANTEE_OPTIONS = [
+  { key: 'clothing', label: '志愿者服装' }, { key: 'water', label: '提供饮水' },
+  { key: 'certificate', label: '志愿服务证书' }, { key: 'training', label: '专项培训' },
+  { key: 'insurance', label: '志愿者保险' }, { key: 'traffic', label: '交通补贴' },
+  { key: 'meal', label: '餐饮或食物' }, { key: 'bus', label: '集中乘车' },
+  { key: 'hotel', label: '提供住宿' }, { key: 'tool', label: '志愿服务工具' },
+  { key: 'checkup', label: '免费体检' }, { key: 'other', label: '其他' },
+];
+var GUARANTEE_LABEL = {}; GUARANTEE_OPTIONS.forEach(function (g) { GUARANTEE_LABEL[g.key] = g.label; });
+// 多选 chip 选择器（复用 .radio-btn 切换样式，与周期发布的「重复星期」同款）
+function GuaranteePicker(props) {
+  var value = props.value || [];
+  function toggle(key) {
+    var has = value.indexOf(key) >= 0;
+    props.onChange(has ? value.filter(function (k) { return k !== key; }) : value.concat([key]));
+  }
+  return React.createElement('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
+    GUARANTEE_OPTIONS.map(function (g) {
+      return React.createElement('div', { key: g.key, className: 'radio-btn' + (value.indexOf(g.key) >= 0 ? ' on' : ''),
+        style: { borderRadius: 6, marginLeft: 0 }, onClick: function () { toggle(g.key); } }, g.label);
+    }));
+}
+// keys → 中文标签串（详情页展示）
+function guaranteeLabelsText(keys) {
+  if (!keys || !keys.length) return '';
+  return keys.map(function (k) { return GUARANTEE_LABEL[k] || k; }).join('、');
+}
+
+/* ---------- 活动场次编辑器（可增删多个时间段）----------
+   每个场次 {projectName,date,start,end,needCount}；活动整体起止由各场次最早开始~最晚结束派生（见 save()）。
+   后端按 slots[] 落库、报名按场次(slotId)，validateDto 要求每段落在活动整体区间内。 */
+function SlotsEditor(props) {
+  var slots = props.slots || [];
+  function upd(i, k, v) {
+    props.onChange(slots.map(function (s, idx) { if (idx !== i) return s; var n = Object.assign({}, s); n[k] = v; return n; }));
+  }
+  function add() { props.onChange(slots.concat([{ projectName: '', date: (slots[slots.length - 1] && slots[slots.length - 1].date) || '', start: '08:30', end: '11:30', needCount: '' }])); }
+  function remove(i) { props.onChange(slots.filter(function (s, idx) { return idx !== i; })); }
+  return React.createElement('div', null,
+    slots.map(function (s, i) {
+      return React.createElement('div', { key: i, style: { border: '1px solid var(--split)', borderRadius: 8, padding: '12px 14px', marginBottom: 10, background: 'var(--fill-1)' } },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', marginBottom: 8 } },
+          React.createElement('span', { className: 'strong', style: { flex: 1 } }, '场次 ' + (i + 1)),
+          slots.length > 1 ? React.createElement('button', { className: 'btn-link danger', onClick: function () { remove(i); } }, '删除') : null),
+        React.createElement(Field, { label: '项目名称', hint: '不填默认用活动名称' },
+          React.createElement(Input, { value: s.projectName, onChange: function (v) { upd(i, 'projectName', v); }, placeholder: '如：搬运组 / 引导组' })),
+        React.createElement('div', { className: 'field-row' },
+          React.createElement(Field, { label: '日期', required: true }, React.createElement(Input, { type: 'date', value: s.date, onChange: function (v) { upd(i, 'date', v); } })),
+          React.createElement(Field, { label: '开始', required: true }, React.createElement(Input, { type: 'time', value: s.start, onChange: function (v) { upd(i, 'start', v); } })),
+          React.createElement(Field, { label: '结束', required: true }, React.createElement(Input, { type: 'time', value: s.end, onChange: function (v) { upd(i, 'end', v); } })),
+          React.createElement(Field, { label: '需求人数', hint: '0 不限' }, React.createElement(Input, { type: 'number', value: s.needCount, onChange: function (v) { upd(i, 'needCount', v); } }))));
+    }),
+    React.createElement('button', { className: 'btn-link', onClick: add }, '+ 添加场次'));
+}
+
+/* ---------- 发布/编辑活动抽屉（基础信息 + 封面 + 多场次 + 报名开放 + 地点 + 门槛/联系人 + 服务保障） ---------- */
 function blankActivityForm() {
-  return { title: '', coverImageUrl: '', place: '', date: '', start: '08:30', end: '11:30',
-    quota: 40, pointsBase: '', radius: 200, lng: '', lat: '', contact: '', contactPhone: '', desc: '',
-    volOpen: '', mgrOpen: '', enrollDeadline: '', cancelDeadline: '', joinCount: 0, joinMinutes: 0 };
+  return { title: '', coverImageUrl: '', place: '',
+    slots: [{ projectName: '', date: '', start: '08:30', end: '11:30', needCount: '' }],
+    pointsBase: '', radius: 200, lng: '', lat: '', contact: '', contactPhone: '', desc: '',
+    volOpen: '', mgrOpen: '', enrollDeadline: '', cancelDeadline: '', joinCount: 0, joinMinutes: 0,
+    serviceGuarantees: [] };
 }
 function activityFormFromDetail(d) {
-  var slot = (d.slots && d.slots[0]) || {};
+  var slots = (d.slots && d.slots.length ? d.slots : []).map(function (sl) {
+    return { projectName: sl.projectName || '', date: datePart(sl.startTime), start: timePart(sl.startTime), end: timePart(sl.endTime), needCount: sl.needCount != null ? sl.needCount : '' };
+  });
+  if (!slots.length) slots = [{ projectName: '', date: datePart(d.startTime), start: timePart(d.startTime), end: timePart(d.endTime), needCount: '' }];
   return {
     title: d.title || '', coverImageUrl: d.coverImageUrl || '', place: d.location || '',
-    date: datePart(d.startTime), start: timePart(d.startTime), end: timePart(d.endTime),
-    quota: slot.needCount != null ? slot.needCount : 0,
+    slots: slots,
     pointsBase: d.pointsBase != null ? d.pointsBase : '',
     radius: d.checkInRadiusM != null ? d.checkInRadiusM : 200,
     lng: d.lng != null ? d.lng : '', lat: d.lat != null ? d.lat : '',
@@ -126,6 +187,7 @@ function activityFormFromDetail(d) {
     enrollDeadline: toLocalInput(d.enrollDeadline), cancelDeadline: toLocalInput(d.cancelDeadline),
     joinCount: d.requireMinJoinCount != null ? d.requireMinJoinCount : 0,
     joinMinutes: d.requireMinJoinMinutes != null ? d.requireMinJoinMinutes : 0,
+    serviceGuarantees: d.serviceGuarantees || [],
   };
 }
 function ActivityFormDrawer(props) {
@@ -134,8 +196,6 @@ function ActivityFormDrawer(props) {
   var [f, setF] = useState(blankActivityForm());
   var [loading, setLoading] = useState(!!s.id);
   var [saving, setSaving] = useState(false);
-  var [slotCount, setSlotCount] = useState(1);
-  var multiSlot = isEdit && slotCount > 1; // 多时间段活动：单 slot 表单保存会全量替换丢 slot，slice 1 暂禁编辑
   function set(k, v) { setF(function (p) { var n = Object.assign({}, p); n[k] = v; return n; }); }
 
   useEffect(function () {
@@ -143,28 +203,39 @@ function ActivityFormDrawer(props) {
     setLoading(true);
     API.get('/a/activity/activities/' + s.id).then(function (d) {
       setF(activityFormFromDetail(d));
-      setSlotCount((d.slots && d.slots.length) || 1);
     }).catch(function () {}).then(function () { setLoading(false); });
   }, []);
 
   function save() {
-    if (multiSlot) { window.message.warning('多时间段活动请在后续多时间段编辑功能中处理'); return; }
     if (!f.title) { window.message.error('请填写活动名称'); return; }
-    if (!f.date || !f.start || !f.end) { window.message.error('请填写活动日期与起止时间'); return; }
-    var startTime = joinDT(f.date, f.start), endTime = joinDT(f.date, f.end);
+    var rows = f.slots || [];
+    if (!rows.length) { window.message.error('请至少添加一个活动场次'); return; }
+    var built = [];
+    for (var i = 0; i < rows.length; i++) {
+      var sl = rows[i];
+      if (!sl.date || !sl.start || !sl.end) { window.message.error('场次 ' + (i + 1) + ' 请填写日期与起止时间'); return; }
+      var st = joinDT(sl.date, sl.start), et = joinDT(sl.date, sl.end);
+      if (st >= et) { window.message.error('场次 ' + (i + 1) + ' 开始须早于结束'); return; }
+      built.push({ projectName: sl.projectName || f.title, startTime: st, endTime: et, needCount: Number(sl.needCount) || 0 });
+    }
+    // 活动整体起止 = 各场次最早开始 ~ 最晚结束（ISO「yyyy-MM-ddTHH:mm:ss」同格式可直接字典序比较），满足后端「每段须落在整体区间内」
+    var startTime = built[0].startTime, endTime = built[0].endTime;
+    built.forEach(function (b) { if (b.startTime < startTime) startTime = b.startTime; if (b.endTime > endTime) endTime = b.endTime; });
     var latV = (f.lat == null ? '' : String(f.lat).trim()), lngV = (f.lng == null ? '' : String(f.lng).trim());
     var hasCoord = latV !== '' && lngV !== '';
     var body = {
       title: f.title, coverImageUrl: f.coverImageUrl || null, location: f.place || null, content: f.desc || null,
       startTime: startTime, endTime: endTime,
-      enrollDeadline: fromLocal(f.enrollDeadline) || startTime, // 不显式传会被后端默认成 start-24h（近期活动一发布即截止）
+      enrollDeadline: fromLocal(f.enrollDeadline) || null, // 留空交后端默认=活动结束时间（报名持续到结束）
       pointsBase: numOrNull(f.pointsBase),
       contactName: f.contact || null, contactPhone: f.contactPhone || null,
       enrollOpenVolunteer: fromLocal(f.volOpen), enrollOpenManager: fromLocal(f.mgrOpen),
       requireMinJoinCount: numOrNull(f.joinCount), requireMinJoinMinutes: numOrNull(f.joinMinutes),
       checkInRadiusM: numOrNull(f.radius),
       lat: hasCoord ? latV : null, lng: hasCoord ? lngV : null,
-      slots: [{ projectName: f.title, startTime: startTime, endTime: endTime, needCount: Number(f.quota) || 0 }],
+      // 服务保障：所见即所存——编辑时透传当前勾选（含全不选=[] 清空，对齐后端 update []=清空/null=保留）
+      serviceGuarantees: f.serviceGuarantees || [],
+      slots: built,
     };
     // cancelDeadline 仅编辑时透传原值（回填自 detail），避免无意清空；新建不传，由后端按策略决定
     if (isEdit) body.cancelDeadline = fromLocal(f.cancelDeadline) || null;
@@ -179,23 +250,20 @@ function ActivityFormDrawer(props) {
 
   var catalog = React.createElement(React.Fragment, null,
     s.historical ? React.createElement(Alert, { type: 'warning', style: { marginBottom: 20 } }, '历史活动用于补登过往线下服务，发布后不会出现在志愿者端，仅作为补录考勤的载体。') : null,
-    multiSlot ? React.createElement(Alert, { type: 'warning', style: { marginBottom: 20 } }, '该活动含多个时间段（' + slotCount + ' 个）。当前单时间段表单保存会全量替换、丢失其余时间段，已禁用保存；请等多时间段编辑功能上线后再修改。') : null,
     React.createElement('div', { className: 'form-section' },
       React.createElement('div', { className: 'form-section-title' }, '基础信息'),
       React.createElement(Field, { label: '活动名称', required: true },
         React.createElement(Input, { value: f.title, onChange: function (v) { set('title', v); }, placeholder: '如：城西社区敬老助残志愿服务' })),
       React.createElement(Field, { label: '活动封面' }, React.createElement(ImageField, { preset: 'cover', dir: 'activity', previewW: 240, value: f.coverImageUrl, onChange: function (v) { set('coverImageUrl', v); } })),
-      React.createElement('div', { className: 'field-row' },
-        React.createElement(Field, { label: '招募名额', hint: '0 为不限' }, React.createElement(Input, { type: 'number', value: f.quota, onChange: function (v) { set('quota', v); } })),
-        React.createElement(Field, { label: '积分基数', hint: '不填用后端默认' }, React.createElement(Input, { type: 'number', value: f.pointsBase, onChange: function (v) { set('pointsBase', v); }, placeholder: '如 60' })))),
+      React.createElement(Field, { label: '积分基数', hint: '不填用后端默认' }, React.createElement(Input, { type: 'number', value: f.pointsBase, onChange: function (v) { set('pointsBase', v); }, placeholder: '如 60' }))),
     React.createElement('div', { className: 'form-section' },
-      React.createElement('div', { className: 'form-section-title' }, '时间与报名开放'),
+      React.createElement('div', { className: 'form-section-title' }, '活动场次',
+        React.createElement('span', { className: 'sub', style: { marginLeft: 8, fontWeight: 400, fontSize: 12, color: 'var(--text-3)' } }, '可多个；名额按场次设置，活动整体起止自动取最早~最晚')),
+      React.createElement(SlotsEditor, { slots: f.slots, onChange: function (v) { set('slots', v); } })),
+    React.createElement('div', { className: 'form-section' },
+      React.createElement('div', { className: 'form-section-title' }, '报名开放与截止'),
       React.createElement('div', { className: 'field-row' },
-        React.createElement(Field, { label: '活动日期', required: true }, React.createElement(Input, { type: 'date', value: f.date, onChange: function (v) { set('date', v); } })),
-        React.createElement(Field, { label: '开始时间', required: true }, React.createElement(Input, { type: 'time', value: f.start, onChange: function (v) { set('start', v); } })),
-        React.createElement(Field, { label: '结束时间', required: true }, React.createElement(Input, { type: 'time', value: f.end, onChange: function (v) { set('end', v); } }))),
-      React.createElement('div', { className: 'field-row' },
-        React.createElement(Field, { label: '报名截止时间', hint: '留空默认=活动开始时间（避免一发布即截止）' }, React.createElement(Input, { type: 'datetime-local', value: f.enrollDeadline, onChange: function (v) { set('enrollDeadline', v); } }))),
+        React.createElement(Field, { label: '报名截止时间', hint: '留空默认=活动结束时间（报名持续到活动结束）' }, React.createElement(Input, { type: 'datetime-local', value: f.enrollDeadline, onChange: function (v) { set('enrollDeadline', v); } }))),
       React.createElement('div', { className: 'field-row' },
         React.createElement(Field, { label: '普通志愿者报名开放', hint: '留空=即时可报' }, React.createElement(Input, { type: 'datetime-local', value: f.volOpen, onChange: function (v) { set('volOpen', v); } })),
         React.createElement(Field, { label: '管理团队报名开放', hint: '可早于普通志愿者' }, React.createElement(Input, { type: 'datetime-local', value: f.mgrOpen, onChange: function (v) { set('mgrOpen', v); } })))),
@@ -205,6 +273,10 @@ function ActivityFormDrawer(props) {
       React.createElement(LocationField, { lng: f.lng, lat: f.lat, radius: f.radius,
         onSet: function (lng, lat) { setF(function (p) { return Object.assign({}, p, { lng: lng, lat: lat }); }); },
         onRadius: function (v) { set('radius', v); } })),
+    React.createElement('div', { className: 'form-section' },
+      React.createElement('div', { className: 'form-section-title' }, '服务保障'),
+      React.createElement(Field, { label: '服务保障', hint: '志愿者可享的保障，多选；详情页据此红/灰显示，留空为不提供' },
+        React.createElement(GuaranteePicker, { value: f.serviceGuarantees, onChange: function (v) { set('serviceGuarantees', v); } }))),
     React.createElement('div', { className: 'form-section' },
       React.createElement('div', { className: 'form-section-title' }, '资格门槛与联系人'),
       React.createElement('div', { className: 'field-row' },
@@ -232,7 +304,8 @@ function RecurringDrawer(props) {
   var [weekdays, setWeekdays] = useState([6]); // ISO：6=周六
   var [from, setFrom] = useState(''); var [to, setTo] = useState('');
   var [datesText, setDatesText] = useState('');
-  var [f, setF] = useState(blankActivityForm());
+  // 周期发布=单场次模板按多日期平移；这里补回单场次所需的 start/end/quota 默认（blankActivityForm 已改为多场次 slots[]）
+  var [f, setF] = useState(Object.assign(blankActivityForm(), { start: '08:30', end: '11:30', quota: 40 }));
   var [saving, setSaving] = useState(false);
   function set(k, v) { setF(function (p) { var n = Object.assign({}, p); n[k] = v; return n; }); }
   var wdNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']; // index i → ISO i+1
@@ -265,11 +338,12 @@ function RecurringDrawer(props) {
     var hasCoord = latV !== '' && lngV !== '';
     var template = {
       title: f.title, coverImageUrl: f.coverImageUrl || null, location: f.place || null, content: f.desc || null,
-      startTime: startTime, endTime: endTime, enrollDeadline: startTime,
+      startTime: startTime, endTime: endTime, // enrollDeadline 留空交后端默认=活动结束时间
       pointsBase: numOrNull(f.pointsBase),
       contactName: f.contact || null, contactPhone: f.contactPhone || null,
       checkInRadiusM: numOrNull(f.radius),
       lat: hasCoord ? latV : null, lng: hasCoord ? lngV : null,
+      serviceGuarantees: f.serviceGuarantees || [], // 所有场次共用同一组服务保障
       slots: [{ projectName: f.title, startTime: startTime, endTime: endTime, needCount: Number(f.quota) || 0 }],
     };
     var body = { template: template };
@@ -322,6 +396,8 @@ function RecurringDrawer(props) {
       React.createElement(LocationField, { lng: f.lng, lat: f.lat, radius: f.radius,
         onSet: function (lng, lat) { setF(function (p) { return Object.assign({}, p, { lng: lng, lat: lat }); }); },
         onRadius: function (v) { set('radius', v); } }),
+      React.createElement(Field, { label: '服务保障', hint: '多选；所有场次共用' },
+        React.createElement(GuaranteePicker, { value: f.serviceGuarantees, onChange: function (v) { set('serviceGuarantees', v); } })),
       React.createElement(Field, { label: '活动说明' }, React.createElement(Textarea, { value: f.desc, onChange: function (v) { set('desc', v); }, rows: 3, placeholder: '活动内容、集合方式、注意事项…' }))));
 }
 
@@ -356,7 +432,7 @@ function ActivityDetailDrawer(props) {
       { label: '编号', value: d.serialNo || '—' },
       { label: '状态', value: actStatusTag(d.status) },
       { label: '活动时间', value: fmtRange(d.startTime, d.endTime) },
-      { label: '报名截止', value: d.enrollDeadline ? datePart(d.enrollDeadline) + ' ' + timePart(d.enrollDeadline) : '不限' },
+      { label: '报名截止', value: d.enrollDeadline ? datePart(d.enrollDeadline) + ' ' + timePart(d.enrollDeadline) : '至活动结束' },
       { label: '活动地点', value: d.location || '—' },
       { label: '坐标 / 半径', value: (d.lng != null && d.lat != null) ? React.createElement('span', { className: 'mono' }, d.lng + ', ' + d.lat + ' · ' + (d.checkInRadiusM || 500) + 'm') : '未启用 GPS 签到' },
       { label: '积分基数', value: d.pointsBase != null ? d.pointsBase : '—' },
@@ -364,6 +440,7 @@ function ActivityDetailDrawer(props) {
       { label: '参加门槛', value: '次数 ' + (d.requireMinJoinCount || 0) + ' · 时长 ' + (d.requireMinJoinMinutes || 0) + ' 分' },
       { label: '现场联系人', value: (d.contactName || '—') + (d.contactPhone ? '　' + d.contactPhone : '') },
       { label: '发布部门', value: d.publisherDeptName || '—' },
+      { label: '服务保障', value: guaranteeLabelsText(d.serviceGuarantees) || '—' },
     ] }),
     React.createElement('div', { className: 'form-section-title', style: { margin: '24px 0 8px' } }, '时间段'),
     (d.slots && d.slots.length) ? d.slots.map(function (sl) {
@@ -372,6 +449,10 @@ function ActivityDetailDrawer(props) {
         React.createElement('span', { className: 'cell-sub' }, fmtRange(sl.startTime, sl.endTime)),
         React.createElement(Tag, { color: 'default' }, '需求 ' + (sl.needCount === 0 || sl.needCount == null ? '不限' : sl.needCount)));
     }) : React.createElement('div', { className: 'muted', style: { fontSize: 13 } }, '无时间段'),
+    // 现场负责人板块：现场管理(activity:manage) 或 指派权(activity:leader-assign) 任一可见（后端 GET /leaders 同口径放行）；
+    // 仅查看权(activity:menu)账号不渲染，避免无权请求 403/「加载失败」。板块内「现场管理」按钮仍单独 gate activity:manage。
+    (hasPerm(props.identity, 'activity:manage') || hasPerm(props.identity, 'activity:leader-assign'))
+      ? React.createElement(LeaderBoard, { activityId: props.id }) : null,
     d.content ? React.createElement(React.Fragment, null,
       React.createElement('div', { className: 'form-section-title', style: { margin: '24px 0 8px' } }, '活动说明'),
       React.createElement('div', { style: { fontSize: 14, color: 'var(--text-2)', whiteSpace: 'pre-wrap' } }, d.content)) : null,
@@ -395,6 +476,138 @@ function ActivityDetailDrawer(props) {
       React.createElement(Btn, { onClick: props.onClose }, '关闭'),
       React.createElement(Auth, { code: 'activity:edit' }, React.createElement(Btn, { type: 'primary', icon: 'edit', onClick: function () { props.onEdit(props.id); } }, '修改活动'))) },
     body);
+}
+
+/* ---------- 现场负责人板块（活动详情内）：指派/取消 + 现场管理（开始/结束/统一签退） ----------
+   负责人后台预设：从本活动报名志愿者，或从「管理团队」志愿者中选（均落 leaderType=1，用小程序现场签到/统一签退，不占活动报名人数）。
+   指派/取消 gate activity:leader-assign；开始/结束/统一签退 gate activity:manage（后端同口径）。 */
+function LeaderBoard(props) {
+  var aid = props.activityId;
+  var [leaders, setLeaders] = useState([]);
+  var [loading, setLoading] = useState(true);
+  var [err, setErr] = useState(false);
+  var [picker, setPicker] = useState(false);
+
+  function load() {
+    setLoading(true); setErr(false);
+    API.get('/a/activity/activities/' + aid + '/leaders')
+      .then(function (r) { setLeaders(r || []); })
+      .catch(function () { setErr(true); }).then(function () { setLoading(false); });
+  }
+  useEffect(load, []);
+
+  function remove(r) {
+    var who = r.volunteerName || (r.leaderType === 2 ? ('后台账号 #' + r.adminUserId) : ('志愿者 #' + r.volunteerId));
+    window.confirmDialog({ title: '取消指派「' + who + '」？', danger: true, okText: '取消指派' }).then(function (ok) {
+      if (ok) API.del('/a/activity/activities/' + aid + '/leaders/' + r.id).then(function () { window.message.success('已取消指派'); load(); });
+    });
+  }
+  function runManage(path, label) {
+    window.confirmDialog({ title: label + '？', content: '该操作影响现场考勤流程，请确认活动状态无误。' }).then(function (ok) {
+      if (!ok) return;
+      API.post('/a/activity/activities/' + aid + path).then(function (n) {
+        window.message.success(label + '成功' + (typeof n === 'number' ? '（' + n + ' 人）' : ''));
+      });
+    });
+  }
+
+  var titleRow = React.createElement('div', { style: { display: 'flex', alignItems: 'center', margin: '24px 0 4px' } },
+    React.createElement('span', { className: 'form-section-title', style: { margin: 0, flex: 1 } }, '现场负责人'),
+    React.createElement(Auth, { code: 'activity:leader-assign' },
+      React.createElement('button', { className: 'btn-link', onClick: function () { setPicker(true); } }, '+ 指派负责人')));
+
+  var listEl;
+  if (loading) listEl = React.createElement('div', { className: 'muted', style: { fontSize: 13, padding: '8px 0' } }, '加载中…');
+  else if (err) listEl = React.createElement('div', { className: 'muted', style: { fontSize: 13, padding: '8px 0' } }, '加载失败');
+  else if (!leaders.length) listEl = React.createElement('div', { className: 'muted', style: { fontSize: 13, padding: '8px 0' } }, '尚未指派负责人');
+  else listEl = leaders.map(function (r) {
+    var name = r.volunteerName || (r.leaderType === 2 ? ('后台账号 #' + r.adminUserId) : ('志愿者 #' + r.volunteerId));
+    return React.createElement('div', { key: r.id, style: { display: 'flex', gap: 10, alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--split)' } },
+      React.createElement(Avatar, { name: name, size: 'sm' }),
+      React.createElement('div', { style: { flex: 1 } },
+        React.createElement('div', { style: { fontWeight: 500 } }, name),
+        React.createElement('div', { className: 'cell-sub' }, r.assignedTime ? '指派于 ' + String(r.assignedTime).slice(0, 16) : '')),
+      React.createElement(StatusTag, { map: 'leaderType', value: r.leaderType }),
+      React.createElement(Auth, { code: 'activity:leader-assign' },
+        React.createElement('button', { className: 'btn-link danger', style: { marginLeft: 8 }, onClick: function () { remove(r); } }, '取消')));
+  });
+
+  var manageBar = React.createElement(Auth, { code: 'activity:manage' },
+    React.createElement('div', { style: { display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' } },
+      React.createElement('span', { className: 'cell-sub', style: { marginRight: 4 } }, '现场管理：'),
+      React.createElement(Btn, { size: 'sm', onClick: function () { runManage('/start', '开始活动'); } }, '开始活动'),
+      React.createElement(Btn, { size: 'sm', onClick: function () { runManage('/finish', '结束活动'); } }, '结束活动'),
+      React.createElement(Btn, { size: 'sm', onClick: function () { runManage('/check-outs', '统一签退'); } }, '统一签退')));
+
+  return React.createElement(React.Fragment, null, titleRow, listEl, manageBar,
+    picker ? React.createElement(LeaderPicker, { activityId: aid,
+      onClose: function () { setPicker(false); },
+      onAssigned: function () { setPicker(false); load(); } }) : null);
+}
+
+/* 指派抽屉：两 tab — 从报名志愿者 / 从管理团队志愿者；点「指派」→ POST leaders(leaderType=1, refId=volunteer.id) */
+function LeaderPicker(props) {
+  var aid = props.activityId;
+  var [tab, setTab] = useState('enrolled');     // enrolled | manager
+  var [rows, setRows] = useState([]);
+  var [loading, setLoading] = useState(false);
+  var [kw, setKw] = useState('');
+  var [saving, setSaving] = useState(false);
+  var [loadErr, setLoadErr] = useState('');
+
+  function load() {
+    setLoading(true); setKw(''); setLoadErr('');
+    var p = tab === 'enrolled'
+      ? API.get('/a/activity/activities/' + aid + '/enrollments', { page: 1, size: 100 })
+      : API.get('/a/user/volunteers', { managerFlag: 1, page: 1, size: 100 });
+    p.then(function (res) {
+      var list = (res && res.records) || [];
+      if (tab === 'enrolled') {
+        var seen = {}; var out = [];
+        list.forEach(function (e) {
+          if (e.status === 2) return;                 // 跳过已拒绝
+          if (seen[e.volunteerId]) return; seen[e.volunteerId] = 1;   // 一人多场次只列一行
+          out.push({ refId: e.volunteerId, name: e.realName, sub: e.school || '' });
+        });
+        setRows(out);
+      } else {
+        setRows(list.map(function (v) { return { refId: v.id, name: v.name, sub: [v.school, v.group].filter(Boolean).join(' · ') }; }));
+      }
+    }).catch(function (e) { setRows([]); setLoadErr((e && e.message) || '加载失败'); }).then(function () { setLoading(false); });
+  }
+  useEffect(load, [tab]);
+
+  function assign(r) {
+    setSaving(true);
+    API.post('/a/activity/activities/' + aid + '/leaders', { leaderType: 1, refId: r.refId })
+      .then(function () { window.message.success('已指派 ' + (r.name || '')); props.onAssigned(); })
+      .catch(function () {}).then(function () { setSaving(false); });
+  }
+
+  var shown = kw ? rows.filter(function (r) { return (r.name || '').indexOf(kw) >= 0 || (r.sub || '').indexOf(kw) >= 0; }) : rows;
+  var body = React.createElement(React.Fragment, null,
+    React.createElement(Tabs, { active: tab, onChange: setTab, items: [
+      { key: 'enrolled', label: '从报名志愿者' }, { key: 'manager', label: '从管理团队' } ] }),
+    React.createElement('div', { style: { margin: '12px 0' } },
+      React.createElement(Input, { value: kw, onChange: setKw, placeholder: '搜索姓名 / 学校' })),
+    loading ? React.createElement('div', { className: 'muted', style: { padding: '24px 0', textAlign: 'center' } }, '加载中…')
+      : loadErr ? React.createElement('div', { className: 'muted', style: { padding: '24px 0', textAlign: 'center' } },
+          '加载失败：' + loadErr,
+          React.createElement('div', { className: 'cell-sub', style: { marginTop: 6 } },
+            tab === 'enrolled' ? '候选名单需「报名查看」(activity:enroll-view) 权限' : '候选名单需「志愿者列表」(user:list) 权限'))
+      : !shown.length ? React.createElement('div', { className: 'muted', style: { padding: '24px 0', textAlign: 'center' } },
+          tab === 'enrolled' ? '本活动暂无报名志愿者' : '暂无「管理团队」志愿者（先在「志愿者标记与授权」标记）')
+      : shown.map(function (r) {
+        return React.createElement('div', { key: r.refId, style: { display: 'flex', gap: 10, alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--split)' } },
+          React.createElement(Avatar, { name: r.name || '志愿者', size: 'sm' }),
+          React.createElement('div', { style: { flex: 1 } },
+            React.createElement('div', { style: { fontWeight: 500 } }, r.name || ('#' + r.refId)),
+            r.sub ? React.createElement('div', { className: 'cell-sub' }, r.sub) : null),
+          React.createElement(Btn, { size: 'sm', type: 'primary', disabled: saving, onClick: function () { assign(r); } }, '指派'));
+      }));
+
+  return React.createElement(Drawer, { open: true, title: '指派现场负责人', sub: '从报名志愿者或管理团队中选；不占活动报名人数', onClose: props.onClose,
+    footer: React.createElement(Btn, { onClick: props.onClose }, '关闭') }, body);
 }
 
 window.ActivitiesPage = ActivitiesPage;

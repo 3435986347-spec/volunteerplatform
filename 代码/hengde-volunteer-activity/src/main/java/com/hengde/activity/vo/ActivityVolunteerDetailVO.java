@@ -131,8 +131,11 @@ public class ActivityVolunteerDetailVO {
     /** 已报名人数（活跃报名去重志愿者数：待审核 0 + 已通过 1） */
     private Long enrolledCount;
 
-    /** 报名详情预览：活跃报名者（按报名时间正序、去重志愿者），仅露姓氏+报名时间 */
+    /** 报名详情预览：活跃报名者（按报名时间正序、去重志愿者），露完整姓名+报名时间 */
     private List<ActivityRegistrantVO> registrants;
+
+    /** 服务保障项 key 列表（对齐前端 GUARANTEE_ORDER；详情页据此把对应图标渲染为红色，未含则灰） */
+    private List<String> serviceGuarantees;
 
     /** 时间段/子项目 */
     private List<ActivitySlotVO> slots;

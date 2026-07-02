@@ -20,6 +20,9 @@ public class RecommendActivityVO extends ActivityListVO {
     /** 报名人数（活跃报名去重志愿者数：待审核+已通过） */
     private Long enrolledCount;
 
+    /** 招募名额总数（各时间段 need_count 之和；任一段不限(0)则整场不限=0，前端显示「不限」），与详情页 needCount 同口径 */
+    private Integer needCount;
+
     /** 是否有名额 1有/0满（任一时间段未满或不限即为有名额；用于推荐排序与「名额已满」标记） */
     private Integer hasQuota;
 

@@ -1,13 +1,15 @@
 package com.hengde.api.config;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateDeserializer;
-import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateTimeDeserializer;
 import com.fasterxml.jackson.datatype.jsr310.deser.LocalTimeDeserializer;
 import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateSerializer;
 import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer;
@@ -16,11 +18,13 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 
+import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.TimeZone;
 
 @Configuration
@@ -49,7 +53,8 @@ public class JacksonConfig {
         DateTimeFormatter t = DateTimeFormatter.ofPattern(TIME);
         JavaTimeModule javaTime = new JavaTimeModule();
         javaTime.addSerializer(LocalDateTime.class, new LocalDateTimeSerializer(dt));
-        javaTime.addDeserializer(LocalDateTime.class, new LocalDateTimeDeserializer(dt));
+        // 宽松反序列化：兼容前端送的空格格式与 ISO 'T'（后台 datetime-local 送 yyyy-MM-ddTHH:mm）
+        javaTime.addDeserializer(LocalDateTime.class, new LenientLocalDateTimeDeserializer(dt));
         javaTime.addSerializer(LocalDate.class, new LocalDateSerializer(d));
         javaTime.addDeserializer(LocalDate.class, new LocalDateDeserializer(d));
         javaTime.addSerializer(LocalTime.class, new LocalTimeSerializer(t));
@@ -63,5 +68,32 @@ public class JacksonConfig {
         mapper.registerModule(module);
 
         return mapper;
+    }
+
+    /**
+     * 宽松 LocalDateTime 反序列化：先按项目固定 {@code yyyy-MM-dd HH:mm:ss} 解析，失败再用
+     * {@link DateTimeFormatter#ISO_LOCAL_DATE_TIME}（兼容 {@code 2026-06-10T09:00} / {@code ...:00} / 带毫秒）。
+     * 序列化输出仍统一空格格式（见 serializer），故响应无 T、入参两种都收。
+     */
+    private static class LenientLocalDateTimeDeserializer extends JsonDeserializer<LocalDateTime> {
+        private final DateTimeFormatter spaceFormatter;
+
+        LenientLocalDateTimeDeserializer(DateTimeFormatter spaceFormatter) {
+            this.spaceFormatter = spaceFormatter;
+        }
+
+        @Override
+        public LocalDateTime deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+            String s = p.getValueAsString();
+            if (s == null || s.isBlank()) {
+                return null;
+            }
+            s = s.trim();
+            try {
+                return LocalDateTime.parse(s, spaceFormatter);
+            } catch (DateTimeParseException e) {
+                return LocalDateTime.parse(s, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+            }
+        }
     }
 }

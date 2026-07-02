@@ -73,7 +73,9 @@ const ENDPOINTS = {
       squadDetail: (id) => `/v/organization/squads/${id}`,
       squadApplications: (id) => `/v/organization/squads/${id}/applications`,
       structure: "/v/organization/structure",
-      myPermissions: "/v/organization/my-permissions"
+      myPermissions: "/v/organization/my-permissions",
+      managerApplications: "/v/organization/manager-applications",
+      myManagerApplication: "/v/organization/manager-applications/mine"
     },
     publicity: {
       banners: "/v/publicity/banners",

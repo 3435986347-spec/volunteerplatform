@@ -1,0 +1,40 @@
+<view class="apply-page">
+  <view class="topbar">
+    <image class="back-icon" src="/assets/login/back-transparent.png" mode="aspectFit" bindtap="goBack"></image>
+    <view class="top-title">报名管理团队</view>
+  </view>
+
+  <view class="hero-space"></view>
+
+  <view wx:if="{{myApp}}" class="status-card">
+    <view class="status-line">当前申请状态：{{statusText}}</view>
+    <view wx:if="{{myApp.status === 0}}" class="status-hint">您的申请正在审核中，请耐心等待</view>
+    <view wx:if="{{myApp.status === 1}}" class="status-hint">恭喜，您已成为管理团队成员</view>
+    <view wx:if="{{myApp.status === 2 && myApp.rejectReason}}" class="status-reason">驳回原因：{{myApp.rejectReason}}</view>
+    <view wx:if="{{myApp.status === 2}}" class="status-hint">可修改后重新提交申请</view>
+  </view>
+
+  <view wx:if="{{canApply}}" class="apply-card">
+    <view class="form-line intro-line">
+      <text>申请理由<text class="req">*</text>：</text>
+      <textarea value="{{reason}}" data-field="reason" placeholder="请填写申请理由 / 自我介绍" placeholder-class="dark-placeholder" bindinput="updateField"></textarea>
+    </view>
+    <view class="form-line intro-line">
+      <text>相关经历：</text>
+      <textarea value="{{experience}}" data-field="experience" placeholder="选填：相关志愿 / 工作经历" placeholder-class="dark-placeholder" bindinput="updateField"></textarea>
+    </view>
+    <view class="form-line">
+      <text>期望部门：</text>
+      <input value="{{expectDepartment}}" data-field="expectDepartment" placeholder="选填：如组织部 / 宣传部" placeholder-class="dark-placeholder" bindinput="updateField" />
+    </view>
+  </view>
+
+  <view class="applicant-card">
+    <view class="applicant-title">申请人资料</view>
+    <view>姓名：{{applicant.name}}</view>
+    <view>电话：{{applicant.phone}}</view>
+    <view>学校：{{applicant.school}}</view>
+  </view>
+
+  <button wx:if="{{canApply}}" class="submit-btn" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit">提交申请</button>
+</view>

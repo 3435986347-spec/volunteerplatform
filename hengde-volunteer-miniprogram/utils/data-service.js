@@ -204,6 +204,20 @@ function sortRecommendedActivities(list) {
   });
 }
 
+// 时间段展示文案：带日期。避免只渲染「时:分」让跨天场次塌成「07:00-07:00」（丢日期）。
+// 同日：06-28 07:00-11:00；跨日：06-28 07:00 ~ 07-28 07:00。
+function slotTimeText(start, end) {
+  const s = String(start).replace("T", " ");
+  const e = String(end).replace("T", " ");
+  const sd = s.slice(0, 10);
+  const ed = e.slice(0, 10);
+  const st = s.slice(11, 16);
+  const et = e.slice(11, 16);
+  if (!sd || !st) return "";
+  if (sd === ed) return `${sd.slice(5)} ${st}-${et}`;
+  return `${sd.slice(5)} ${st} ~ ${ed.slice(5)} ${et}`;
+}
+
 function normalizeSlot(row) {
   const start = valueOf(row, ["startTime", "beginTime", "startAt"]);
   const end = valueOf(row, ["endTime", "finishTime", "endAt"]);
@@ -217,7 +231,7 @@ function normalizeSlot(row) {
     endTime: end,
     date,
     dateShort: date ? `${date.slice(5, 7)}月${date.slice(8, 10)}日` : "",
-    time: start && end ? `${minutePart(start)}-${minutePart(end)}` : valueOf(row, ["time", "timeRange"], ""),
+    time: start && end ? slotTimeText(start, end) : valueOf(row, ["time", "timeRange"], ""),
     quota,
     joined,
     status: statusText(valueOf(row, ["statusName", "statusText", "status"]), {
@@ -330,7 +344,6 @@ function normalizeServiceRecord(row) {
 }
 
 function normalizeManagedVolunteer(row = {}) {
-  const status = valueOf(row, ["statusText", "attendanceStatusName", "attendanceStatus", "checkInStatus", "signinStatus"], "未签到");
   const statusClassMap = {
     已签到: "ok",
     正常: "ok",
@@ -341,6 +354,17 @@ function normalizeManagedVolunteer(row = {}) {
     缺席: "danger",
     未签到: "danger"
   };
+  const checkInTime = valueOf(row, ["checkInTime", "signinTime"], "");
+  const checkOutTime = valueOf(row, ["checkOutTime", "signoutTime"], "");
+  // 后端 AttendanceRosterVO 只给 checkInTime/checkOutTime/attendStatus（1正常/2请假/3迟到/4缺席），不给状态文案。
+  // 据此派生默认状态：已签退 > 到位标记 > 已签到 > 未签到（后端若显式给了状态文案则优先采用）。
+  const attendStatus = valueOf(row, ["attendStatus"], "");
+  const attendStatusMap = { 1: "正常", 2: "请假", 3: "迟到", 4: "缺席" };
+  let derivedStatus = "未签到";
+  if (checkOutTime) derivedStatus = "已签退";
+  else if (attendStatusMap[attendStatus]) derivedStatus = attendStatusMap[attendStatus];
+  else if (checkInTime) derivedStatus = "已签到";
+  const status = valueOf(row, ["statusText", "attendanceStatusName", "attendanceStatus", "checkInStatus", "signinStatus"], derivedStatus);
   return {
     id: String(valueOf(row, ["volunteerId", "id", "userId"], "")),
     name: valueOf(row, ["name", "realName", "volunteerName"], ""),
@@ -348,7 +372,11 @@ function normalizeManagedVolunteer(row = {}) {
     school: valueOf(row, ["school", "schoolName"], ""),
     remark: valueOf(row, ["remark", "roleName", "position"], ""),
     status,
-    statusClass: valueOf(row, ["statusClass"], statusClassMap[status] || "danger")
+    statusClass: valueOf(row, ["statusClass"], statusClassMap[status] || "danger"),
+    checkInTime,
+    checkOutTime,
+    // 仅「已签到未签退」可由负责人逐个签退；后端 bulkCheckOut 对未签到/已签退/已被签退返回 0
+    canCheckOut: !!checkInTime && !checkOutTime
   };
 }
 
@@ -436,10 +464,26 @@ function numberOrDefault(value, fallback) {
 }
 
 function buildActivityPublishPayload(form = {}) {
-  const startTime = normalizeDateTimeForSubmit(form.startTime);
-  const endTime = normalizeDateTimeForSubmit(form.endTime);
-  const enrollDeadline = normalizeDateTimeForSubmit(form.enrollDeadline) || startTime;
-  const enrollOpenVolunteer = normalizeDateTimeForSubmit(form.enrollOpenVolunteer) || startTime;
+  // 多场次：form.slots[]（每个 {projectName,startTime,endTime,needCount}）；兼容旧单场次字段（slotProjectName/slotNeedCount）
+  const slotRows = Array.isArray(form.slots) && form.slots.length ? form.slots
+    : [{ projectName: form.slotProjectName, startTime: form.startTime, endTime: form.endTime, needCount: form.slotNeedCount }];
+  const slots = slotRows.map((s) => ({
+    projectName: s.projectName || "志愿者",
+    startTime: normalizeDateTimeForSubmit(s.startTime),
+    endTime: normalizeDateTimeForSubmit(s.endTime),
+    needCount: numberOrDefault(s.needCount, 1)
+  }));
+  // 活动整体起止 = 各场次最早开始 ~ 最晚结束（ISO「yyyy-MM-ddTHH:mm:ss」同格式可字典序比较），满足后端「每段须落在整体区间内」
+  let startTime = null;
+  let endTime = null;
+  slots.forEach((s) => {
+    if (s.startTime && (!startTime || s.startTime < startTime)) startTime = s.startTime;
+    if (s.endTime && (!endTime || s.endTime > endTime)) endTime = s.endTime;
+  });
+  // 留空交后端默认：报名截止→活动结束时间、报名开放→立即开放(null)。
+  // 不再硬塞 startTime——那会造成「开放即截止」的零宽报名窗口，活动开始后必报「报名已截止」。
+  const enrollDeadline = normalizeDateTimeForSubmit(form.enrollDeadline) || null;
+  const enrollOpenVolunteer = normalizeDateTimeForSubmit(form.enrollOpenVolunteer) || null;
   const lat = numberOrDefault(form.lat, null);
   const lng = numberOrDefault(form.lng, null);
   const payload = {
@@ -453,7 +497,7 @@ function buildActivityPublishPayload(form = {}) {
     startTime,
     endTime,
     enrollDeadline,
-    cancelDeadline: normalizeDateTimeForSubmit(form.cancelDeadline) || enrollDeadline,
+    cancelDeadline: normalizeDateTimeForSubmit(form.cancelDeadline) || null,
     pointsBase: numberOrDefault(form.pointsBase, 0),
     leaderMultiplier: numberOrDefault(form.leaderMultiplier, 1),
     managerMultiplier: numberOrDefault(form.managerMultiplier, 1),
@@ -462,7 +506,7 @@ function buildActivityPublishPayload(form = {}) {
     requireMinJoinCount: numberOrDefault(form.requireMinJoinCount, 0),
     requireMinJoinMinutes: numberOrDefault(form.requireMinJoinMinutes, 0),
     minProjects: 1,
-    maxProjects: 1,
+    maxProjects: slots.length || 1,   // 多场次：允许报名至多全部场次（单场次时即 1）
     enrollNotice: form.enrollNotice || "",
     contactName: form.contactName || "",
     contactPhone: form.contactPhone || "",
@@ -471,12 +515,8 @@ function buildActivityPublishPayload(form = {}) {
     enrollOpenLeader: normalizeDateTimeForSubmit(form.enrollOpenLeader) || enrollOpenVolunteer,
     enrollOpenVolunteer,
     checkInRadiusM: numberOrDefault(form.checkInRadiusM, 500),
-    slots: [{
-      projectName: form.slotProjectName || "志愿者",
-      startTime,
-      endTime,
-      needCount: numberOrDefault(form.slotNeedCount, 1)
-    }]
+    serviceGuarantees: Array.isArray(form.serviceGuarantees) ? form.serviceGuarantees : [],
+    slots: slots
   };
   if (lat === null || lng === null) {
     payload.lat = null;
@@ -761,8 +801,12 @@ async function finishManagedActivity(id) {
   return managedPost(ENDPOINTS.volunteer.activity.managedFinish(id));
 }
 
+// 负责人统一签退：后端返回实际签退人数（仅 affected>0 计数），0 表示未签到/已签退/被并发签退
 async function checkOutManagedActivity(id, data) {
-  return managedPost(ENDPOINTS.volunteer.activity.managedCheckOuts(id), data);
+  if (useMockApi()) return 1;
+  const response = await managedPost(ENDPOINTS.volunteer.activity.managedCheckOuts(id), data);
+  const count = Number(payloadOf(response));
+  return Number.isFinite(count) ? count : 0;
 }
 
 async function updateManagedAttendance(id, volunteerId, data) {
@@ -865,6 +909,24 @@ async function createGroup(data) {
     method: "POST",
     data
   });
+}
+
+// 提交报名管理团队申请（问卷+审核）
+async function submitManagerApplication(data) {
+  if (useMockApi()) return { success: true };
+  const response = await request({
+    url: ENDPOINTS.volunteer.organization.managerApplications,
+    method: "POST",
+    data
+  });
+  return payloadOf(response);
+}
+
+// 我的报名管理团队申请（最近一条，状态回显；无则 null）
+async function getMyManagerApplication() {
+  if (useMockApi()) return null;
+  const response = await request({ url: ENDPOINTS.volunteer.organization.myManagerApplication });
+  return payloadOf(response);
 }
 
 async function getGroup(id) {
@@ -1112,6 +1174,8 @@ module.exports = {
   listActivities,
   listGroups,
   createGroup,
+  submitManagerApplication,
+  getMyManagerApplication,
   joinGroup,
   leaveGroup,
   listGroupMembers,
