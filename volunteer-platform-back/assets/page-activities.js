@@ -20,7 +20,13 @@ function fromLocal(s) { if (!s) return null; s = String(s); return s.length === 
 function datePart(s) { return s ? String(s).slice(0, 10) : ''; }
 function timePart(s) { return s ? String(s).replace('T', ' ').slice(11, 16) : ''; }
 function toLocalInput(s) { return s ? String(s).replace(' ', 'T').slice(0, 16) : ''; }                // LDT(space|T) → datetime-local
-function fmtRange(a, b) { if (!a) return '—'; return datePart(a) + ' ' + timePart(a) + (b ? '–' + timePart(b) : ''); }
+function fmtRange(a, b) {
+  if (!a) return '—';
+  if (!b) return datePart(a) + ' ' + timePart(a);
+  // 跨日活动结束侧带日期，避免「06-28 07:00–07:00」这种看不出跨到哪天的显示
+  var sameDay = datePart(a) === datePart(b);
+  return datePart(a) + ' ' + timePart(a) + '–' + (sameDay ? '' : datePart(b) + ' ') + timePart(b);
+}
 function numOrNull(v) { return (v === '' || v == null) ? null : Number(v); }
 function ymd(d) { var m = d.getMonth() + 1, day = d.getDate(); return d.getFullYear() + '-' + (m < 10 ? '0' + m : m) + '-' + (day < 10 ? '0' + day : day); } // 本地时区 yyyy-MM-dd（避免 toISOString 跨时区错位）
 
@@ -292,7 +298,7 @@ function ActivityFormDrawer(props) {
     onClose: props.onClose,
     footer: React.createElement(React.Fragment, null,
       React.createElement(Btn, { onClick: props.onClose }, '取消'),
-      React.createElement(Btn, { type: 'primary', onClick: save, disabled: loading || saving || multiSlot }, saving ? '提交中…' : (isEdit ? '保存修改' : '确认发布'))) },
+      React.createElement(Btn, { type: 'primary', onClick: save, disabled: loading || saving }, saving ? '提交中…' : (isEdit ? '保存修改' : '确认发布'))) },
     loading ? React.createElement('div', { style: { padding: '40px 0', textAlign: 'center', color: 'var(--text-3)' } }, '加载中…') : catalog);
 }
 
