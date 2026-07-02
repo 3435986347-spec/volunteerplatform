@@ -62,7 +62,7 @@ V1 落地顺序：`auth` → `organization`（子账号权限） → `activity` 
 
 所有 Maven 命令在父工程目录 `hengde-volunteer-parent/` 下执行（仓库根目录没有 POM）。该目录自带 Maven Wrapper（`mvnw` / `mvnw.cmd`，Maven 3.9.15），可用 `./mvnw` 代替本机 `mvn`。
 
-**重要：父 POM 是纯依赖管理、没有 `<modules>` 聚合段**，因此 `-pl <module>` / `-am` 这类 reactor 参数用不了；构建/测试单个模块必须用 `-f ../hengde-volunteer-<module>/pom.xml` 指向该模块自己的 POM。各模块经**本地仓库**解析父 POM 与彼此依赖，所以被依赖的模块改动后要先 `install` 才能被下游模块看到。
+**重要：父 POM 现已带 `<modules>` 聚合段（全部 8 个模块，按依赖顺序 common→auth→organization→publicity→activity→user→data→api）**——在父目录直接 `./mvnw install -DskipTests` 即可全量按序构建，`-pl`/`-am` 可用。**2026-07-02 教训**：此前该列表漏了 user/data 两模块，全量 reactor 构建「SUCCESS」但 api 打包进的是本地仓库里的旧 user/data jar（新功能悄悄缺失）——全量构建后核对 Reactor Summary 是否列全 8 个模块。单模块构建/测试仍用 `-f ../hengde-volunteer-<module>/pom.xml`；用 `-f` 时各模块经**本地仓库**解析父 POM 与彼此依赖，被依赖的模块改动后要先 `install` 才能被下游模块看到。
 
 ```bash
 cd hengde-volunteer-parent
