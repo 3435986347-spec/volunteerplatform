@@ -1,4 +1,8 @@
-# 恒德志愿者平台 API
+# 恒德志愿者平台 API（admin 分组 · Knife4j 快照）
+
+> ⚠️ **本文件是 2026-05-30 的 Knife4j 导出快照，仅覆盖到 V9 前后的接口**，此后新增/变更未包含：
+> V10~V16 现场管理/服务记录/积分发放/考勤变更审核/补录审核、V19 活动发布审核（`/a/activity/activities/pending-reviews` 等）、周期与历史发布、`/a/auth/me`、`/a/files/upload`、全局待审分队申请、志愿者权限授予（`/a/organization/volunteers/{id}/permissions`）、**V23 报名管理团队审核**（`/a/organization/manager-applications`）、志愿者管理 `/a/user/volunteers`（含 `managerFlag` 筛选与清空式重置密码）、数据看板 `/a/data/dashboard`、全局报名列表 `/a/activity/enrollments`、负责人指派（`GET /leaders` 双权限 OR）等。
+> **权威接口清单以同目录 `url文档v1.md` 为准**；完整参数与在线调试用本地起 api 后访问 `http://localhost:8080/api/doc.html`（Knife4j，可随时重新导出替换本快照）。
 
 
 **简介**:恒德志愿者平台 API

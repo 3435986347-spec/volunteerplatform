@@ -147,13 +147,13 @@
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
 | GET | /a/activity/activities | 活动列表（**默认排除待审核(4)/驳回(5)**——它们只在审核侧可见；status 可筛 1已发布/2已结束/3已取消） | 需登录 |
-| POST | /a/activity/activities | 发布活动（**后台直发、直接上线 status=1，不进审核队列**；含子时间段/积分倍率/报名限制——`requireMinJoinCount` 已参加次数门槛、`requireMinJoinMinutes` 已参加服务时长门槛(分钟)；GPS 签到坐标 `lat`/`lng`/`checkInRadiusM` 默认500，经纬度须同填或同空） | 需登录 |
+| POST | /a/activity/activities | 发布活动（**后台直发、直接上线 status=1，不进审核队列**；**多场次** `slots[]` 每段项目名称/起止/需求人数，活动整体起止须覆盖全部场次；**服务保障** `serviceGuarantees[]` 12 选 N[V22]；积分倍率/报名限制——`requireMinJoinCount` 已参加次数门槛、`requireMinJoinMinutes` 已参加服务时长门槛(分钟)；GPS 签到坐标 `lat`/`lng`/`checkInRadiusM` 默认500，经纬度须同填或同空） | 需登录 |
 | GET | /a/activity/activities/pending-reviews | 活动发布审核列表（带提交人姓名；`status` 默认 4 待审核，传 5 看已驳回） | 需登录（activity:publish-audit） |
 | GET | /a/activity/activities/{id}/review-detail | 待审/驳回活动完整详情（含驳回原因/审核人/时间；审核者看全字段无需 activity:menu；常规 `GET …/{id}` 已排除待审/驳回） | 需登录（activity:publish-audit） |
 | POST | /a/activity/activities/{id}/publish-approve | 发布审核通过（活动上线 status→1） | 需登录（activity:publish-audit） |
 | POST | /a/activity/activities/{id}/publish-reject | 发布审核驳回（status→5，body 可填 `reason`） | 需登录（activity:publish-audit） |
 | GET | /a/activity/activities/{id} | 活动详情（回显 `lat`/`lng`/`checkInRadiusM` 等全字段） | 需登录 |
-| PUT | /a/activity/activities/{id} | 修改活动（同发布入参，含 `requireMinJoinCount`/`requireMinJoinMinutes` 报名门槛、GPS 坐标 `lat`/`lng`/`checkInRadiusM`，经纬度须同填或同空；待审核/驳回活动不可改） | 需登录 |
+| PUT | /a/activity/activities/{id} | 修改活动（同发布入参，含 `slots[]` 多场次全量替换、`serviceGuarantees` null=保留原值/[]=清空、`requireMinJoinCount`/`requireMinJoinMinutes` 报名门槛、GPS 坐标 `lat`/`lng`/`checkInRadiusM`，经纬度须同填或同空；待审核/驳回活动不可改） | 需登录 |
 | DELETE | /a/activity/activities/{id} | 删除活动（待审核/驳回活动不可删，属审核侧处置） | 需登录 |
 | POST | /a/activity/activities/{id}/copy | 复制活动（**待审核/驳回活动不可复制**，否则绕开审核直接发布同内容） | 需登录 |
 | GET | /a/activity/activities/{id}/enrollments | 报名列表（优先展示管理团队/临时负责人） | 需登录（activity:enroll-view） |

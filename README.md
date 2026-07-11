@@ -12,7 +12,7 @@
   <img alt="Sa-Token" src="https://img.shields.io/badge/Sa--Token-1.43-blue">
   <img alt="MySQL" src="https://img.shields.io/badge/MySQL-8%2B-4479A1?logo=mysql&logoColor=white">
   <img alt="Redis" src="https://img.shields.io/badge/Redis-7.4-DC382D?logo=redis&logoColor=white">
-  <img alt="Flyway" src="https://img.shields.io/badge/Flyway-V1→V19-CC0200?logo=flyway&logoColor=white">
+  <img alt="Flyway" src="https://img.shields.io/badge/Flyway-V1→V23-CC0200?logo=flyway&logoColor=white">
   <img alt="WeChat MiniProgram" src="https://img.shields.io/badge/微信小程序-原生-07C160?logo=wechat&logoColor=white">
 </p>
 
@@ -139,7 +139,7 @@ graph TD
 
 - **领域垂直切分**：父工程仅做依赖管理，下挂各领域模块，每个模块内部自带 `controller / service / dao / entity` 三层；`hengde-volunteer-api` 依赖全部领域模块、持有唯一启动类，是唯一可部署单元。
 - **公共能力下沉**：返回体/异常、加解密、分布式锁、对象存储、短信、分页、测试基座等统一沉到 `common`，避免循环依赖。
-- **数据库迁移集中**：Flyway 脚本集中在 `common`（全局唯一版本序列，目前 V1→V19），api 运行期与各模块测试都经依赖拿到脚本自动建表。
+- **数据库迁移集中**：Flyway 脚本集中在 `common`（全局唯一版本序列，目前 V1→V23），api 运行期与各模块测试都经依赖拿到脚本自动建表。
 
 ---
 
@@ -150,25 +150,25 @@ graph TD
 
 **🙋 志愿者端（小程序 `/v`）**
 
-- 微信登录 → 身份证二要素实名 → 协议阅读 + 手写签名
+- 手机号验证码/密码登录（微信登录并存）→ 实名注册 → 协议阅读 + 手写签名
 - 志愿小组发起/加入/退出、分队归属
-- 活动浏览、报名 / 取消、**同小组互相代报名**
+- 活动浏览、按场次报名 / 取消、**同小组互相代报名**
 - 资格校验（年龄 / 年级 / 性别 / 已参加场次 / 服务时长门槛）
-- **GPS 自助签到**、确认到家、双向评价、活动留言
-- 我的活动、我的服务记录与积分
-- 「管理团队」志愿者可在小程序内发布活动（走审核）
-- 信息公示浏览、全局搜索
+- **扫码 + GPS 签到/签退**、确认到家、双向评价、活动留言
+- 我的活动、我的服务记录与积分、我的资料（编号/改绑手机/头像）
+- 「管理团队」志愿者可在小程序内发布**多场次**活动（走审核）
+- **报名管理团队**（问卷申请 + 后台审核）、信息公示浏览、全局搜索
 
 </td><td valign="top" width="50%">
 
 **🛠️ 管理后台（`/a`）**
 
 - 账号登录（防爆破）、基于权限码的菜单/按钮动态渲染
-- 活动发布/编辑/复制、**周期发布**、历史活动、**发布审核**
+- 活动发布/编辑/复制（**多场次 + 服务保障**）、**周期发布**、历史活动、**发布审核**
 - 报名管理（审核/手动新增/Excel 导出）
-- 现场负责人指派、考勤/积分确认、考勤变更二次审核、活动补录
-- 志愿者管理（多条件筛选/详情/停用恢复/导出）
-- 组织架构、小组/分队管理与审批
+- 现场负责人指派（报名志愿者/管理团队两页签选人）、考勤/积分确认、考勤变更二次审核、活动补录
+- 志愿者管理（多条件筛选/详情/停用恢复/导出/清空式重置密码）
+- 组织架构、小组/分队管理与审批、**报名管理团队审核**
 - 子账号与细粒度权限分配、「管理团队」标记与授权
 - 轮播图/公告/文件公示、数据看板与待办
 
@@ -203,7 +203,7 @@ graph TD
 ### 🧪 工程化
 
 - **真实容器集成测试**：统一 `@SpringBootTest` + Testcontainers 拉起**真实 MySQL / Redis**（不用 H2，避免方言与迁移不兼容），Flyway 在容器库跑真实迁移，测试贴近生产行为。
-- **数据库版本化**：Flyway 单一全局版本序列（V1→V19）集中管理表结构与权限点种子，演进可追溯。
+- **数据库版本化**：Flyway 单一全局版本序列（V1→V23）集中管理表结构与权限点种子，演进可追溯。
 - **生产部署就绪**：Nginx 分离部署（前端静态托管 + `/api` 同源反代，无运行期 CORS）、systemd 单元、环境变量模板、上传体积三层对齐（nginx 16M > Spring 12M > 业务校验 10M），配套完整部署文档与上线 checklist。
 
 ---
@@ -213,11 +213,11 @@ graph TD
 | 模块 | 职责 |
 |---|---|
 | `hengde-volunteer-common` | 公共基础设施：返回体/异常/错误码、加解密（AES-GCM + HMAC）、Redis、分布式锁助手、短信、对象存储、Excel、分页、全局搜索聚合、Flyway 迁移脚本、Testcontainers 测试基座 |
-| `hengde-volunteer-auth` | 认证：小程序微信登录/实名注册/协议签名、后台账号登录/找回密码（防爆破）、志愿者 PII 加解密、跨模块只读查询 |
+| `hengde-volunteer-auth` | 认证：手机号验证码/密码登录体系（V20）、微信登录、实名注册/协议签名、后台账号登录/找回密码（防爆破）、志愿者 PII 加解密、跨模块只读查询 |
 | `hengde-volunteer-organization` | 组织：子账号 / RBAC 权限、志愿小组（发起/审批/转移/解散/导入）、分队归属、组织架构、「管理团队」标记与授权 |
 | `hengde-volunteer-activity` | 活动：发布/编辑/复制/周期发布/历史活动、报名/代报名、签到/时长/积分闭环、现场负责人、考勤变更审核、活动补录、发布审核、活动留言 |
 | `hengde-volunteer-publicity` | 公示：轮播图 / 公告 / 文件下载，志愿者端只读已发布 |
-| `hengde-volunteer-user` | 志愿者管理（后台）：多条件列表/详情/修改/停用恢复/导出 |
+| `hengde-volunteer-user` | 用户域：后台志愿者管理（多条件列表/详情/修改/停用恢复/导出/重置密码）+ 志愿者端「我的资料」（编号/可改项/手机号改绑）|
 | `hengde-volunteer-data` | 数据看板：跨域只读聚合（注册数/活动场次/服务时长/参与人次/管理团队/分队数）|
 | `hengde-volunteer-api` | 启动类 + 全局配置（Sa-Token / CORS / Jackson / 分页拦截器 / 全局异常 / 接口文档 / 通用上传），唯一可部署单元 |
 
@@ -241,14 +241,11 @@ graph TD
 ```bash
 cd 代码/hengde-volunteer-parent
 
-# 1) 安装父 POM 到本地仓库
-./mvnw install -N
+# 1) 全量构建（父 POM 已聚合全部 8 个模块，按依赖序自动构建；
+#    构建完核对 Reactor Summary 列满 parent + 8 模块）
+./mvnw clean install -DskipTests
 
-# 2) 按依赖顺序构建安装各模块（common → auth → organization → activity → publicity → user → data）
-./mvnw clean install -DskipTests -f ../hengde-volunteer-common/pom.xml
-# ……其余领域模块同理
-
-# 3) 启动应用（需 MySQL / Redis 在线，本地开发用 dev profile）
+# 2) 启动应用（需 MySQL / Redis 在线，本地开发用 dev profile）
 ./mvnw spring-boot:run -f ../hengde-volunteer-api/pom.xml "-Dspring-boot.run.profiles=dev"
 ```
 
@@ -300,7 +297,7 @@ cd 代码/hengde-volunteer-parent
 
 ## 项目状态
 
-- ✅ **V1 核心已完成**：认证、组织/RBAC、活动全流程（含签到/时长/积分闭环）、公示/搜索、志愿者管理、数据看板，后端均带 Testcontainers 集成测试；管理后台前端已对接真实接口；生产部署制品与文档齐备。
+- ✅ **V1 核心已完成**：认证（含手机号登录体系）、组织/RBAC（含报名管理团队问卷审核）、活动全流程（多场次发布、服务保障、签到/时长/积分闭环、发布审核）、公示/搜索、志愿者管理与我的资料、数据看板，后端均带 Testcontainers 集成测试（迁移至 V23）；管理后台前端已全页面对接真实接口并完成生产硬化。
 - 🚧 **待上线**：已具备生产部署能力，待协会方提供生产服务器与微信小程序 appid 后正式上线（实名核验、企业微信群校验等第三方能力已留好接入开关）。
 - 🗺️ **规划中（后续版本）**：爱心企业、积分商城/捐赠、社区互动、荣誉榜样，以及面向多组织一键开通的 SaaS 监管后台。
 

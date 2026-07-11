@@ -36,22 +36,17 @@ Keep Java packages under `com.hengde`. Domain modules own their `controller/serv
 
 ## Build And Test
 
-Run Maven from `代码/hengde-volunteer-parent`. The parent POM is dependency management only and has no `<modules>` reactor, so use `-f` for child modules.
+Run Maven from `代码/hengde-volunteer-parent`. The parent POM now carries a `<modules>` reactor aggregating **all 8 modules** in dependency order (common → auth → organization → publicity → activity → user → data → api), so a plain full build works; after a full build, verify the Reactor Summary lists parent + all 8 modules (a missing entry means the api jar silently packages a stale module from the local repo — this bit us on 2026-07-02 when user/data were absent from the list).
 
 ```powershell
 cd 代码\hengde-volunteer-parent
 
-# Install parent first.
-.\mvnw.cmd install -N
+# Full build (preferred).
+.\mvnw.cmd clean install -DskipTests
 
-# Build/install modules in dependency order when downstream modules need local changes.
-.\mvnw.cmd clean install -DskipTests -f ..\hengde-volunteer-common\pom.xml
-.\mvnw.cmd clean install -DskipTests -f ..\hengde-volunteer-auth\pom.xml
-.\mvnw.cmd clean install -DskipTests -f ..\hengde-volunteer-organization\pom.xml
+# Or incrementally: build/install a single module with -f when iterating
+# (re-install an upstream module before building downstream/api).
 .\mvnw.cmd clean install -DskipTests -f ..\hengde-volunteer-activity\pom.xml
-.\mvnw.cmd clean install -DskipTests -f ..\hengde-volunteer-publicity\pom.xml
-.\mvnw.cmd clean install -DskipTests -f ..\hengde-volunteer-user\pom.xml
-.\mvnw.cmd clean install -DskipTests -f ..\hengde-volunteer-data\pom.xml
 .\mvnw.cmd clean install -DskipTests -f ..\hengde-volunteer-api\pom.xml
 
 # Run tests for changed modules.

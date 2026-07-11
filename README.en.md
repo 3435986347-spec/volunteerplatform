@@ -12,7 +12,7 @@
   <img alt="Sa-Token" src="https://img.shields.io/badge/Sa--Token-1.43-blue">
   <img alt="MySQL" src="https://img.shields.io/badge/MySQL-8%2B-4479A1?logo=mysql&logoColor=white">
   <img alt="Redis" src="https://img.shields.io/badge/Redis-7.4-DC382D?logo=redis&logoColor=white">
-  <img alt="Flyway" src="https://img.shields.io/badge/Flyway-V1→V19-CC0200?logo=flyway&logoColor=white">
+  <img alt="Flyway" src="https://img.shields.io/badge/Flyway-V1→V23-CC0200?logo=flyway&logoColor=white">
   <img alt="WeChat MiniProgram" src="https://img.shields.io/badge/WeChat%20Mini%20Program-Native-07C160?logo=wechat&logoColor=white">
 </p>
 
@@ -149,7 +149,7 @@ graph TD
 
 - **Domain vertical slicing**: the parent project only manages dependencies; each domain module bundles its own `controller / service / dao / entity` layers. `hengde-volunteer-api` depends on all domain modules, holds the single bootstrap class, and is the only deployable unit.
 - **Shared capabilities pushed down**: result/exception types, crypto, distributed locks, object storage, SMS, pagination, and the test harness all live in `common`, avoiding circular dependencies.
-- **Centralized DB migrations**: Flyway scripts live in `common` (a single global version sequence, currently V1→V19); both the api runtime and every module's tests obtain the scripts via dependency and auto-provision the schema.
+- **Centralized DB migrations**: Flyway scripts live in `common` (a single global version sequence, currently V1→V23); both the api runtime and every module's tests obtain the scripts via dependency and auto-provision the schema.
 
 ---
 
@@ -160,25 +160,25 @@ graph TD
 
 **🙋 Volunteer Client (Mini Program `/v`)**
 
-- WeChat login → ID two-factor real-name verification → agreement reading + handwritten signature
+- Phone-number SMS/password login (WeChat login coexists) → real-name registration → agreement reading + handwritten signature
 - Create/join/leave volunteer groups, squad membership
-- Browse activities, enroll / cancel, **proxy-enroll for same-group members**
+- Browse activities, per-slot enrollment / cancel, **proxy-enroll for same-group members**
 - Eligibility checks (age / grade / gender / past sessions / service-hour threshold)
-- **Self-service GPS check-in**, arrived-home confirmation, two-way reviews, activity messages
-- My activities, my service records & points
-- "Management-team" volunteers can publish activities in-app (subject to review)
-- Browse public info, global search
+- **QR-code + GPS check-in/check-out**, arrived-home confirmation, two-way reviews, activity messages
+- My activities, my service records & points, my profile (ID no. / phone rebinding / avatar)
+- "Management-team" volunteers can publish **multi-slot** activities in-app (subject to review)
+- **Management-team application** (questionnaire + admin review), public info, global search
 
 </td><td valign="top" width="50%">
 
 **🛠️ Admin Console (`/a`)**
 
 - Account login (anti-brute-force), permission-code-driven dynamic menus/buttons
-- Activity publish/edit/copy, **recurring publishing**, historical activities, **publish review**
+- Activity publish/edit/copy (**multi-slot + service guarantees**), **recurring publishing**, historical activities, **publish review**
 - Enrollment management (review / manual add / Excel export)
-- On-site leader assignment, attendance/points confirmation, attendance-change re-review, activity backfill
-- Volunteer management (multi-filter list / detail / disable-restore / export)
-- Organizational structure, group/squad management & approval
+- On-site leader assignment (pick from enrollees or management-team volunteers), attendance/points confirmation, attendance-change re-review, activity backfill
+- Volunteer management (multi-filter list / detail / disable-restore / export / clear-style password reset)
+- Organizational structure, group/squad management & approval, **management-team application review**
 - Sub-accounts & fine-grained permission assignment, "management-team" flagging & granting
 - Banners/announcements/files publicity, dashboard & to-dos
 
@@ -213,7 +213,7 @@ graph TD
 ### 🧪 Engineering Practices
 
 - **Real-container integration tests**: a uniform `@SpringBootTest` + Testcontainers spins up **real MySQL / Redis** (no H2, avoiding dialect & migration incompatibilities); Flyway runs real migrations in the container DB, keeping tests close to production behavior.
-- **Versioned database**: Flyway with a single global version sequence (V1→V19) centrally manages schema and permission-point seeds, keeping evolution traceable.
+- **Versioned database**: Flyway with a single global version sequence (V1→V23) centrally manages schema and permission-point seeds, keeping evolution traceable.
 - **Production-ready deployment**: Nginx split deployment (static hosting + same-origin `/api` reverse proxy, no runtime CORS), systemd unit, env-var template, three-tier upload size alignment (nginx 16M > Spring 12M > business validation 10M), plus a complete deployment guide and go-live checklist.
 
 ---
@@ -223,11 +223,11 @@ graph TD
 | Module | Responsibility |
 |---|---|
 | `hengde-volunteer-common` | Shared infrastructure: result/exception/error codes, crypto (AES-GCM + HMAC), Redis, distributed-lock helper, SMS, object storage, Excel, pagination, global-search aggregation, Flyway migrations, Testcontainers test harness |
-| `hengde-volunteer-auth` | Auth: WeChat login / real-name registration / agreement signature, admin account login / password recovery (anti-brute-force), volunteer PII crypto, cross-module read-only queries |
+| `hengde-volunteer-auth` | Auth: phone-number SMS/password login system (V20), WeChat login, real-name registration / agreement signature, admin account login / password recovery (anti-brute-force), volunteer PII crypto, cross-module read-only queries |
 | `hengde-volunteer-organization` | Organization: sub-accounts / RBAC, volunteer groups (create/approve/transfer/dissolve/import), squad membership, org structure, "management-team" flagging & granting |
 | `hengde-volunteer-activity` | Activity: publish/edit/copy/recurring/historical, enroll/proxy-enroll, check-in/hours/points loop, on-site leaders, attendance-change review, activity backfill, publish review, activity messages |
 | `hengde-volunteer-publicity` | Publicity: banners / announcements / file downloads, volunteers see only published items |
-| `hengde-volunteer-user` | Volunteer management (admin): multi-filter list/detail/edit/disable-restore/export |
+| `hengde-volunteer-user` | User domain: admin-side volunteer management (multi-filter list/detail/edit/disable-restore/export/password reset) + volunteer-side "My Profile" (ID no. / editable fields / phone rebinding) |
 | `hengde-volunteer-data` | Dashboard: cross-domain read-only aggregation (registrations / activity sessions / service hours / participations / management-team / squads) |
 | `hengde-volunteer-api` | Bootstrap + global config (Sa-Token / CORS / Jackson / pagination interceptor / global exceptions / API docs / generic upload), the single deployable unit |
 
@@ -251,14 +251,11 @@ graph TD
 ```bash
 cd 代码/hengde-volunteer-parent
 
-# 1) Install the parent POM to the local repository
-./mvnw install -N
+# 1) Full build (the parent POM aggregates all 8 modules in dependency order;
+#    verify the Reactor Summary lists parent + all 8 modules)
+./mvnw clean install -DskipTests
 
-# 2) Build & install modules in dependency order (common → auth → organization → activity → publicity → user → data)
-./mvnw clean install -DskipTests -f ../hengde-volunteer-common/pom.xml
-# ...repeat for the remaining domain modules
-
-# 3) Run the app (requires MySQL / Redis; use the dev profile locally)
+# 2) Run the app (requires MySQL / Redis; use the dev profile locally)
 ./mvnw spring-boot:run -f ../hengde-volunteer-api/pom.xml -Dspring-boot.run.profiles=dev
 ```
 
@@ -310,7 +307,7 @@ API paths follow the `/{role}/{domain}/{resource}/{action?}` convention; the ful
 
 ## Project Status
 
-- ✅ **V1 core complete**: auth, organization/RBAC, the full activity loop (incl. check-in/hours/points), publicity/search, volunteer management, and the dashboard — all backed by Testcontainers integration tests; the admin console frontend is wired to real APIs; production deployment artifacts and docs are ready.
+- ✅ **V1 core complete**: auth (incl. the phone-number login system), organization/RBAC (incl. management-team application review), the full activity loop (multi-slot publishing, service guarantees, check-in/hours/points, publish review), publicity/search, volunteer management & my-profile, and the dashboard — all backed by Testcontainers integration tests (migrations up to V23); the admin console frontend is fully wired to real APIs and production-hardened.
 - 🚧 **Pending go-live**: deployment-ready, awaiting the association's production server and WeChat Mini Program appid for the official launch (real-name verification, WeCom group checks and other third-party capabilities are behind ready-to-enable switches).
 - 🗺️ **Roadmap (future versions)**: corporate sponsors, a points mall / donations, community interaction, an honors/role-model system, and a SaaS supervision console for one-click multi-organization onboarding.
 

@@ -12,7 +12,7 @@
 
 - [ ] **首页 `/v/home` 占位 —— 可选，不阻塞**。轮播图（`/v/publicity/banners`）、推荐活动（活动列表）、公告（`/v/publicity/announcements`）都已各有独立接口，前端首页**各块分别调用即可，首页不会是空的**。`/v/home` 只是「合并成一次请求」的可选聚合优化，V1 可不做。
 - [ ] **投诉建议（data 领域）未实现** —— V1 列入但没做。决定：补 / 延后并告知。
-- [ ] **签到 / 服务时长 / 证书公示** 闭环按设计**延后到下一版**。⚠️ 时长是志愿者最在意的诉求，**务必提前明确告知需求方 V1 不含**，避免测到一半的预期落差。
+- [x] **签到 / 服务时长 / 积分闭环已全量交付**（V1.1 三批：GPS+扫码签到签退、统一签退算时长、秘书部确认、积分发放、考勤变更二次审核、补录）——志愿者最在意的时长诉求已覆盖。仍延后的只有**证书生成**与**名单公示展示页**，交付时说明即可。
 - [x] **代报名 + 小组管理员（≤3）+ 组长变更历史 + 解散字段**（V7 迁移已落地）：同小组成员可互相代报名（`POST /v/activity/activities/{id}/proxy-enrollments`，落 `proxy_by_volunteer_id` 字段，管理端报名列表显示「代报名人」）；组长可设最多 3 名管理员（`POST/DELETE /v/.../members/{memberId}/admin`），管理员与组长一同审批/移除；`volunteer_group` 新增 `dissolve_time/reason/by` 与 `approved_time/by` 字段（与 `reject_reason` 解耦）；新建 `volunteer_group_leader_history` 表（含建组首次任命+每次转移）；`/a/organization/groups/{id}/leader-history` 查询。⚠️ 被代报名者**不主动推送通知**——靠他们打开「我的报名」自己看（V1 范围内）。
 
 ---
