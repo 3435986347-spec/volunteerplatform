@@ -12,6 +12,7 @@ public class GroupVO {
     private String groupNo;
     private String name;
     private String description;
+    private String logoUrl;
     private Long leaderId;
     private String leaderName;
     private Integer status;

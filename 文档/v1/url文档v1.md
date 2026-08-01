@@ -1,5 +1,22 @@
 # 接口 URL 约束文档 V1
 
+> ## ❄️ 本文件已冻结（2026-07-29）
+>
+> 本文件是**旧版接口副本，冻结于 2026-07-29**，**不再随代码更新**。
+>
+> 它**不是「V1 / V1.1 交付时点的快照」**——冻结之前它一直随代码更新，因此内容里已经含有积分账本、排行榜、勋章等 **V2 期**的接口。
+> 称其为某个版本的交付快照，会让人误以为能据此回溯 V1 当时的接口面貌，实际不能；它只是「冻结当天的那一份副本」。
+> 现行唯一接口契约是 **[`文档/v2/url文档v2.md`](../v2/url文档v2.md)** —— 写 Controller、对前端讲鉴权，一律以那份为准。
+>
+> 冻结时点起，本文件与实际代码的**已知偏差**（不在此修正，仅作说明）：
+>
+> | 偏差 | 说明 |
+> |---|---|
+> | 缺 `POST /a/activity/activities/{id}/cancel` | 取消活动，V2 期新增，仅见于 V2 文档 |
+> | `GET /v/user/volunteer-card` 未标未实现 | 该路径仅预留，至今无实现；V2 文档已标「⬜ 未实现」 |
+> | `GET /v/home` 未标占位 | 有 Controller 映射但聚合逻辑为 TODO；V2 文档已标注 |
+> | 管理端**鉴权列大量只写「需登录」** | 实际带 `@SaCheckPermission` 细粒度权限点（`activity:menu`/`activity:publish`/`activity:edit`/`org:*`/`pub:*` 等）。**这是本文件最容易误导前端的一处**，准确的权限点见 V2 文档 |
+
 ## 设计规范
 
 | 规范项 | 值 |
@@ -123,6 +140,35 @@
 | POST | /v/activity/activities/{id}/review | 评价活动与负责人（body: 活动评分1~5/负责人评分1~5/评论；须实际签到、活动结束后；可覆盖） | 需登录 |
 | GET | /v/activity/service-records | 我的服务记录（活动名称/签到/签退/时长） | 需登录 |
 
+### 积分中心 — 志愿者端 `/v/activity`（V2 第 1 批，V24）
+
+> 积分以 `point_record` 账本为唯一事实来源。**志愿者 id 一律取自登录态、不接受入参**，避免越权查他人积分。
+
+| Method | URL | 说明 | 鉴权 |
+|---|---|---|---|
+| GET | /v/activity/points | 我的积分总览（总积分 `totalEarned` / 已使用 `totalSpent` / 当前余额 `balance`；**「已使用」按来源判定**——仅兑换类消费计入，积分修正/手工扣减/奖惩产生的负数冲减「总积分」而非算作消费，故 V3 兑换上线前 `totalSpent` 恒为 0；恒等式 `balance = totalEarned − totalSpent`） | 需登录 |
+| GET | /v/activity/points/records | 我的积分明细（分页；`keyword` **对流水说明 `remark` 做模糊匹配**——活动积分的说明含活动名、积分修正的说明含申请理由，故可按活动名或改动原因检索；注意 `remark` 列宽 512 字符，极端超长的理由会被截断，尾部内容搜不到，完整原文以 `activity_attendance_change.reason` 为准。另可按 `sourceType` 来源、`startTime`/`endTime` 时间区间筛选；按发生时间倒序，每行带来源中文名 `sourceTypeName`） | 需登录 |
+
+### 排行榜 — 志愿者端 `/v/honor`（V2 第 2 批，V25+V26）
+
+> **当期实时聚合，往期读冻结快照**。历史月份的名次必须冻结，否则事后的活动补录/考勤修正/积分调整
+> 会让「2026 年 7 月排行」今天看和下月看不一样，需求里的「历史月份下拉框」就失去意义。
+> **总榜（periodType=3）恒为当期**，不存在「历史的总榜」，故永不快照。
+
+| Method | URL | 说明 | 鉴权 |
+|---|---|---|---|
+| GET | /v/honor/rankings | 排行榜（`rankType` 1活动次数/2活动时长/3积分；`periodType` 1月/2年/3总；`periodKey` 月 `2026-07` / 年 `2026`，总榜可不传；`limit` 默认 50 上限 100）。出参带 `fromSnapshot`——false 表示该周期尚无快照、正按当前数据实时聚合（名次仍会漂移）。**`rankType=4` 微心愿排行返回「尚未开放」而非空榜单**（数据源属 donate，V3 才建） | 需登录 |
+
+### 勋章与榜样 — 志愿者端 `/v/honor`（V2 第 3 批，V28）
+
+> 志愿者端**只负责展示**：勋章的录入、审核、发放全在后台。
+> **只看得到「已生效」的发放**——待审/驳回的记录对志愿者不可见，否则发放审核形同虚设。
+
+| Method | URL | 说明 | 鉴权 |
+|---|---|---|---|
+| GET | /v/honor/medals | 我的勋章：返回**已启用勋章 ∪ 本人已获得的勋章**（停用不收回已发的，故已获得的即使样式已停用仍在列） + `owned` 是否已获得 + `grantTime` + **获取进度**（`currentValue`/`progressPercent`，百分比封顶 100）。**样式按「最后一次通过审核」的版本展示（V29 快照）**——管理员改了已发出去的勋章会退回重审，未过审的名称/图标不会外泄给已获得者。进度对「有阈值」的条件即时计算：时长/次数取 `ActivityRankingQueryService`（**只认已发布/已结束活动上的真实签到**，与排行榜同口径，不是服务记录那份不筛活动状态的粗口径）、积分取**累计获得**（非余额，花掉积分不该丢进度）；手动授予类无进度，相关字段为 null。**志愿者 id 取自登录态，不接受入参** | 需登录 |
+| GET | /v/honor/role-models | 榜样列表（**仅已上架**，按 sort 正序） | 需登录 |
+
 ### 活动现场负责人 — 志愿者端 `/v/activity/managed-activities`
 
 > 仅活动的**已指派负责人（志愿者）**可访问；管理团队负责人走 `/a/activity`（下表对应动作）。
@@ -181,7 +227,71 @@
 | GET | /a/activity/service-records | 服务记录大板块（全员，可按活动/志愿者/状态筛选） | 需登录 |
 | GET | /a/activity/service-records/pending | 待秘书部确认列表 | 需登录（activity:service-confirm，秘书部） |
 | POST | /a/activity/attendances/{id}/confirm | 秘书部确认时长（确认后汇入服务记录大板块） | 需登录（activity:service-confirm） |
-| POST | /a/activity/attendances/{id}/points | 发放积分（完成基数×倍率；违规减半/不发） | 需登录（activity:points-grant） |
+| POST | /a/activity/attendances/{id}/points | 发放积分（完成基数×倍率；违规减半/不发；**同事务写积分账本**） | 需登录（activity:points-grant） |
+
+### 积分账本 — 管理端 `/a/activity`（V2 第 1 批，V24）
+
+| Method | URL | 说明 | 鉴权 |
+|---|---|---|---|
+| GET | /a/activity/points?volunteerId= | 查某志愿者积分总览（口径同 `/v/activity/points`） | 需登录（activity:points-view） |
+| GET | /a/activity/points/records?volunteerId= | 查某志愿者积分明细（分页；`keyword` 搜索说明 + `sourceType`/`startTime`/`endTime` 筛选） | 需登录（activity:points-view） |
+| POST | /a/activity/points/adjust | 管理员手工调整积分（body: `volunteerId`/`changeAmount` 正负非零/`reason` 必填/**`requestId` 幂等键必填**——前端每次打开调整弹窗生成一个 UUID，重放同一 UUID 只入账一次，**同一 UUID 若用于另一个人/另一金额/另一理由/另一操作人则报「积分入账冲突」**；目标须为已实名志愿者[停用/注销亦可调，用于纠正历史账目]；扣分不得把余额扣成负数） | 需登录（activity:points-adjust） |
+
+### 排行榜 — 管理端 `/a/honor`（V2 第 2 批，V25+V26）
+
+| Method | URL | 说明 | 鉴权 |
+|---|---|---|---|
+| GET | /a/honor/rankings | 排行榜（参数与出参同 `/v/honor/rankings`，同一份数据） | 需登录（honor:ranking-view） |
+| POST | /a/honor/rankings/snapshots | 生成/补跑某周期快照（`periodType` 1月/2年，总榜不支持；`periodKey`；`force` 默认 false）。非强制时**已冻结的板块直接跳过**并在 `skipped` 中回报，本次新冻结的在 `frozen` 中回报（**判断「这次干了活没有」要看 `frozen` 而不是 `written`**——某周期无人上榜时写入 0 行，但同样是一次有效冻结）；`force=true` 会**改写已公示的历史名次**，故与查看分属两个权限点。周期未结束会被拒绝 | 需登录（honor:ranking-snapshot） |
+
+> **定时冻结**：由 `RankingSnapshotJob` 每天跑一次（cron `hengde.honor.ranking.snapshot-cron`，默认 `0 30 0 * * ?`），
+> 把**已过冷静期**的上月/上年快照补齐。冷静期 `hengde.honor.ranking.freeze-delay-days` 默认 7 天——
+> 时长要等秘书部确认、积分要等发放，周期一结束就冻会把没结算完的数据定死。
+> 幂等（已冻结即跳过），故漏跑一天次日自动补上。
+
+### 勋章 — 管理端 `/a/honor`（V2 第 3 批，V28）
+
+> **双重审核**：①**样式**审核通过后勋章才可用于发放；②每次**发放**审核通过后才对志愿者生效。
+> 四个权限点各管一段，分开授权，「录入的人」与「批准的人」才可能不是同一个。
+> 图标上传走 `POST /a/files/upload?dir=medal`（同样要 `honor:medal`，仅收图片）。
+
+```
+样式：录入(草稿) → 提交 → [样式审核] → 已启用 ──停用──▶ 已停用
+                             ↓ 驳回 → 可改后重交        （已生效的发放不受影响）
+发放：发起(待审核) → [发放审核] → 已生效（志愿者可见，附带积分此刻入账）
+                        ↓ 驳回（不生效、不发分，留痕；之后可重新发起）
+```
+
+| Method | URL | 说明 | 鉴权 |
+|---|---|---|---|
+| GET | /a/honor/medals | 勋章列表（`status` 0草稿/1待审核/2已启用/3已驳回/4已停用） | honor:medal |
+| POST | /a/honor/medals | 新增勋章定义（落草稿；`conditionType` 0手动/1累计时长/2累计次数/3累计积分，**有阈值的条件必须填 `conditionThreshold`**；`rewardPoints` 附带积分奖励，0=不发） | honor:medal |
+| PUT | /a/honor/medals/{id} | 修改定义。**改「已启用/已停用」的勋章会退回待审核**——否则可先提交素净图标过审、通过后再改成别的，样式审核就形同虚设 | honor:medal |
+| PUT | /a/honor/medals/{id}/sort | 只改展示排序，**不触发重审**（排序是纯展示属性） | honor:medal |
+| DELETE | /a/honor/medals/{id} | 删除定义；**已有待审/已生效发放记录的不可删**（会让志愿者的「我的勋章」出现空白项），请改用停用 | honor:medal |
+| POST | /a/honor/medals/{id}/submit | 提交样式审核（草稿/已驳回 → 待审核） | honor:medal |
+| POST | /a/honor/medals/{id}/approve | 样式审核通过（→ 已启用，此后方可发放） | honor:medal-audit |
+| POST | /a/honor/medals/{id}/reject | 样式审核驳回（body: `reason`） | honor:medal-audit |
+| POST | /a/honor/medals/{id}/disable | 停用（不可再发放；**已生效的发放记录不受影响**） | honor:medal-audit |
+| POST | /a/honor/medals/{id}/enable | 重新启用（此前已过审，无需再审） | honor:medal-audit |
+| GET | /a/honor/medal-grants | 发放记录列表（`status` 0待审核/1已生效/2已驳回、`volunteerId` 可筛选；带勋章名与志愿者姓名） | honor:medal-grant |
+| POST | /a/honor/medal-grants | 发起发放（body: `medalId`/`volunteerId`/`reason`）。**勋章须为已启用**、志愿者须已实名且账号正常；**同一勋章不重复授予同一人**（DB 生成列唯一键，驳回后可重新发起）；**发起时快照勋章当下的 `rewardPoints`** | honor:medal-grant |
+| POST | /a/honor/medal-grants/{id}/approve | 发放审核通过 → 生效。**附带积分同事务入账**（`PointSourceType.MEDAL`，按发起时快照的分值，非审核时现读）；发起后勋章若被停用则拒绝通过 | honor:medal-grant-audit |
+| POST | /a/honor/medal-grants/{id}/reject | 发放审核驳回（body: `reason`）；不生效、不发分 | honor:medal-grant-audit |
+
+### 榜样 — 管理端 `/a/honor/role-models`（V2 第 3 批，V28）
+
+> 与公示域轮播图/公告同构：**新增落下架态**（避免还没填完图片就出现在志愿者端），上下架是独立动作。
+> 榜样**不走审核**——上下架本身就是发布闸门。图片可复用 `dir=banner` 上传。
+
+| Method | URL | 说明 | 鉴权 |
+|---|---|---|---|
+| GET | /a/honor/role-models | 列表（`status` 0下架/1上架可筛选） | honor:role-model |
+| POST | /a/honor/role-models | 新增（落下架态） | honor:role-model |
+| PUT | /a/honor/role-models/{id} | 修改（副标题/图片/链接**可传 null 清空**） | honor:role-model |
+| PUT | /a/honor/role-models/{id}/status | 上架 / 下架 | honor:role-model |
+| PUT | /a/honor/role-models/{id}/sort | 调整排序 | honor:role-model |
+| DELETE | /a/honor/role-models/{id} | 删除 | honor:role-model |
 
 ### 考勤/积分变更二次审核 — 管理端 `/a/activity`
 
@@ -191,7 +301,7 @@
 |---|---|---|---|
 | POST | /a/activity/attendances/{id}/changes | 组织部申请改签到/签退/积分（body: `changeType` 1签到时间/2签退时间/3积分、`newValue` 时间ISO或整数、`reason`；待审，不立即生效。**`changeType=3` 仅允许积分已发放（`points_status=1`）的记录**——未发放前改积分会被随后的发放重算覆盖，故组织部端在未发放时不应展示「改积分」入口） | 需登录（activity:attendance-edit，组织部） |
 | GET | /a/activity/attendance-changes | 变更申请列表（`status` 0待审/1通过/2拒绝筛选；带活动/志愿者上下文） | 需登录 |
-| POST | /a/activity/attendance-changes/{id}/approve | 部长二次审核通过（应用变更；改签到/签退按 签退−签到 重算时长，改积分覆盖） | 需登录（activity:attendance-audit，部长） |
+| POST | /a/activity/attendance-changes/{id}/approve | 部长二次审核通过（应用变更；改签到/签退按 签退−签到 重算时长；**改积分覆盖考勤快照并按「新值−旧值」的差额补写积分账本**，取考勤时加行锁串行化，防同一考勤的多张待审申请被并发审核而账实分离） | 需登录（activity:attendance-audit，部长） |
 | POST | /a/activity/attendance-changes/{id}/reject | 部长二次审核拒绝 | 需登录（activity:attendance-audit） |
 
 ### 活动发布增强 / 留言 / 补录（V1.1 第 3 批）
@@ -368,7 +478,7 @@
 | URL 示例 | 对应功能 | 暂缓原因 |
 |---|---|---|
 | GET /v/activity/activities/{id}/roster | 名单公示 | 签到/时长/积分闭环已纳入 V1.1，但「名单公示」展示页仍暂缓 |
-| GET /v/honor/** | 排行榜/榜样/勋章/奖惩 | V1 暂缓 |
+| GET /v/honor/** 其余 | 奖惩中心 | V1 暂缓；**排行榜（V2 第 2 批）、勋章与榜样（V2 第 3 批）已实现，见上方 `/v/honor/*`** |
 | GET /v/social/** | 社区（帖子/私信/互动） | V1 暂缓 |
 | POST /v/activity/activities/{id}/photos | 活动相册（上传照片+评论，默认发交流平台） | 依赖社区(social)，推迟到 social 落地一起做 |
 | GET /v/donate/** | 积分兑换/众筹/捐书/微心愿/助学结对 | V1 暂缓 |

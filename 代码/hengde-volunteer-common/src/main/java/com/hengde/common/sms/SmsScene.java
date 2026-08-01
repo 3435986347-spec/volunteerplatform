@@ -6,6 +6,10 @@ package com.hengde.common.sms;
  * <p>不同业务场景的验证码相互隔离（独立 Redis key、独立重发限流），
  * 调用 {@link VerifyCodeService} 时传入场景值。各领域共用此词表，避免硬编码字符串拼错。</p>
  *
+ * <p><b>这些取值同时用作短信模板键</b>：在 {@code hengde.sms.templates} 下以场景值为键即可
+ * 给该场景单独配一条文案贴切的模板（如 {@code register: ST_xxx}），未单独配的场景回退到
+ * {@link SmsService#TEMPLATE_VERIFY_CODE} 兜底模板。因此改动这里的字符串值会同时影响配置键。</p>
+ *
  * @author hengde
  */
 public interface SmsScene {

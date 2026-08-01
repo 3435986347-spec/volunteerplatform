@@ -32,11 +32,13 @@ import java.util.Set;
  *   <tr><td>announcement</td><td>pub:announcement</td><td>图片</td><td>公告封面/插图</td></tr>
  *   <tr><td>activity</td><td>activity:publish 或 edit</td><td>图片</td><td>活动封面</td></tr>
  *   <tr><td>summary</td><td>activity:manage</td><td>图片</td><td>活动总结图</td></tr>
+ *   <tr><td>medal</td><td>honor:medal</td><td>图片</td><td>勋章图标</td></tr>
  *   <tr><td>file</td><td>pub:file</td><td>图片+文档</td><td>文件下载板块</td></tr>
  * </table>
  *
- * <p>注：扩展名 + 大小校验后仍未做文件魔数（内容类型）校验；本接口仅对已登录且有对应写权限的管理端开放，
- * 风险可控，若日后开放更宽入口需补魔数校验。</p>
+ * <p>文件本身的校验统一由 {@link FileValidator} 负责：扩展名白名单 + 大小 + <b>文件头魔数</b>
+ * （内容须与扩展名相符，拦「改后缀绕过」）；写入对象存储的 Content-Type 亦由服务端按扩展名推导，
+ * 不采信客户端请求头，避免桶域名下的存储型 XSS。</p>
  *
  * @author hengde
  */
@@ -80,6 +82,7 @@ public class FileUploadController {
             case "file" -> StpAdminUtil.STP_LOGIC.checkPermission("pub:file");
             case "activity" -> StpAdminUtil.STP_LOGIC.checkPermissionOr("activity:publish", "activity:edit");
             case "summary" -> StpAdminUtil.STP_LOGIC.checkPermission("activity:manage");
+            case "medal" -> StpAdminUtil.STP_LOGIC.checkPermission("honor:medal");
             default -> throw new BusinessException("不支持的上传目录：" + dir);
         }
     }

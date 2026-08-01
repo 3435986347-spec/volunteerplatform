@@ -12,7 +12,7 @@
   <img alt="Sa-Token" src="https://img.shields.io/badge/Sa--Token-1.43-blue">
   <img alt="MySQL" src="https://img.shields.io/badge/MySQL-8%2B-4479A1?logo=mysql&logoColor=white">
   <img alt="Redis" src="https://img.shields.io/badge/Redis-7.4-DC382D?logo=redis&logoColor=white">
-  <img alt="Flyway" src="https://img.shields.io/badge/Flyway-V1→V23-CC0200?logo=flyway&logoColor=white">
+  <img alt="Flyway" src="https://img.shields.io/badge/Flyway-V1→V31-CC0200?logo=flyway&logoColor=white">
   <img alt="WeChat MiniProgram" src="https://img.shields.io/badge/微信小程序-原生-07C160?logo=wechat&logoColor=white">
 </p>
 
@@ -139,7 +139,7 @@ graph TD
 
 - **领域垂直切分**：父工程仅做依赖管理，下挂各领域模块，每个模块内部自带 `controller / service / dao / entity` 三层；`hengde-volunteer-api` 依赖全部领域模块、持有唯一启动类，是唯一可部署单元。
 - **公共能力下沉**：返回体/异常、加解密、分布式锁、对象存储、短信、分页、测试基座等统一沉到 `common`，避免循环依赖。
-- **数据库迁移集中**：Flyway 脚本集中在 `common`（全局唯一版本序列，目前 V1→V23），api 运行期与各模块测试都经依赖拿到脚本自动建表。
+- **数据库迁移集中**：Flyway 脚本集中在 `common`（全局唯一版本序列，目前 V1→V31），api 运行期与各模块测试都经依赖拿到脚本自动建表。
 
 ---
 
@@ -203,7 +203,7 @@ graph TD
 ### 🧪 工程化
 
 - **真实容器集成测试**：统一 `@SpringBootTest` + Testcontainers 拉起**真实 MySQL / Redis**（不用 H2，避免方言与迁移不兼容），Flyway 在容器库跑真实迁移，测试贴近生产行为。
-- **数据库版本化**：Flyway 单一全局版本序列（V1→V23）集中管理表结构与权限点种子，演进可追溯。
+- **数据库版本化**：Flyway 单一全局版本序列（V1→V31）集中管理表结构与权限点种子，演进可追溯。
 - **生产部署就绪**：Nginx 分离部署（前端静态托管 + `/api` 同源反代，无运行期 CORS）、systemd 单元、环境变量模板、上传体积三层对齐（nginx 16M > Spring 12M > 业务校验 10M），配套完整部署文档与上线 checklist。
 
 ---
@@ -241,8 +241,8 @@ graph TD
 ```bash
 cd 代码/hengde-volunteer-parent
 
-# 1) 全量构建（父 POM 已聚合全部 8 个模块，按依赖序自动构建；
-#    构建完核对 Reactor Summary 列满 parent + 8 模块）
+# 1) 全量构建（父 POM 已聚合全部 9 个模块，按依赖序自动构建；
+#    构建完核对 Reactor Summary 列满 parent + 9 模块 = 10 行）
 ./mvnw clean install -DskipTests
 
 # 2) 启动应用（需 MySQL / Redis 在线，本地开发用 dev profile）
@@ -276,11 +276,11 @@ cd 代码/hengde-volunteer-parent
 │   ├── hengde-volunteer-user/     # 志愿者管理
 │   ├── hengde-volunteer-data/     # 数据看板
 │   └── hengde-volunteer-api/      # 启动类 + 全局配置（可部署单元）
-├── hengde-volunteer-miniprogram/  # 微信小程序源码（志愿者端）
-├── volunteer-platform-back/       # Web 管理后台前端（React）
 ├── 部署/                          # nginx.conf / systemd 单元 / 环境变量模板
 └── 文档/                          # 需求、接口、部署、自测等文档
 ```
+
+> **前端代码在独立仓库**：微信小程序与 Web 管理后台各自独立成库，本仓库保留后端、文档与部署配置。
 
 ---
 
@@ -297,8 +297,10 @@ cd 代码/hengde-volunteer-parent
 
 ## 项目状态
 
-- ✅ **V1 核心已完成**：认证（含手机号登录体系）、组织/RBAC（含报名管理团队问卷审核）、活动全流程（多场次发布、服务保障、签到/时长/积分闭环、发布审核）、公示/搜索、志愿者管理与我的资料、数据看板，后端均带 Testcontainers 集成测试（迁移至 V23）；管理后台前端已全页面对接真实接口并完成生产硬化。
-- 🚧 **待上线**：已具备生产部署能力，待协会方提供生产服务器与微信小程序 appid 后正式上线（实名核验、企业微信群校验等第三方能力已留好接入开关）。
+- ✅ **V1 核心已完成**：认证（含手机号登录体系）、组织/RBAC（含报名管理团队问卷审核）、活动全流程（多场次发布、服务保障、签到/时长/积分闭环、发布审核）、公示/搜索、志愿者管理与我的资料、数据看板，后端均带 Testcontainers 集成测试（迁移至 V31）；管理后台前端已全页面对接真实接口并完成生产硬化。
+- ✅ **第三方能力已接通并实测**：短信下发（火山引擎，分场景模板）、对象存储（火山引擎 TOS）、身份证二要素实名核验（腾讯云）、地图选点（高德 JSAPI）均已用真实凭证跑通。
+- ✅ **已部署上线验证**：后端与 Web 管理后台已部署至服务器并测试通过。
+- 🚧 **小程序端待完成**：需已备案 HTTPS 域名（微信硬性要求）、小程序 AppSecret，以及关闭小程序默认的 mock 模式后做真机全流程验证。企业微信群校验为可选项，实接未做。
 - 🗺️ **规划中（后续版本）**：爱心企业、积分商城/捐赠、社区互动、荣誉榜样，以及面向多组织一键开通的 SaaS 监管后台。
 
 ---

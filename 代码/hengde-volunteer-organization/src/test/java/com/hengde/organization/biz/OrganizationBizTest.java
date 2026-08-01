@@ -113,6 +113,31 @@ class OrganizationBizTest {
     // ---------- V7 fix 2: 建组期堵住「一人一组」漏洞 ----------
 
     @Test
+    void createGroup_preservesUploadedLogoUrl() {
+        Long leaderId = insertNormalVolunteer();
+        GroupCreateDTO dto = new GroupCreateDTO();
+        dto.setName("logo group");
+        dto.setDescription("group with uploaded logo");
+        dto.setLogoUrl("https://example.com/uploads/group/logo.png");
+
+        Long id = groupService.createForVolunteer(leaderId, dto);
+
+        VolunteerGroup row = groupMapper.selectById(id);
+        assertEquals("https://example.com/uploads/group/logo.png", row.getLogoUrl());
+        assertEquals("https://example.com/uploads/group/logo.png", groupService.detail(id).getLogoUrl());
+
+        com.hengde.common.page.PageQuery query = new com.hengde.common.page.PageQuery();
+        query.setPage(1);
+        query.setSize(10);
+        assertEquals("https://example.com/uploads/group/logo.png",
+                groupService.applications(query).getRecords().stream()
+                        .filter(g -> g.getId().equals(id))
+                        .findFirst()
+                        .orElseThrow()
+                        .getLogoUrl());
+    }
+
+    @Test
     void approveCreate_existingPendingLeaderMember_upgradesNotInsertsNewRow() {
         // 模拟「create() 已插好 PENDING 组长成员行」的状态，验证 approveCreate 是 update 而非 insert——
         // 否则会产生两条 LEADER member 行，污染「一人一组」统计与 leader_history 起点

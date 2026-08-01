@@ -23,6 +23,14 @@ public class ActivityViolation extends BaseEntity {
     /** 活动 activity.id */
     private Long activityId;
 
+    /**
+     * 场次 activity_slot.id（V30 新增）。
+     *
+     * <p>依据 xlsx Row 32「C 前端信息」：负责人管理页按「活动场次／活动时间段」组织，
+     * 「是否到位」与「是否违规」都记在该场次的界面里。</p>
+     */
+    private Long slotId;
+
     /** 志愿者 volunteer.id */
     private Long volunteerId;
 

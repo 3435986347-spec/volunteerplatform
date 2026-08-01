@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.hengde</groupId>
+        <artifactId>hengde-volunteer-parent</artifactId>
+        <version>1.1-SNAPSHOT</version>
+        <relativePath/> <!-- lookup parent from repository -->
+    </parent>
+    <groupId>com.hengde</groupId>
+    <artifactId>hengde-volunteer-honor</artifactId>
+    <version>1.1-SNAPSHOT</version>
+    <name>hengde-volunteer-honor</name>
+    <description>hengde-volunteer-honor</description>
+    <packaging>jar</packaging>
+    <url/>
+    <licenses>
+        <license/>
+    </licenses>
+    <developers>
+        <developer/>
+    </developers>
+    <scm>
+        <connection/>
+        <developerConnection/>
+        <tag/>
+        <url/>
+    </scm>
+    <properties>
+        <java.version>17</java.version>
+    </properties>
+    <dependencies>
+        <dependency>
+            <groupId>com.hengde</groupId>
+            <artifactId>hengde-volunteer-common</artifactId>
+            <version>1.1-SNAPSHOT</version>
+        </dependency>
+
+        <!-- 认证域：榜单展示要把 volunteerId 换成姓名（VolunteerQueryService.listNamesByIds） -->
+        <dependency>
+            <groupId>com.hengde</groupId>
+            <artifactId>hengde-volunteer-auth</artifactId>
+            <version>1.1-SNAPSHOT</version>
+        </dependency>
+
+        <!-- 活动域：三个榜单的数据源（ActivityRankingQueryService）。
+             经此传递引入 redisson-spring-boot-starter，故本模块测试上下文也会装配 RedissonClient → 需 Redis 容器 -->
+        <dependency>
+            <groupId>com.hengde</groupId>
+            <artifactId>hengde-volunteer-activity</artifactId>
+            <version>1.1-SNAPSHOT</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.swagger.core.v3</groupId>
+            <artifactId>swagger-annotations-jakarta</artifactId>
+        </dependency>
+
+        <!-- iText：渲染电子证书 PDF（第 4 批）。版本由 parent 的 dependencyManagement 管（${itext.version}）。
+             此前 itext-core 只在 dependencyManagement 里声明、全项目零引用，本批是它的第一个使用方。 -->
+        <dependency>
+            <groupId>com.itextpdf</groupId>
+            <artifactId>itext-core</artifactId>
+            <type>pom</type>
+        </dependency>
+        <!-- 中文字体：iText 默认不含中文，不加这个会渲染成空白/乱码。
+             font-asian 提供 Adobe CJK 字体包（STSong-Light + UniGB-UCS2-H），
+             无需随包分发字体文件、也不涉及字体授权问题——比嵌入思源黑体轻得多。
+             它不在 itext-core 这个聚合 pom 里，必须单独声明。 -->
+        <dependency>
+            <groupId>com.itextpdf</groupId>
+            <artifactId>font-asian</artifactId>
+            <version>${itext.version}</version>
+        </dependency>
+
+        <!-- Lombok（common 里是 provided 不传递，本模块需单独声明） -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- 测试：@SpringBootTest + Testcontainers-MySQL（+ Redis，因传递引入 redisson starter） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.hengde</groupId>
+            <artifactId>hengde-volunteer-common</artifactId>
+            <version>${project.version}</version>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>mysql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>1.18.38</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+            <!-- 领域模块是被依赖的库，不可独立启动，关闭 repackage -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

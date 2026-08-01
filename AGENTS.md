@@ -21,6 +21,7 @@ Implemented backend modules:
 - `代码/hengde-volunteer-publicity/`: banners, announcements, and downloadable files.
 - `代码/hengde-volunteer-user/`: admin volunteer management, search/filter/export, status changes, deletion, detail/update, and cross-domain display aggregates.
 - `代码/hengde-volunteer-data/`: dashboard aggregate counts and data overview endpoints.
+- `代码/hengde-volunteer-honor/`: rankings (attendance count / service minutes / points × month / year / total) with snapshot freezing of past periods, medals and role models (V2 batch 3), and **electronic certificates (V2 batch 4)** — auto-creation on secretary confirmation, lazy PDF rendering stamped onto the association's template, private storage with short-lived signed download URLs, batch upload, soft delete/restore, per-activity templates, plus a reconcile job that backfills certificates whose creation event was lost — **bounded by a lookback window** so a cron run can never mass-issue certificates for pre-refactor activities (the association has not ruled on back-issuing yet), with `POST /a/honor/certificates/reconcile?since=&activityId=` as the explicit, human-scoped remedy for gaps outside that window. Reads activity-domain data **only through narrow services** — `ActivityRankingQueryService` for metrics, `ActivityCertificateQueryService` for certificate subjects; never through activity's mappers.
 - `代码/hengde-volunteer-api/`: single deployable Spring Boot app, global config, filters, exception handling, upload controller, search controller, and aggregate wiring.
 
 Frontend/admin console:
@@ -30,13 +31,13 @@ Frontend/admin console:
 - `assets/api.js` owns request/auth/download/upload behavior. `assets/authz.js` owns `hasPerm`. `assets/preview-identities.js` only serves the Tweaks preview identities.
 - `assets/shell.js` owns navigation metadata and `TODO_SOURCES`; overview cards and sidebar badges must share this source for pending-count endpoints.
 
-Planned but not yet built domains include `donate`, `honor`, `social`, and `enterprise`. Do not create a module unless the task explicitly requires that domain.
+Planned but not yet built domains include `donate`, `social`, and `enterprise`. `honor` now carries rankings, medals, role models, and the electronic-certificate core. Still unbuilt inside batch 4: the **paper-certificate application path** (5 tables, 18 endpoints, WeChat Pay) and **i志愿 certificates** (batch 4B) — both deliberately frozen, see `文档/v2/V2规划.md`. Do not create a module unless the task explicitly requires that domain.
 
 Keep Java packages under `com.hengde`. Domain modules own their `controller/service/dao/entity/dto/vo` packages. Cross-domain calls should go through public service APIs, not direct mapper access.
 
 ## Build And Test
 
-Run Maven from `代码/hengde-volunteer-parent`. The parent POM now carries a `<modules>` reactor aggregating **all 8 modules** in dependency order (common → auth → organization → publicity → activity → user → data → api), so a plain full build works; after a full build, verify the Reactor Summary lists parent + all 8 modules (a missing entry means the api jar silently packages a stale module from the local repo — this bit us on 2026-07-02 when user/data were absent from the list).
+Run Maven from `代码/hengde-volunteer-parent`. The parent POM now carries a `<modules>` reactor aggregating **all 9 modules** in dependency order (common → auth → organization → publicity → activity → user → data → honor → api), so a plain full build works; after a full build, verify the Reactor Summary lists parent + all 9 modules (a missing entry means the api jar silently packages a stale module from the local repo — this bit us on 2026-07-02 when user/data were absent from the list). Update this count whenever a module is added, or the check silently stops catching the very thing it exists for.
 
 ```powershell
 cd 代码\hengde-volunteer-parent
@@ -82,7 +83,7 @@ For `.js` files that are plain scripts, `node --check` is valid syntax verificat
 - Use URL role prefixes: `/v` for volunteers, `/a` for admin, `/e` reserved for enterprise.
 - Keep Jackson behavior in `hengde-volunteer-api` `JacksonConfig`, not `spring.jackson.*` YAML. `LocalDateTime` format is `yyyy-MM-dd HH:mm:ss`; Long serializes as string for JS safety.
 - Use Spring Boot's default HikariCP datasource; do not add Druid.
-- Flyway scripts are centralized in `hengde-volunteer-common/src/main/resources/db/migration/` with one global version sequence. Current sequence is V19.
+- Flyway scripts are centralized in `hengde-volunteer-common/src/main/resources/db/migration/` with one global version sequence. Current sequence is **V31** (V30 = per-slot attendance, V31 = electronic certificates); the next migration must therefore start at V32. Never edit a migration that may already have run anywhere — Flyway `repair` only realigns the schema-history checksum, it does **not** re-execute a version recorded as successful, so the change would silently never reach that database. Add a new version instead (V25 → V26 was split for exactly this reason). Check the directory before picking a version — this line is a pointer, the directory is the source of truth.
 - New status/role constants should live in domain constant holders. Existing service-private aliases may reference the shared constants to avoid broad call-site churn.
 - Use `DistributedLockSupport` for Redisson lock helpers. Multi-lock flows must deduplicate IDs, acquire in ascending order, and release in reverse order.
 

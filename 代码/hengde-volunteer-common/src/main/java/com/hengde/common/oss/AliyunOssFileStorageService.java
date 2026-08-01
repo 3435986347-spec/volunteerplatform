@@ -1,7 +1,9 @@
 package com.hengde.common.oss;
 
+import com.aliyun.oss.ClientBuilderConfiguration;
 import com.aliyun.oss.OSS;
 import com.aliyun.oss.OSSClientBuilder;
+import com.aliyun.oss.model.CannedAccessControlList;
 import com.aliyun.oss.model.ObjectMetadata;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.result.ResultCode;
@@ -14,8 +16,10 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.Date;
 import java.util.UUID;
 
 /**
@@ -56,9 +60,10 @@ public class AliyunOssFileStorageService implements FileStorageService {
         }
         ObjectMetadata meta = new ObjectMetadata();
         meta.setContentLength(file.getSize());
-        if (StringUtils.hasText(file.getContentType())) {
-            meta.setContentType(file.getContentType());
-        }
+        // Content-Type 由扩展名在服务端推导，刻意不采信 file.getContentType()——那来自客户端请求头、
+        // 可伪造成 text/html，被对象存储原样回源后会在桶域名下形成存储型 XSS
+        meta.setContentType(FileValidator.contentTypeOf(file.getOriginalFilename()));
+        applyAcl(meta);
         try (InputStream in = file.getInputStream()) {
             client().putObject(properties.getBucket(), objectName, in, meta);
             return url(objectName);
@@ -79,12 +84,80 @@ public class AliyunOssFileStorageService implements FileStorageService {
         if (StringUtils.hasText(contentType)) {
             meta.setContentType(contentType);
         }
+        applyAcl(meta);
         try {
             client().putObject(properties.getBucket(), objectName, new ByteArrayInputStream(data), meta);
             return url(objectName);
         } catch (Exception e) {
             log.error("[OSS] 上传失败 objectName={}", objectName, e);
             throw new BusinessException(ResultCode.SERVER_ERROR.getCode(), "文件上传失败，请稍后重试");
+        }
+    }
+
+    @Override
+    public String uploadPrivate(byte[] data, String objectKey, String contentType) {
+        if (!properties.isEnabled()) {
+            log.info("[OSS-MOCK] 未启用真实上传（私有），objectKey={} size={}", objectKey, data.length);
+            return objectKey;
+        }
+        ObjectMetadata meta = new ObjectMetadata();
+        meta.setContentLength(data.length);
+        if (StringUtils.hasText(contentType)) {
+            meta.setContentType(contentType);
+        }
+        // 刻意不调 applyAcl：私有对象**无视** public-read 配置，绝不打公共读。
+        // 对象级 ACL **优先于桶级 ACL**（阿里 OSS / 火山 TOS 官方规则一致），
+        // 故即便桶是公共读，Private 对象仍然不可匿名读——但**桶 Policy、CDN 回源、
+        // 其他授权方式仍可能绕过对象 ACL**，最终必须以真实匿名访问验证为准。
+        meta.setObjectAcl(CannedAccessControlList.Private);
+        try {
+            client().putObject(properties.getBucket(), objectKey, new ByteArrayInputStream(data), meta);
+            return objectKey;
+        } catch (Exception e) {
+            log.error("[OSS] 私有上传失败 objectKey={}", objectKey, e);
+            throw new BusinessException(ResultCode.SERVER_ERROR.getCode(), "文件上传失败，请稍后重试");
+        }
+    }
+
+    @Override
+    public byte[] download(String objectKey) {
+        if (!properties.isEnabled()) {
+            // 与上传/签名的 mock 分支一致：未启用真实存储时不假装成功，
+            // 让调用方（证书渲染）拿到明确失败，而不是收到一个空文件当成底图。
+            throw new BusinessException(ResultCode.SERVER_ERROR.getCode(),
+                    "对象存储未启用，无法读取文件：" + objectKey);
+        }
+        try (var obj = client().getObject(properties.getBucket(), objectKey);
+             var in = obj.getObjectContent()) {
+            long max = properties.getMaxDownloadBytes();
+            // 先用服务端返回的 Content-Length 挡一道：超限直接拒，不把它读进堆
+            FileStorageService.requireWithinDownloadLimit(
+                    obj.getObjectMetadata().getContentLength(), max, objectKey);
+            // Content-Length 不可信时（分块/未设）再兜一道：多读 1 字节，超了就说明谎报
+            byte[] data = in.readNBytes((int) Math.min(max + 1, Integer.MAX_VALUE));
+            FileStorageService.requireWithinDownloadLimit(data.length, max, objectKey);
+            return data;
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("[OSS] 读取对象失败 objectKey={}", objectKey, e);
+            throw new BusinessException(ResultCode.SERVER_ERROR.getCode(), "文件读取失败：" + objectKey);
+        }
+    }
+
+    @Override
+    public String presignGet(String objectKey, Duration ttl) {
+        FileStorageService.requireValidTtl(ttl, properties.getPresignMaxTtlSeconds());
+        if (!properties.isEnabled()) {
+            log.info("[OSS-MOCK] 未启用真实签名，objectKey={} ttl={}s", objectKey, ttl.toSeconds());
+            return "[oss-disabled]/" + objectKey + "?expires=" + ttl.toSeconds();
+        }
+        try {
+            Date expiry = new Date(System.currentTimeMillis() + ttl.toMillis());
+            return client().generatePresignedUrl(properties.getBucket(), objectKey, expiry).toString();
+        } catch (Exception e) {
+            log.error("[OSS] 生成签名 URL 失败 objectKey={}", objectKey, e);
+            throw new BusinessException(ResultCode.SERVER_ERROR.getCode(), "文件下载失败，请稍后重试");
         }
     }
 
@@ -126,15 +199,26 @@ public class AliyunOssFileStorageService implements FileStorageService {
         return s.endsWith("/") ? s.substring(0, s.length() - 1) : s;
     }
 
+    /** 按配置给对象打「公共读」ACL；避免桶默认私有导致上传成功但 URL 访问 403 */
+    private void applyAcl(ObjectMetadata meta) {
+        if (properties.isPublicRead()) {
+            meta.setObjectAcl(CannedAccessControlList.PublicRead);
+        }
+    }
+
     /** 懒加载 OSS 客户端：双重检查，保证只构建一次并复用 */
     private OSS client() {
         if (ossClient == null) {
             synchronized (this) {
                 if (ossClient == null) {
+                    ClientBuilderConfiguration conf = new ClientBuilderConfiguration();
+                    conf.setConnectionTimeout(properties.getConnectTimeoutMs());
+                    conf.setSocketTimeout(properties.getReadTimeoutMs());
                     ossClient = new OSSClientBuilder().build(
                             properties.getEndpoint(),
                             properties.getAccessKeyId(),
-                            properties.getAccessKeySecret());
+                            properties.getAccessKeySecret(),
+                            conf);
                 }
             }
         }

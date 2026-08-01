@@ -1,8 +1,13 @@
 package com.hengde.activity;
 
 import com.hengde.activity.dao.ActivityAttendanceMapper;
+import com.hengde.activity.dao.ActivityMapper;
+import com.hengde.activity.dao.ActivitySlotMapper;
+import com.hengde.activity.entity.Activity;
 import com.hengde.activity.entity.ActivityAttendance;
+import com.hengde.activity.entity.ActivitySlot;
 import com.hengde.activity.service.ActivityChangeService;
+import com.hengde.activity.vo.AttendanceChangeVO;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.testsupport.RedisTestcontainersConfig;
@@ -13,6 +18,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 
 import java.time.LocalDateTime;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -34,10 +40,21 @@ class AttendanceChangeServiceTest {
     private static final long REQUESTER = 300L;
     private static final long AUDITOR = 400L;
 
+    /**
+     * 志愿者 id 发号器。原先用 {@code System.nanoTime() % 100000} 造 id，配上固定的 activityId=7001，
+     * 会概率性撞 {@code uk_activity_volunteer} 唯一键——本类曾因此偶发失败（重跑即过）。
+     * 改为进程内单调自增，彻底消除偶发。
+     */
+    private static final AtomicLong VOLUNTEER_SEQ = new AtomicLong(System.nanoTime() % 1_000_000 * 1000);
+
     @Autowired
     private ActivityChangeService changeService;
     @Autowired
     private ActivityAttendanceMapper attendanceMapper;
+    @Autowired
+    private ActivityMapper activityMapper;
+    @Autowired
+    private ActivitySlotMapper slotMapper;
 
     @Test
     void requestChange_doesNotApplyImmediately() {
@@ -158,6 +175,85 @@ class AttendanceChangeServiceTest {
 
     // ---------- helpers ----------
 
+    /**
+     * 审核列表必须带出<b>场次</b>：同一人同活动两场都申请改签到时，两行的「活动 + 姓名 + 变更项」完全相同；
+     * 更要紧的是部长审的是「签到时间改成 X」，没有岗位起止就无从判断 X 合不合理。
+     *
+     * <p>依据 xlsx Row 32 C：「组织部可以在活动后台修改其签到、签退时间和奖励积分，该功能操作需要部长二次审核」。</p>
+     */
+    @Test
+    void list_sameVolunteerTwoSlots_rowsCarrySlotContext() {
+        LocalDateTime day = LocalDateTime.of(2026, 5, 2, 9, 0, 0);
+        Long aid = insertRealActivity(day, day.plusHours(9));
+        Long morning = insertRealSlot(aid, "上午岗", day, day.plusHours(3));
+        Long afternoon = insertRealSlot(aid, "下午岗", day.plusHours(5), day.plusHours(9));
+        Long vid = 8001L + VOLUNTEER_SEQ.incrementAndGet();
+
+        Long attMorning = insertAttendanceOnSlot(aid, morning, vid, day, day.plusHours(3));
+        Long attAfternoon = insertAttendanceOnSlot(aid, afternoon, vid, day.plusHours(5), day.plusHours(9));
+        changeService.requestChange(attMorning, 1, day.plusMinutes(5).toString(), "迟到修正", REQUESTER);
+        changeService.requestChange(attAfternoon, 1, day.plusHours(5).plusMinutes(5).toString(), "迟到修正", REQUESTER);
+
+        var rows = changeService.list(new PageQuery(), 0).getRecords().stream()
+                .filter(r -> vid.equals(r.getVolunteerId())).toList();
+        assertEquals(2, rows.size(), "两场各一条申请");
+        assertEquals(2, rows.stream().map(AttendanceChangeVO::getSlotId).distinct().count(),
+                "两行必须能靠 slotId 区分，否则审核界面上完全一样");
+
+        AttendanceChangeVO m = rows.stream().filter(r -> morning.equals(r.getSlotId())).findFirst().orElseThrow();
+        assertEquals("上午岗", m.getSlotProjectName());
+        assertEquals(day, m.getSlotStartTime(), "要给出岗位起止作为「新值是否合理」的参照");
+        assertEquals(day.plusHours(3), m.getSlotEndTime());
+
+        AttendanceChangeVO a = rows.stream().filter(r -> afternoon.equals(r.getSlotId())).findFirst().orElseThrow();
+        assertEquals("下午岗", a.getSlotProjectName());
+        assertEquals(day.plusHours(5), a.getSlotStartTime());
+    }
+
+    private Long insertRealActivity(LocalDateTime start, LocalDateTime end) {
+        Activity a = new Activity();
+        a.setTitle("变更审核场次用例_" + System.nanoTime());
+        a.setStartTime(start);
+        a.setEndTime(end);
+        a.setStatus(1);
+        a.setRunStatus(0);
+        a.setNeedAudit(0);
+        a.setMinProjects(0);
+        a.setRequireMinJoinCount(0);
+        a.setPointsBase(100);
+        activityMapper.insert(a);
+        return a.getId();
+    }
+
+    private Long insertRealSlot(Long activityId, String name, LocalDateTime start, LocalDateTime end) {
+        ActivitySlot s = new ActivitySlot();
+        s.setActivityId(activityId);
+        s.setProjectName(name);
+        s.setStartTime(start);
+        s.setEndTime(end);
+        s.setNeedCount(10);
+        slotMapper.insert(s);
+        return s.getId();
+    }
+
+    private Long insertAttendanceOnSlot(Long activityId, Long slotId, Long volunteerId,
+                                        LocalDateTime checkIn, LocalDateTime checkOut) {
+        ActivityAttendance att = new ActivityAttendance();
+        att.setActivityId(activityId);
+        att.setSlotId(slotId);
+        att.setVolunteerId(volunteerId);
+        att.setCheckInTime(checkIn);
+        att.setCheckOutTime(checkOut);
+        att.setServiceMinutes(180);
+        att.setAttendStatus(1);
+        att.setPointsAward(100);
+        att.setSecretaryStatus(1);
+        att.setPointsStatus(1);
+        att.setPointsFactor(0);
+        attendanceMapper.insert(att);
+        return att.getId();
+    }
+
     private Long insertAttendance(LocalDateTime checkIn, LocalDateTime checkOut, int minutes, int points) {
         return insertAttendance(checkIn, checkOut, minutes, points, 1);   // 默认积分已发放
     }
@@ -165,7 +261,10 @@ class AttendanceChangeServiceTest {
     private Long insertAttendance(LocalDateTime checkIn, LocalDateTime checkOut, int minutes, int points, int pointsStatus) {
         ActivityAttendance att = new ActivityAttendance();
         att.setActivityId(7001L);
-        att.setVolunteerId(8001L + System.nanoTime() % 100000);
+        // V30：slot_id NOT NULL。本用例只测「考勤变更」逻辑、不涉及真实活动/场次，
+        // 故用与 activityId 同源的合成场次 id（表上无外键，语义与该用例的 7001L 活动一致）。
+        att.setSlotId(7101L);
+        att.setVolunteerId(8001L + VOLUNTEER_SEQ.incrementAndGet());
         att.setCheckInTime(checkIn);
         att.setCheckOutTime(checkOut);
         att.setServiceMinutes(minutes);

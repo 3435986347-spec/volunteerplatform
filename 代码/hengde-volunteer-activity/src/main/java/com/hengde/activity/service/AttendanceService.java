@@ -9,12 +9,14 @@ import com.hengde.activity.constant.EnrollmentStatus;
 import com.hengde.activity.constant.LeaderType;
 import com.hengde.activity.constant.RunStatus;
 import com.hengde.activity.dao.ActivityAttendanceMapper;
+import com.hengde.activity.dao.ActivitySlotMapper;
 import com.hengde.activity.dao.ActivityEnrollmentMapper;
 import com.hengde.activity.dao.ActivityLeaderMapper;
 import com.hengde.activity.dao.ActivityMapper;
 import com.hengde.activity.dao.ActivityViolationMapper;
 import com.hengde.activity.entity.Activity;
 import com.hengde.activity.entity.ActivityAttendance;
+import com.hengde.activity.entity.ActivitySlot;
 import com.hengde.activity.entity.ActivityEnrollment;
 import com.hengde.activity.entity.ActivityLeader;
 import com.hengde.activity.entity.ActivityViolation;
@@ -34,6 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -82,6 +85,8 @@ public class AttendanceService {
     private static final int LEADER_TYPE_VOLUNTEER = LeaderType.VOLUNTEER;
 
     private ActivityMapper activityMapper;
+    private ActivitySlotMapper slotMapper;
+
     private ActivityAttendanceMapper attendanceMapper;
     private ActivityViolationMapper violationMapper;
     private ActivityEnrollmentMapper enrollmentMapper;
@@ -97,6 +102,11 @@ public class AttendanceService {
     @Autowired
     public void setActivityProperties(ActivityProperties activityProperties) {
         this.activityProperties = activityProperties;
+    }
+
+    @Autowired
+    public void setSlotMapper(ActivitySlotMapper slotMapper) {
+        this.slotMapper = slotMapper;
     }
 
     @Autowired
@@ -171,19 +181,26 @@ public class AttendanceService {
      * 志愿者自助签到：校验报名(已通过) + 时间窗口 + GPS 距离 ≤ 半径，落 check_in_*。重复签到拒绝。
      */
     @Transactional(rollbackFor = Exception.class)
-    public void checkIn(Long activityId, Long volunteerId, BigDecimal lat, BigDecimal lng, Integer method) {
+    public void checkIn(Long activityId, Long slotId, Long volunteerId, BigDecimal lat, BigDecimal lng, Integer method) {
         Activity a = requirePublished(activityId);
         if (a.getLat() == null || a.getLng() == null) {
             throw new BusinessException("活动未设置签到坐标，无法签到");
         }
+        ActivitySlot slot = requireSlotOfActivity(activityId, slotId);
         LocalDateTime now = LocalDateTime.now();
-        if (a.getStartTime() != null && now.isBefore(a.getStartTime().minusHours(CHECKIN_OPEN_BEFORE_HOURS))) {
-            throw new BusinessException("未到签到时间（活动开始前 2 小时开放签到）");
+        // 时间窗以【场次】起止为准，不是活动整体起止。
+        //
+        // 需求依据：xlsx Row 32「签到时间：活动时间开始 2 小时就可以签到了」字面写的是「活动时间」，
+        // 其中「活动时间」对某一次参与而言指的就是【他报名的那一场】的起止——
+        // 已于 2026-07-31 由需求方明确拍板「时间窗按场次」。
+        // 若按活动整体起止，9:00–18:00 的活动里只报了 14:00 场的人 7:00 就能签到，与「一场一考勤」自相矛盾。
+        if (slot.getStartTime() != null && now.isBefore(slot.getStartTime().minusHours(CHECKIN_OPEN_BEFORE_HOURS))) {
+            throw new BusinessException("未到签到时间（该时间段开始前 2 小时开放签到）");
         }
-        if (a.getEndTime() != null && now.isAfter(a.getEndTime().plusHours(CHECKOUT_WINDOW_AFTER_HOURS))) {
+        if (slot.getEndTime() != null && now.isAfter(slot.getEndTime().plusHours(CHECKOUT_WINDOW_AFTER_HOURS))) {
             throw new BusinessException("签到已截止");
         }
-        requireApprovedEnrollment(activityId, volunteerId, "您未报名该活动或报名未通过，无法签到");
+        requireApprovedEnrollmentOfSlot(activityId, slotId, volunteerId, "您未报名该时间段或报名未通过，无法签到");
 
         // 服务层兜底范围守卫：Haversine 三角函数有周期性，lat+360/lng+360 会让距离≈0 从而绕过半径校验。
         // 即便 CheckInDTO 已加 Bean Validation，service 入口（测试/未来内部调用）也必须自己拦。
@@ -196,7 +213,7 @@ public class AttendanceService {
         }
         int m = Integer.valueOf(CHECKIN_SCAN).equals(method) ? CHECKIN_SCAN : CHECKIN_AUTO;
 
-        ActivityAttendance att = findAttendance(activityId, volunteerId);
+        ActivityAttendance att = findAttendance(activityId, slotId, volunteerId);
         if (att != null) {
             if (att.getCheckInTime() != null) {
                 throw new BusinessException("您已签到");
@@ -212,7 +229,7 @@ public class AttendanceService {
             attendanceMapper.updateById(att);
             return;
         }
-        att = newAttendance(activityId, volunteerId);
+        att = newAttendance(activityId, slotId, volunteerId);
         att.setCheckInTime(now);
         att.setCheckInMethod(m);
         att.setCheckInBy(volunteerId);
@@ -222,7 +239,7 @@ public class AttendanceService {
         try {
             attendanceMapper.insert(att);
         } catch (DuplicateKeyException e) {
-            // uk_activity_volunteer：并发重复签到
+            // uk_activity_volunteer_slot：并发重复签到（同一场次）
             throw new BusinessException("您已签到");
         }
     }
@@ -231,17 +248,17 @@ public class AttendanceService {
 
     /** 标记到位状态：缺席 → 时长 0 + 自动违规；请假 → 时长 0；正常/迟到 → 时长留待签退算。 */
     @Transactional(rollbackFor = Exception.class)
-    public void markAttendStatus(Long activityId, Long volunteerId, Integer status, Long operatorId) {
+    public void markAttendStatus(Long activityId, Long slotId, Long volunteerId, Integer status, Long operatorId) {
         if (status == null || status < ATTEND_NORMAL || status > ATTEND_ABSENT) {
             throw new BusinessException("到位状态非法（1正常/2请假/3迟到/4缺席）");
         }
         requirePublished(activityId);
-        requireApprovedEnrollment(activityId, volunteerId, "该志愿者未报名或报名未通过");
+        requireApprovedEnrollmentOfSlot(activityId, slotId, volunteerId, "该志愿者未报名该时间段或报名未通过");
 
-        ActivityAttendance att = findAttendance(activityId, volunteerId);
+        ActivityAttendance att = findAttendance(activityId, slotId, volunteerId);
         boolean isNew = att == null;
         if (isNew) {
-            att = newAttendance(activityId, volunteerId);
+            att = newAttendance(activityId, slotId, volunteerId);
         }
         att.setAttendStatus(status);
         if (Integer.valueOf(ATTEND_ABSENT).equals(status) || Integer.valueOf(ATTEND_LEAVE).equals(status)) {
@@ -251,7 +268,7 @@ public class AttendanceService {
             try {
                 attendanceMapper.insert(att);
             } catch (DuplicateKeyException e) {
-                att = findAttendance(activityId, volunteerId);
+                att = findAttendance(activityId, slotId, volunteerId);
                 att.setAttendStatus(status);
                 if (Integer.valueOf(ATTEND_ABSENT).equals(status) || Integer.valueOf(ATTEND_LEAVE).equals(status)) {
                     att.setServiceMinutes(0);
@@ -262,13 +279,13 @@ public class AttendanceService {
             attendanceMapper.updateById(att);
         }
         if (Integer.valueOf(ATTEND_ABSENT).equals(status)) {
-            autoAbsentViolation(activityId, volunteerId, operatorId);
+            autoAbsentViolation(activityId, slotId, volunteerId, operatorId);
         }
     }
 
     /** 负责人记录违规，返回违规记录 id。 */
     @Transactional(rollbackFor = Exception.class)
-    public Long recordViolation(Long activityId, Long volunteerId, Integer type, String description, Long operatorId) {
+    public Long recordViolation(Long activityId, Long slotId, Long volunteerId, Integer type, String description, Long operatorId) {
         // 自由文本=记录明细：必填且 ≤512（与 DB activity_violation.description 对齐，防超长截断 → 500）。
         // 注：缺席自动违规走 autoAbsentViolation 直插、不经此方法，故此处的「必填」不影响自动违规。
         if (description == null || description.isBlank()) {
@@ -283,9 +300,10 @@ public class AttendanceService {
             throw new BusinessException("违规类型不合法（0其他 / 1~4）");
         }
         requirePublished(activityId);
-        requireApprovedEnrollment(activityId, volunteerId, "该志愿者未报名或报名未通过");
+        requireApprovedEnrollmentOfSlot(activityId, slotId, volunteerId, "该志愿者未报名该时间段或报名未通过");
         ActivityViolation v = new ActivityViolation();
         v.setActivityId(activityId);
+        v.setSlotId(slotId);
         v.setVolunteerId(volunteerId);
         v.setViolationType(type == null ? 0 : type);
         v.setDescription(description);
@@ -318,9 +336,25 @@ public class AttendanceService {
                         .eq(ActivityLeader::getLeaderType, LEADER_TYPE_VOLUNTEER))
                 .stream().map(ActivityLeader::getVolunteerId).filter(Objects::nonNull).collect(Collectors.toSet());
         Map<Long, String> leaderNames = volunteerQueryService.listNamesByIds(volunteerLeaderIds);
+        // V30：违规记在场次上，明细页必须带得出是哪一场，否则多场次活动里同名同类型的两条完全无法区分
+        Map<Long, ActivitySlot> slotById = new HashMap<>();
+        List<Long> slotIds = rows.stream().map(ActivityViolation::getSlotId)
+                .filter(Objects::nonNull).distinct().toList();
+        if (!slotIds.isEmpty()) {
+            for (ActivitySlot s : slotMapper.selectBatchIds(slotIds)) {
+                slotById.put(s.getId(), s);
+            }
+        }
         return rows.stream().map(v -> {
             ViolationRecordVO r = new ViolationRecordVO();
             r.setId(v.getId());
+            r.setSlotId(v.getSlotId());
+            ActivitySlot s = slotById.get(v.getSlotId());
+            if (s != null) {
+                r.setSlotProjectName(s.getProjectName());
+                r.setSlotStartTime(s.getStartTime());
+                r.setSlotEndTime(s.getEndTime());
+            }
             r.setVolunteerId(v.getVolunteerId());
             r.setVolunteerName(offenderNames.get(v.getVolunteerId()));
             r.setViolationType(v.getViolationType());
@@ -341,14 +375,17 @@ public class AttendanceService {
      * @return 实际签退人数
      */
     @Transactional(rollbackFor = Exception.class)
-    public int bulkCheckOut(Long activityId, List<Long> volunteerIds, Long operatorId) {
+    public int bulkCheckOut(Long activityId, Long slotId, List<Long> volunteerIds, Long operatorId) {
         Activity a = requirePublished(activityId);
+        ActivitySlot slot = requireSlotOfActivity(activityId, slotId);
         LocalDateTime now = LocalDateTime.now();
-        if (a.getEndTime() != null && now.isAfter(a.getEndTime().plusHours(CHECKOUT_WINDOW_AFTER_HOURS))) {
-            throw new BusinessException("已过签退时间（活动结束 2 小时内签退）");
+        // 同 checkIn：时间窗按场次（需求方 2026-07-31 拍板，理由见 checkIn 注释）
+        if (slot.getEndTime() != null && now.isAfter(slot.getEndTime().plusHours(CHECKOUT_WINDOW_AFTER_HOURS))) {
+            throw new BusinessException("已过签退时间（该时间段结束 2 小时内签退）");
         }
         var wrapper = Wrappers.<ActivityAttendance>lambdaQuery()
                 .eq(ActivityAttendance::getActivityId, activityId)
+                .eq(ActivityAttendance::getSlotId, slotId)
                 .isNotNull(ActivityAttendance::getCheckInTime)
                 .isNull(ActivityAttendance::getCheckOutTime);
         if (volunteerIds != null && !volunteerIds.isEmpty()) {
@@ -381,14 +418,16 @@ public class AttendanceService {
      * {@link #bulkCheckOut} 互相覆盖 checkOutTime/serviceMinutes/checkOutBy。</p>
      */
     @Transactional(rollbackFor = Exception.class)
-    public void selfCheckOut(Long activityId, Long volunteerId, BigDecimal lat, BigDecimal lng) {
+    public void selfCheckOut(Long activityId, Long slotId, Long volunteerId, BigDecimal lat, BigDecimal lng) {
         Activity a = requirePublished(activityId);
         if (a.getLat() == null || a.getLng() == null) {
             throw new BusinessException("活动未设置签到坐标，无法签退");
         }
+        ActivitySlot slot = requireSlotOfActivity(activityId, slotId);
         LocalDateTime now = LocalDateTime.now();
-        if (a.getEndTime() != null && now.isAfter(a.getEndTime().plusHours(CHECKOUT_WINDOW_AFTER_HOURS))) {
-            throw new BusinessException("已过签退时间（活动结束 2 小时内签退）");
+        // 同 checkIn：时间窗按场次（需求方 2026-07-31 拍板，理由见 checkIn 注释）
+        if (slot.getEndTime() != null && now.isAfter(slot.getEndTime().plusHours(CHECKOUT_WINDOW_AFTER_HOURS))) {
+            throw new BusinessException("已过签退时间（该时间段结束 2 小时内签退）");
         }
         requireValidCoord(lat, lng);
         int radius = a.getCheckInRadiusM() == null ? 500 : a.getCheckInRadiusM();
@@ -396,7 +435,7 @@ public class AttendanceService {
         if (dist > radius) {
             throw new BusinessException("您距活动地点约 " + Math.round(dist) + " 米，超出签退范围（" + radius + " 米）");
         }
-        ActivityAttendance att = findAttendance(activityId, volunteerId);
+        ActivityAttendance att = findAttendance(activityId, slotId, volunteerId);
         if (att == null || att.getCheckInTime() == null) {
             throw new BusinessException("您还未签到，无法签退");
         }
@@ -406,6 +445,7 @@ public class AttendanceService {
         int minutes = computeMinutes(att, now);
         int affected = attendanceMapper.update(null, Wrappers.<ActivityAttendance>lambdaUpdate()
                 .eq(ActivityAttendance::getActivityId, activityId)
+                .eq(ActivityAttendance::getSlotId, slotId)
                 .eq(ActivityAttendance::getVolunteerId, volunteerId)
                 .isNull(ActivityAttendance::getCheckOutTime)
                 .isNotNull(ActivityAttendance::getCheckInTime)
@@ -421,17 +461,18 @@ public class AttendanceService {
     // ---------- 确认到家 / 双向评价 / 活动总结（第 2 批） ----------
 
     /**
-     * 志愿者确认到家：活动结束后可点，记录时间与坐标。
-     * 超时（结束 1h 后）不在此拒绝——仅由视图层派生标记，故此处只要求活动已结束。
+     * 志愿者确认到家：本人所在<b>场次</b>结束后可点，记录时间与坐标。
+     * 超时（结束 1h 后）不在此拒绝——仅由视图层派生标记，故此处只要求该场次已结束。
      */
     @Transactional(rollbackFor = Exception.class)
-    public void confirmHome(Long activityId, Long volunteerId, BigDecimal lat, BigDecimal lng) {
+    public void confirmHome(Long activityId, Long slotId, Long volunteerId, BigDecimal lat, BigDecimal lng) {
         Activity a = requirePublished(activityId);
-        if (!isEnded(a)) {
-            throw new BusinessException("活动尚未结束，暂不能确认到家");
+        ActivitySlot slot = requireSlotOfActivity(activityId, slotId);
+        if (!isSlotEnded(a, slot)) {
+            throw new BusinessException("该时间段尚未结束，暂不能确认到家");
         }
         requireValidCoord(lat, lng);
-        ActivityAttendance att = findAttendance(activityId, volunteerId);
+        ActivityAttendance att = findAttendance(activityId, slotId, volunteerId);
         if (att == null || att.getCheckInTime() == null) {
             throw new BusinessException("您未签到该活动，无需确认到家");
         }
@@ -442,19 +483,21 @@ public class AttendanceService {
     }
 
     /**
-     * 志愿者评价活动 + 负责人：活动结束后、本人有考勤记录方可，写本人 attendance 行的评分/留言（可覆盖）。
+     * 志愿者评价活动 + 负责人：本人所在<b>场次</b>结束后、本人有考勤记录方可，
+     * 写本人该场次 attendance 行的评分/留言（可覆盖）。
      */
     @Transactional(rollbackFor = Exception.class)
-    public void submitReview(Long activityId, Long volunteerId, Integer activityScore, Integer leaderScore, String comment) {
+    public void submitReview(Long activityId, Long slotId, Long volunteerId, Integer activityScore, Integer leaderScore, String comment) {
         Activity a = requirePublished(activityId);
-        if (!isEnded(a)) {
-            throw new BusinessException("活动尚未结束，暂不能评价");
+        ActivitySlot slot = requireSlotOfActivity(activityId, slotId);
+        if (!isSlotEnded(a, slot)) {
+            throw new BusinessException("该时间段尚未结束，暂不能评价");
         }
         requireScore(activityScore, "活动评分");
         requireScore(leaderScore, "负责人评分");
         // 要求「实际签到」才能评价：负责人评价/标记请假缺席都会补建考勤行（无 check_in_time），
         // 仅判 att != null 会让未到场者也能评价，故以 check_in_time 作实际参加凭据。
-        ActivityAttendance att = findAttendance(activityId, volunteerId);
+        ActivityAttendance att = findAttendance(activityId, slotId, volunteerId);
         if (att == null || att.getCheckInTime() == null) {
             throw new BusinessException("您未实际参加（签到）该活动，无法评价");
         }
@@ -468,18 +511,18 @@ public class AttendanceService {
      * 负责人评价志愿者：写该志愿者 attendance 行的 leader_evaluation（无行则补建，鉴权在 controller）。
      */
     @Transactional(rollbackFor = Exception.class)
-    public void leaderEvaluate(Long activityId, Long volunteerId, String evaluation, Long operatorId) {
+    public void leaderEvaluate(Long activityId, Long slotId, Long volunteerId, String evaluation, Long operatorId) {
         requirePublished(activityId);
-        requireApprovedEnrollment(activityId, volunteerId, "该志愿者未报名或报名未通过");
-        ActivityAttendance att = findAttendance(activityId, volunteerId);
+        requireApprovedEnrollmentOfSlot(activityId, slotId, volunteerId, "该志愿者未报名该时间段或报名未通过");
+        ActivityAttendance att = findAttendance(activityId, slotId, volunteerId);
         if (att == null) {
-            att = newAttendance(activityId, volunteerId);
+            att = newAttendance(activityId, slotId, volunteerId);
             att.setLeaderEvaluation(evaluation);
             try {
                 attendanceMapper.insert(att);
                 return;
             } catch (DuplicateKeyException e) {
-                att = findAttendance(activityId, volunteerId);
+                att = findAttendance(activityId, slotId, volunteerId);
             }
         }
         att.setLeaderEvaluation(evaluation);
@@ -560,54 +603,101 @@ public class AttendanceService {
 
     // ---------- 内部辅助 ----------
 
+    /**
+     * 负责人考勤名单——<b>一行 = 一个「志愿者 × 场次」</b>（V30）。
+     *
+     * <p><b>需求来源</b>：xlsx Row 32 C 逐字「显示<b>活动场次</b>，活动名称，<b>活动时间段</b>，参加志愿者人数……
+     * 或者负责人点击志愿者<b>是否到位</b>……<b>是否违规</b>」——负责人页本就按场次组织；
+     * 原型 P15「报名详情」同一人多行、每行各带岗位时间与签到签退，且可「筛选：全部时间段」。</p>
+     *
+     * <p><b>旧版为什么是错的</b>：报名人按 {@code distinct()} 去重成一人一行，考勤又只按 {@code volunteerId} 索引，
+     * 于是多场次活动里同一人只出一行、显示的是<b>查询顺序决定的任意一场</b>的签到签退，另一场被静默丢弃；
+     * 违规数则是<b>整个活动</b>的合计，上午场没违规的人也会显示「违规 1 次」。
+     * 负责人据此点「是否到位」，标的还是错的那一场。</p>
+     */
     private List<AttendanceRosterVO> buildRoster(Long activityId) {
-        // 名单 = 已通过报名的志愿者（去重）
+        // 名单 = 已通过的报名行；一人报两场 = 两行，不再去重
         List<ActivityEnrollment> enrolls = enrollmentMapper.selectList(Wrappers.<ActivityEnrollment>lambdaQuery()
                 .eq(ActivityEnrollment::getActivityId, activityId)
                 .eq(ActivityEnrollment::getStatus, ENROLL_APPROVED));
-        List<Long> volunteerIds = enrolls.stream().map(ActivityEnrollment::getVolunteerId).distinct().toList();
-        if (volunteerIds.isEmpty()) {
+        if (enrolls.isEmpty()) {
             return List.of();
         }
+        List<Long> volunteerIds = enrolls.stream().map(ActivityEnrollment::getVolunteerId).distinct().toList();
         Map<Long, VolunteerDisplayView> displayById = volunteerQueryService.listDisplayByIds(volunteerIds);
-        Map<Long, ActivityAttendance> attByVol = new HashMap<>();
+
+        Map<Long, ActivitySlot> slotById = new HashMap<>();
+        List<Long> slotIds = enrolls.stream().map(ActivityEnrollment::getSlotId)
+                .filter(Objects::nonNull).distinct().toList();
+        if (!slotIds.isEmpty()) {
+            for (ActivitySlot s : slotMapper.selectBatchIds(slotIds)) {
+                slotById.put(s.getId(), s);
+            }
+        }
+
+        Map<String, ActivityAttendance> attBySlot = new HashMap<>();
         for (ActivityAttendance att : attendanceMapper.selectList(Wrappers.<ActivityAttendance>lambdaQuery()
                 .eq(ActivityAttendance::getActivityId, activityId)
                 .in(ActivityAttendance::getVolunteerId, volunteerIds))) {
-            attByVol.put(att.getVolunteerId(), att);
+            attBySlot.put(rosterKey(att.getSlotId(), att.getVolunteerId()), att);
         }
-        Map<Long, Integer> violationCntByVol = new HashMap<>();
+        Map<String, Integer> violationCntBySlot = new HashMap<>();
         for (ActivityViolation v : violationMapper.selectList(Wrappers.<ActivityViolation>lambdaQuery()
                 .eq(ActivityViolation::getActivityId, activityId)
                 .in(ActivityViolation::getVolunteerId, volunteerIds))) {
-            violationCntByVol.merge(v.getVolunteerId(), 1, Integer::sum);
+            violationCntBySlot.merge(rosterKey(v.getSlotId(), v.getVolunteerId()), 1, Integer::sum);
         }
-        return volunteerIds.stream().map(vid -> {
-            AttendanceRosterVO r = new AttendanceRosterVO();
-            r.setVolunteerId(vid);
-            VolunteerDisplayView d = displayById.get(vid);
-            if (d != null) {
-                r.setRealName(d.realName());
-                r.setPhone(d.phone());
-                r.setSchool(d.school());
-            }
-            ActivityAttendance att = attByVol.get(vid);
-            if (att != null) {
-                r.setCheckInTime(att.getCheckInTime());
-                r.setCheckInMethod(att.getCheckInMethod());
-                r.setCheckOutTime(att.getCheckOutTime());
-                r.setAttendStatus(att.getAttendStatus());
-                r.setServiceMinutes(att.getServiceMinutes());
-            }
-            r.setViolationCount(violationCntByVol.getOrDefault(vid, 0));
-            return r;
-        }).toList();
+
+        return enrolls.stream()
+                // 按「场次开始时间 → 志愿者 id」排，负责人现场是一个时间段一个时间段点名的
+                .sorted(Comparator
+                        .comparing((ActivityEnrollment e) -> {
+                            ActivitySlot s = slotById.get(e.getSlotId());
+                            return s == null || s.getStartTime() == null ? LocalDateTime.MAX : s.getStartTime();
+                        })
+                        .thenComparing(e -> e.getSlotId() == null ? Long.MAX_VALUE : e.getSlotId())
+                        .thenComparing(ActivityEnrollment::getVolunteerId))
+                .map(e -> {
+                    Long vid = e.getVolunteerId();
+                    AttendanceRosterVO r = new AttendanceRosterVO();
+                    r.setVolunteerId(vid);
+                    r.setSlotId(e.getSlotId());
+                    ActivitySlot s = slotById.get(e.getSlotId());
+                    if (s != null) {
+                        r.setSlotProjectName(s.getProjectName());
+                        r.setSlotStartTime(s.getStartTime());
+                        r.setSlotEndTime(s.getEndTime());
+                    }
+                    VolunteerDisplayView d = displayById.get(vid);
+                    if (d != null) {
+                        r.setRealName(d.realName());
+                        r.setPhone(d.phone());
+                        r.setSchool(d.school());
+                    }
+                    ActivityAttendance att = attBySlot.get(rosterKey(e.getSlotId(), vid));
+                    if (att != null) {
+                        r.setCheckInTime(att.getCheckInTime());
+                        r.setCheckInMethod(att.getCheckInMethod());
+                        r.setCheckOutTime(att.getCheckOutTime());
+                        r.setAttendStatus(att.getAttendStatus());
+                        r.setServiceMinutes(att.getServiceMinutes());
+                    }
+                    r.setViolationCount(violationCntBySlot.getOrDefault(rosterKey(e.getSlotId(), vid), 0));
+                    return r;
+                }).toList();
+    }
+
+    private static String rosterKey(Long slotId, Long volunteerId) {
+        return slotId + ":" + volunteerId;
     }
 
     /** 缺席自动记一条违规（已存在缺席违规则不重复）。 */
-    private void autoAbsentViolation(Long activityId, Long volunteerId, Long operatorId) {
+    private void autoAbsentViolation(Long activityId, Long slotId, Long volunteerId, Long operatorId) {
+        // V30：缺席违规按【场次】判重——同一活动缺席了上午场，不代表下午场也缺席，
+        // 若仍按活动判重，第二场的缺席会被当成「已记过」而漏记。
         Long exists = violationMapper.selectCount(Wrappers.<ActivityViolation>lambdaQuery()
                 .eq(ActivityViolation::getActivityId, activityId)
+                .eq(ActivityViolation::getSlotId, slotId)
                 .eq(ActivityViolation::getVolunteerId, volunteerId)
                 .eq(ActivityViolation::getViolationType, VIOLATION_ABSENT));
         if (exists != null && exists > 0) {
@@ -615,6 +705,7 @@ public class AttendanceService {
         }
         ActivityViolation v = new ActivityViolation();
         v.setActivityId(activityId);
+        v.setSlotId(slotId);
         v.setVolunteerId(volunteerId);
         v.setViolationType(VIOLATION_ABSENT);
         v.setDescription("缺席（系统自动记录）");
@@ -636,9 +727,10 @@ public class AttendanceService {
         return minutes < 0 ? 0 : (int) minutes;
     }
 
-    private ActivityAttendance newAttendance(Long activityId, Long volunteerId) {
+    private ActivityAttendance newAttendance(Long activityId, Long slotId, Long volunteerId) {
         ActivityAttendance att = new ActivityAttendance();
         att.setActivityId(activityId);
+        att.setSlotId(slotId);
         att.setVolunteerId(volunteerId);
         att.setSecretaryStatus(0);
         att.setPointsStatus(0);
@@ -646,11 +738,46 @@ public class AttendanceService {
         return att;
     }
 
-    private ActivityAttendance findAttendance(Long activityId, Long volunteerId) {
+    private ActivityAttendance findAttendance(Long activityId, Long slotId, Long volunteerId) {
         return attendanceMapper.selectOne(Wrappers.<ActivityAttendance>lambdaQuery()
                 .eq(ActivityAttendance::getActivityId, activityId)
+                .eq(ActivityAttendance::getSlotId, slotId)
                 .eq(ActivityAttendance::getVolunteerId, volunteerId)
                 .last("limit 1"));
+    }
+
+    /**
+     * 取本活动下的场次并校验归属。
+     *
+     * <p>场次必须属于该活动——否则传一个别的活动的 slotId 就能在本活动下建出一条
+     * 指向他人场次的考勤，唯一键也拦不住（它只保证 activity+slot+volunteer 组合不重复）。</p>
+     */
+    private ActivitySlot requireSlotOfActivity(Long activityId, Long slotId) {
+        if (slotId == null) {
+            throw new BusinessException("请选择活动时间段");
+        }
+        ActivitySlot slot = slotMapper.selectById(slotId);
+        if (slot == null || !activityId.equals(slot.getActivityId())) {
+            throw new BusinessException("活动时间段不存在");
+        }
+        return slot;
+    }
+
+    /**
+     * 报名校验下沉到场次：必须报了<b>这一场</b>且已通过。
+     *
+     * <p>依据原型 P15——报名详情每一行就是「一个报名场次 + 该场次的签到签退」，
+     * 报了上午场的人不应该能签下午场的到。</p>
+     */
+    private void requireApprovedEnrollmentOfSlot(Long activityId, Long slotId, Long volunteerId, String message) {
+        Long c = enrollmentMapper.selectCount(Wrappers.<ActivityEnrollment>lambdaQuery()
+                .eq(ActivityEnrollment::getActivityId, activityId)
+                .eq(ActivityEnrollment::getSlotId, slotId)
+                .eq(ActivityEnrollment::getVolunteerId, volunteerId)
+                .eq(ActivityEnrollment::getStatus, ENROLL_APPROVED));
+        if (c == null || c == 0) {
+            throw new BusinessException(message);
+        }
     }
 
     private Activity requirePublished(Long activityId) {
@@ -661,12 +788,39 @@ public class AttendanceService {
         return a;
     }
 
-    /** 活动是否已结束：负责人点过结束（run_status=2）或已过 end_time。 */
+    /**
+     * 整个活动是否已结束：负责人点过结束（run_status=2）或已过活动 end_time。
+     *
+     * <p>仅用于<b>活动级</b>动作（上传总结）。志愿者个人的「确认到家 / 评价」按场次判，见 {@link #isSlotEnded}。</p>
+     */
     private boolean isEnded(Activity a) {
         if (Integer.valueOf(RUN_ENDED).equals(a.getRunStatus())) {
             return true;
         }
         return a.getEndTime() != null && LocalDateTime.now().isAfter(a.getEndTime());
+    }
+
+    /**
+     * 某人「这一场」是否已结束——确认到家 / 评价的开门条件。
+     *
+     * <p><b>需求依据</b>：xlsx Row 32 C「活动结束后点击活动结束，在<b>活动结束一小时内</b>，志愿者需要点击确认到家，
+     * 可对志愿者进行评价」。「活动结束」有两条到达路径，本方法都认：</p>
+     * <ol>
+     *   <li><b>负责人点「活动结束」</b>（{@code run_status=2}）——负责人是<b>活动级</b>的
+     *       （Row 32 D 未提按场次指派，故 {@code activity_leader} 保持活动粒度），他点一次即整个活动结束，所有场次一并结束；</li>
+     *   <li><b>自然过点</b>——按<b>本场次</b>的 {@code end_time}，不是活动整体 {@code end_time}。
+     *       依据 2026-07-31 拍板的「时间窗按场次」：9:00–18:00 的活动里，上午 9:00–12:00 那场的人
+     *       12 点就该能确认到家，不该被扣到下午场散场之后；「结束一小时内」对他而言也才有意义。</li>
+     * </ol>
+     *
+     * <p>场次未设 {@code end_time} 时退回活动 {@code end_time}，与旧行为一致。</p>
+     */
+    private boolean isSlotEnded(Activity a, ActivitySlot slot) {
+        if (Integer.valueOf(RUN_ENDED).equals(a.getRunStatus())) {
+            return true;
+        }
+        LocalDateTime end = slot.getEndTime() != null ? slot.getEndTime() : a.getEndTime();
+        return end != null && LocalDateTime.now().isAfter(end);
     }
 
     /** 评分范围守卫：必须 1~5。 */

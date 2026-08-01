@@ -16,6 +16,7 @@
 		<module>../hengde-volunteer-activity</module>
 		<module>../hengde-volunteer-user</module>
 		<module>../hengde-volunteer-data</module>
+		<module>../hengde-volunteer-honor</module>
 		<module>../hengde-volunteer-api</module>
 	</modules>
 	<groupId>com.hengde</groupId>
@@ -64,6 +65,10 @@
 
 		<!-- SMS（火山引擎 all-in-one SDK，短信能力在 com.volcengine.service.sms；无独立短信 artifact） -->
 		<volcengine-sms.version>1.0.271</volcengine-sms.version>
+
+		<!-- 实名认证（腾讯云身份证二要素核验 IdCardVerification）。
+		     腾讯云按产品拆分了 artifact，这里只引 faceid 子包，不引上百 MB 的 all-in-one -->
+		<tencentcloud-faceid.version>3.1.1281</tencentcloud-faceid.version>
 
 		<!-- OSS (Object Storage) -->
 		<aliyun-oss.version>3.18.1</aliyun-oss.version>
@@ -256,6 +261,13 @@
 					<groupId>com.volcengine</groupId>
 					<artifactId>volc-sdk-java</artifactId>
 					<version>${volcengine-sms.version}</version>
+				</dependency>
+
+				<!-- ===== 实名认证（腾讯云 faceid 身份证二要素） ===== -->
+				<dependency>
+					<groupId>com.tencentcloudapi</groupId>
+					<artifactId>tencentcloud-sdk-java-faceid</artifactId>
+					<version>${tencentcloud-faceid.version}</version>
 				</dependency>
 
 				<!-- ===== OSS ===== -->

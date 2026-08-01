@@ -373,6 +373,27 @@ public class ActivityService {
                 .eq(ActivitySlot::getActivityId, id));
     }
 
+    /**
+     * 取消活动：保留报名、时间段与考勤链路，仅将活动置为已取消。
+     */
+    @Transactional
+    public void cancel(Long id) {
+        Activity activity = activityMapper.selectById(id);
+        if (activity == null || isUnderReview(activity)) {
+            throw new BusinessException("活动不存在");
+        }
+        if (Integer.valueOf(STATUS_FINISHED).equals(activity.getStatus())) {
+            throw new BusinessException("已结束的活动不可取消");
+        }
+        if (Integer.valueOf(STATUS_CANCELLED).equals(activity.getStatus())) {
+            throw new BusinessException("活动已取消");
+        }
+        activityMapper.update(null, Wrappers.<Activity>lambdaUpdate()
+                .eq(Activity::getId, id)
+                .set(Activity::getStatus, STATUS_CANCELLED)
+                .set(Activity::getUpdateTime, LocalDateTime.now()));
+    }
+
     /** 该活动是否存在报名记录（任意状态，含已取消/已拒绝——它们仍引用 slot 且出现在报名列表/导出）。 */
     private boolean hasEnrollment(Long activityId) {
         Long count = activityEnrollmentMapper.selectCount(Wrappers.<ActivityEnrollment>lambdaQuery()

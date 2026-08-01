@@ -512,6 +512,7 @@ class EnrollmentServiceTest {
         Long histAid = insertActivity(a -> a.setNeedAudit(0));
         ActivityAttendance att = new ActivityAttendance();
         att.setActivityId(histAid);
+        att.setSlotId(insertSlot(histAid, A_START, A_START.plusHours(2)));   // V30
         att.setVolunteerId(volunteerId);
         att.setServiceMinutes(minutes);
         att.setSecretaryStatus(1);

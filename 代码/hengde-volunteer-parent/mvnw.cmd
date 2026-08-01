@@ -88,11 +88,16 @@ if (-not (Test-Path -Path $MAVEN_M2_PATH)) {
     New-Item -Path $MAVEN_M2_PATH -ItemType Directory | Out-Null
 }
 
+# .Target 只有当 .m2 是符号链接/联接点时才有内容；普通目录下它可能是 $null，
+# 也可能是 Count=0 的空集合（取决于 PowerShell 版本与文件系统）。
+# 原来直接取 [0]：碰到 $null 的那种就抛「Cannot index into a null array」，
+# 整个 wrapper 起不来。先取出来判空，三种形态一起兜住。
 $MAVEN_WRAPPER_DISTS = $null
-if ((Get-Item $MAVEN_M2_PATH).Target[0] -eq $null) {
+$MAVEN_M2_TARGET = (Get-Item $MAVEN_M2_PATH).Target
+if ($null -eq $MAVEN_M2_TARGET -or @($MAVEN_M2_TARGET).Count -eq 0 -or [string]::IsNullOrEmpty(@($MAVEN_M2_TARGET)[0])) {
   $MAVEN_WRAPPER_DISTS = "$MAVEN_M2_PATH/wrapper/dists"
 } else {
-  $MAVEN_WRAPPER_DISTS = (Get-Item $MAVEN_M2_PATH).Target[0] + "/wrapper/dists"
+  $MAVEN_WRAPPER_DISTS = @($MAVEN_M2_TARGET)[0] + "/wrapper/dists"
 }
 
 $MAVEN_HOME_PARENT = "$MAVEN_WRAPPER_DISTS/$distributionUrlNameMain"

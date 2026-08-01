@@ -4,6 +4,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 /**
@@ -17,6 +18,16 @@ import lombok.Data;
  */
 @Data
 public class ViolationDTO {
+
+    /**
+     * 场次 activity_slot.id（V30 新增，必填）。
+     *
+     * <p>考勤是场次粒度（原型 P15：每行「岗位时间 + 签到 + 签退」），
+     * 故所有针对某人某次考勤的操作都要指明是哪一场。</p>
+     */
+    @NotNull(message = "场次不能为空")
+    private Long slotId;
+
 
     /** 类型 0其他/1玩手机/2服装不合格/3早退/4长时间交头接耳（可选，缺省 0；缺席=5 系统自动、不可手工记） */
     @Min(value = 0, message = "违规类型不合法")

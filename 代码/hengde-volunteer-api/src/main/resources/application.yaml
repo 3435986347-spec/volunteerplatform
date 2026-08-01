@@ -59,8 +59,16 @@ hengde:
     sign-name: 雷州市恒德爱心公益协会
     sms-account: ${SMS_ACCOUNT:}
     region: cn-north-1
+    # 验证码模板：键 = 场景值（见 SmsScene），未单独配置的场景自动回退到 verify-code 兜底模板。
+    # 每条模板的变量名都必须是 code（火山控制台模板正文里写 ${code}），否则占位替换不上。
+    # 分场景配是为了文案贴切——否则注册/换绑手机号也会收到「您正在登录」这类错配文案。
     templates:
-      verify-code: ${SMS_TPL_VERIFY:}  # 火山验证码模板 ID，模板占位需用 ${code}
+      verify-code: ${SMS_TPL_VERIFY:}                    # 兜底：场景没单独配就用它
+      register: ${SMS_TPL_REGISTER:}                     # 志愿者注册
+      login: ${SMS_TPL_LOGIN:}                           # 手机号+验证码登录
+      volunteer-password-reset: ${SMS_TPL_PWD_RESET:}    # 志愿者忘记密码
+      reset-password: ${SMS_TPL_ADMIN_PWD_RESET:}        # 管理端找回密码
+      change-phone: ${SMS_TPL_CHANGE_PHONE:}             # 换绑手机号
   oss:
     provider: ${OSS_PROVIDER:aliyun}     # 存储厂商：aliyun / volc（火山引擎 TOS）；恒德实例置 volc
     enabled: ${OSS_ENABLED:false}        # dev/test 默认关，不真上传只打日志返回占位 URL；生产置 true
@@ -70,12 +78,26 @@ hengde:
     access-key-id: ${OSS_AK:}
     access-key-secret: ${OSS_SK:}
     url-prefix: ${OSS_URL_PREFIX:}       # 绑定 CDN/自定义域名时填，留空按「桶名+endpoint」拼默认域名
+    # 上传对象显式设「公共读」ACL：这些 URL 由小程序/后台匿名访问，桶默认私有时不设会 403。
+    # 桶本身已公共读时重复设置无害；若改用签名 URL 方案可置 false。
+    public-read: ${OSS_PUBLIC_READ:true}
+    # 私有对象（证书等）签名 URL 的**最大**有效期（秒）。签名 URL 在有效期内等同凭证，
+    # 故上限须短；超限直接拒绝而非截断。**必须 > 0**——配成 0/负数会被 OssProperties 拒绝启动，
+    # 因为那等于关掉这道安全限制（public-read 只管普通上传，管不到私有对象的签名时长）。
+    presign-max-ttl-seconds: ${OSS_PRESIGN_MAX_TTL_SECONDS:300}
+    # 超时（毫秒）：网络差或传大文件时最易撞读超时（SocketTimeoutException: Read timed out），可调大
+    connect-timeout-ms: ${OSS_CONNECT_TIMEOUT_MS:30000}
+    read-timeout-ms: ${OSS_READ_TIMEOUT_MS:120000}
+    write-timeout-ms: ${OSS_WRITE_TIMEOUT_MS:120000}
   wechat:
     miniapp:
       appid: ${WX_APPID:}
       secret: ${WX_SECRET:}
   auth:
-    realname-enabled: ${AUTH_REALNAME_ENABLED:false}        # 腾讯云身份证二要素，关闭时放行（待密钥接入）
+    realname-enabled: ${AUTH_REALNAME_ENABLED:false}        # 腾讯云身份证二要素核验（按次计费）；false 时仅校验号码格式后放行
+    realname-secret-id: ${REALNAME_SECRET_ID:}              # 腾讯云 CAM API 密钥；与火山引擎 AK/SK 无关，不可复用
+    realname-secret-key: ${REALNAME_SECRET_KEY:}
+    realname-region: ${REALNAME_REGION:ap-guangzhou}        # IdCardVerification 实际不需要 Region，留默认即可
     wework-group-enabled: ${AUTH_WEWORK_ENABLED:false}       # 企业微信群成员校验，关闭时放行
     dev-login-enabled: ${AUTH_DEV_LOGIN_ENABLED:false}      # 开发登录(跳过微信)，仅本地联调用；生产被 ProductionConfigGuard 强制拒绝
     agreement-version: ${AUTH_AGREEMENT_VERSION:1.0}        # 志愿者协议版本，改版即升号（注册时记录到 signed_agreement_version 留痕）
@@ -87,6 +109,13 @@ hengde:
   security:
     aes-key: ${SECURITY_AES_KEY:dev-only-aes-secret-change-in-prod}    # 身份证/手机号字段加密；生产必须用环境变量覆盖
     hmac-key: ${SECURITY_HMAC_KEY:dev-only-hmac-secret-change-in-prod}  # 可查询哈希密钥；生产必须用环境变量覆盖
+  honor:
+    ranking:
+      # 排行榜快照：往期名次冻结，防事后补录/考勤修正让历史榜单漂移。以下均为代码默认值，此处显式列出便于运维调整。
+      snapshot-enabled: ${HONOR_RANKING_SNAPSHOT_ENABLED:true}  # 关掉后往期榜单一直走实时聚合，仅排障时临时关闭
+      snapshot-cron: ${HONOR_RANKING_SNAPSHOT_CRON:0 30 0 * * ?}  # 每天 00:30。每天跑而非「每月 1 日跑」：按月触发一旦当天服务不在线，那个月的快照永久缺失；每天跑 + 幂等可自愈
+      freeze-delay-days: ${HONOR_RANKING_FREEZE_DELAY_DAYS:7}   # 周期结束后的冷静期。时长要等秘书部确认、积分要等发放，月末 0 点就冻会把没结算完的数据定死。仅约束定时任务，后台显式补跑不受限
+      snapshot-top-n: ${HONOR_RANKING_SNAPSHOT_TOP_N:100}       # 每张榜单快照保留的名次数，比查询默认页（50）大一截，留出将来放宽展示条数的余地
 
 springdoc:
   group-configs:

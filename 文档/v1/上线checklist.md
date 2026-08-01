@@ -42,12 +42,23 @@
 
 ## 4. 第三方真实密钥（关掉 dev stub）
 
-- [ ] **火山引擎短信**：开通、**签名「雷州市恒德爱心公益协会」报备**、**验证码模板报备**（占位用 `${code}`）。配 `SMS_ENABLED=true` + `SMS_AK/SMS_SK/SMS_ACCOUNT/SMS_TPL_VERIFY`（region 默认 `cn-north-1`）。
-      ⚠️ 不开短信 → 注册/找回密码验证码只打日志，需求方收不到，**注册走不通**。
-- [ ] **对象存储**：代码支持两家，由 `OSS_PROVIDER` 选择——`aliyun`（默认）或 `volc`（火山引擎 TOS）。恒德实例用火山 TOS：置 `OSS_PROVIDER=volc` + `OSS_ENABLED=true` + `OSS_ENDPOINT`(形如 `tos-cn-beijing.volces.com`) + `OSS_REGION`(如 `cn-beijing`) + `OSS_BUCKET/OSS_AK/OSS_SK`，绑了 CDN/自定义域名再填 `OSS_URL_PREFIX`；配桶 **CORS**（允许小程序域名）。
-      ⚠️ 不开 → 上传返回占位 URL，头像/活动图/下载文件都不是真文件。
-- [ ] **实名认证（身份证二要素，腾讯云）**：`AUTH_REALNAME_ENABLED` 当前关闭=放行。⚠️ **是待补的代码接入项**（`RealNameServiceImpl` 开启即抛异常），需先按腾讯云所选接口写对接代码 + 配密钥，不是配个变量就行。仅体验流程可暂留放行。
-- [ ] **企业微信群校验**：`AUTH_WEWORK_ENABLED`，需要的话开启并配 `AUTH_WEWORK_QR_URL`（引导入群二维码）。
+> **2026-07-28 状态**：短信 / 对象存储 / 实名核验三项**代码均已接通并在开发环境实测通过**（用真实凭证跑过真实调用）。此处剩下的是**把同一套凭证配到生产环境变量**，不再有待写的代码。
+
+- [x] **火山引擎短信** —— ✅ 已接通并实测（真实短信可收到）。开通、**签名「雷州市恒德爱心公益协会」报备**、**模板报备**（占位必须用 `${code}`，与代码写死的参数名一致）。配 `SMS_ENABLED=true` + `SMS_AK/SMS_SK/SMS_ACCOUNT`（region 默认 `cn-north-1`）。
+      **模板按场景分别配置**：`SMS_TPL_VERIFY`（兜底，未单独配的场景用它）+ `SMS_TPL_REGISTER`/`SMS_TPL_LOGIN`/`SMS_TPL_PWD_RESET`/`SMS_TPL_ADMIN_PWD_RESET`/`SMS_TPL_CHANGE_PHONE`。只配兜底也能跑，但注册/改绑手机号会收到登录文案。
+      ⚠️ 不开短信 → 验证码只打日志，需求方收不到，**注册/登录走不通**。
+- [x] **对象存储（火山 TOS）** —— ✅ 已接通并实测（图片真实上传、URL 可匿名访问、字节数无损）。置 `OSS_PROVIDER=volc` + `OSS_ENABLED=true` + `OSS_ENDPOINT`（**外网** Endpoint，形如 `tos-cn-guangzhou.volces.com`，**不要填 S3 endpoint 或内网 `.ivolces.com`**）+ `OSS_REGION`（与 endpoint 地域一致）+ `OSS_BUCKET/OSS_AK/OSS_SK`；绑了 CDN/自定义域名再填 `OSS_URL_PREFIX`。
+      ⚠️ **桶默认私有读会导致上传成功但图片全 403**。代码已在上传时给对象打公共读 ACL（`OSS_PUBLIC_READ=true`，默认开）来规避；若桶开了「阻止公共访问」类总开关，仍需在控制台放开。
+      ⚠️ 若后端部署在火山云同地域，可用内网 endpoint 提速，但**必须同时把 `OSS_URL_PREFIX` 设为外网域名**，否则拼出的图片 URL 外部访问不了。
+      ⚠️ 弱网/大文件可调 `OSS_READ_TIMEOUT_MS`（默认 120000）。
+- [x] **实名认证（身份证二要素，腾讯云）** —— ✅ **已实现并实测通过**（原为「代码未写、开启即抛异常」）。腾讯云人脸核身 `IdCardVerification`，按次计费。开启需 `AUTH_REALNAME_ENABLED=true` + `REALNAME_SECRET_ID`/`REALNAME_SECRET_KEY`。
+      ⚠️ 密钥是**腾讯云 CAM 账号级密钥**（`访问管理 → 访问密钥 → API 密钥管理`，SecretId 36 位 `AKID` 开头 / SecretKey 32 位，**必须同一对**；SecretKey 仅创建时显示一次）。与火山引擎 AK/SK 无关，不可复用。
+      ⚠️ 开启但密钥为空会被 `ProductionConfigGuard` **fail-fast 拒启**。关闭时仅校验号码格式后放行，仅体验流程可暂留。
+- [x] **地图选点（高德 Web端 JSAPI）** —— ✅ key 已配。在后台前端 `index.html` 填 `__AMAP_KEY__` + `__AMAP_SECURITY_CODE__`（2021-12-02 后申请的 key 必须配安全密钥）。
+      ⚠️ key/jscode 会出现在前端源码里，**务必在高德控制台配域名白名单**兜底。生产也可改用代理（填 `__AMAP_SERVICE_HOST__`，见 nginx 配置注释）。
+      说明：**签到/签退不依赖高德**（后端 Haversine + 微信原生定位），高德只用于后台发布活动时的地图选点，未配也能手填经纬度。
+- [ ] **企业微信群校验**：`AUTH_WEWORK_ENABLED`，需要的话开启并配 `AUTH_WEWORK_QR_URL`（引导入群二维码）。**实接代码未做**，开启前需先补。
+- [ ] **微信小程序**：`WX_APPID` 已有；**`WX_SECRET` 需在微信公众平台「设置 → 开发设置」重置获取**（只能重置不能查看，需管理员扫码）。
 
 ## 5. 应用配置（环境变量全集）
 

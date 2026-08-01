@@ -14,6 +14,23 @@ import java.util.List;
 public class MyActivityVO {
 
     private Long activityId;
+
+    /**
+     * 场次 activity_slot.id（V30）。
+     *
+     * <p>「我的活动」是<b>场次</b>粒度：一人在同一活动报了两场，这里就有两条。
+     * 依据原型 P15（报名详情每行「岗位时间 + 签到 + 签退」）与 P92
+     * （「我的活动」详情为「岗位名称 + 考勤信息」成对出现）。</p>
+     */
+    private Long slotId;
+
+    /** 岗位/项目名称（activity_slot.project_name，对应原型 P92「岗位名称」） */
+    private String slotProjectName;
+
+    /** 该场次起止（对应原型 P15「岗位时间」） */
+    private java.time.LocalDateTime slotStartTime;
+
+    private java.time.LocalDateTime slotEndTime;
     private Long serialNo;
     private String title;
     private LocalDateTime startTime;

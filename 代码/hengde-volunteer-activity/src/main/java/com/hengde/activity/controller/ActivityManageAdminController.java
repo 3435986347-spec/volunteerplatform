@@ -93,12 +93,14 @@ public class ActivityManageAdminController {
         return Result.ok();
     }
 
-    @Operation(summary = "统一签退（全部或指定志愿者）")
+    @Operation(summary = "统一签退（指定场次的全部或指定志愿者）")
     @SaCheckPermission(value = PermissionCode.ACTIVITY_MANAGE, type = "admin")
     @PostMapping("/activities/{id}/check-outs")
-    public Result<Integer> checkOut(@PathVariable Long id, @RequestBody(required = false) BulkCheckOutDTO dto) {
-        List<Long> ids = dto == null ? null : dto.getVolunteerIds();
-        return Result.ok(attendanceService.bulkCheckOut(id, ids, StpAdminUtil.getLoginIdAsLong()));
+    public Result<Integer> checkOut(@PathVariable Long id, @RequestBody @Valid BulkCheckOutDTO dto) {
+        // 与 ManagedActivityController#checkOut 同：V30 起 slotId 必填，请求体不再可省。
+        // 留 required=false 又直接取 dto.getSlotId()，不带 body 调用会 NPE 成 500。
+        return Result.ok(attendanceService.bulkCheckOut(id, dto.getSlotId(), dto.getVolunteerIds(),
+                StpAdminUtil.getLoginIdAsLong()));
     }
 
     @Operation(summary = "标记到位状态")
@@ -106,7 +108,7 @@ public class ActivityManageAdminController {
     @PatchMapping("/activities/{id}/attendances/{volunteerId}")
     public Result<Void> markAttendance(@PathVariable Long id, @PathVariable Long volunteerId,
                                        @RequestBody @Valid MarkAttendanceDTO dto) {
-        attendanceService.markAttendStatus(id, volunteerId, dto.getAttendStatus(), StpAdminUtil.getLoginIdAsLong());
+        attendanceService.markAttendStatus(id, dto.getSlotId(), volunteerId, dto.getAttendStatus(), StpAdminUtil.getLoginIdAsLong());
         return Result.ok();
     }
 
@@ -115,7 +117,7 @@ public class ActivityManageAdminController {
     @PostMapping("/activities/{id}/attendances/{volunteerId}/violations")
     public Result<Long> recordViolation(@PathVariable Long id, @PathVariable Long volunteerId,
                                         @RequestBody @Valid ViolationDTO dto) {
-        return Result.ok(attendanceService.recordViolation(id, volunteerId, dto.getViolationType(),
+        return Result.ok(attendanceService.recordViolation(id, dto.getSlotId(), volunteerId, dto.getViolationType(),
                 dto.getDescription(), StpAdminUtil.getLoginIdAsLong()));
     }
 

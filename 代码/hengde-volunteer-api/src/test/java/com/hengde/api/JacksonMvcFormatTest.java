@@ -5,9 +5,11 @@ import com.hengde.api.config.JacksonConfig;
 import com.hengde.api.config.WebMvcConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
+import org.springframework.http.converter.ByteArrayHttpMessageConverter;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.http.converter.json.AbstractJackson2HttpMessageConverter;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -51,20 +53,28 @@ class JacksonMvcFormatTest {
     }
 
     @Test
-    void webMvcConfigPrependsJacksonConverterUsingOurMapper() {
+    void webMvcConfigKeepsByteArrayConverterAheadOfJacksonAndUsesOurMapperForObjects() {
         WebMvcConfig cfg = new WebMvcConfig();
         cfg.setObjectMapper(mapper);
         List<HttpMessageConverter<?>> converters = new ArrayList<>();
-        converters.add(new StringHttpMessageConverter()); // 模拟 Boot 默认链中已有的转换器
+        converters.add(new ByteArrayHttpMessageConverter());
+        converters.add(new StringHttpMessageConverter());
+        converters.add(new MappingJackson2HttpMessageConverter(new ObjectMapper()));
         cfg.extendMessageConverters(converters);
 
-        // MVC 选「首个 canWrite(JSON)」的转换器——应是我们前置(index 0)的 Jackson-2 转换器，且用我们的 mapper
-        HttpMessageConverter<?> first = converters.stream()
+        HttpMessageConverter<?> firstByteArray = converters.stream()
+                .filter(c -> c.canWrite(byte[].class, MediaType.APPLICATION_JSON))
+                .findFirst().orElseThrow();
+        assertTrue(firstByteArray instanceof ByteArrayHttpMessageConverter,
+                "OpenAPI byte[] JSON should be written raw by ByteArrayHttpMessageConverter, not Base64-encoded by Jackson: "
+                        + firstByteArray.getClass());
+
+        HttpMessageConverter<?> firstObjectJson = converters.stream()
                 .filter(c -> c.canWrite(Sample.class, MediaType.APPLICATION_JSON))
                 .findFirst().orElseThrow();
-        assertTrue(first instanceof AbstractJackson2HttpMessageConverter,
-                "MVC 首选 JSON 转换器应是 Jackson2（我们前置的），实际: " + first.getClass());
-        assertSame(mapper, ((AbstractJackson2HttpMessageConverter) first).getObjectMapper(),
+        assertTrue(firstObjectJson instanceof AbstractJackson2HttpMessageConverter,
+                "MVC 首选 JSON 转换器应是 Jackson2（我们前置的），实际: " + firstObjectJson.getClass());
+        assertSame(mapper, ((AbstractJackson2HttpMessageConverter) firstObjectJson).getObjectMapper(),
                 "JSON 转换器应使用我们配置好的 ObjectMapper（空格日期 + Long 字符串）");
     }
 

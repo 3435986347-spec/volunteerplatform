@@ -14,6 +14,7 @@ public class VolunteerGroup extends BaseEntity {
     private String groupNo;
     private String name;
     private String description;
+    private String logoUrl;
     private Long leaderId;
     private Integer status;
     /** 拒绝建组原因。V7 起仅承载「拒绝建组」语义；解散原因走 dissolveReason 字段 */

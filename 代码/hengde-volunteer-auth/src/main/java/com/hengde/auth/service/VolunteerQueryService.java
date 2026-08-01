@@ -6,6 +6,7 @@ import com.hengde.auth.entity.Volunteer;
 import com.hengde.auth.vo.VolunteerBackfillView;
 import com.hengde.auth.vo.VolunteerDisplayView;
 import com.hengde.auth.vo.VolunteerFlagInfoView;
+import com.hengde.auth.vo.VolunteerGrantEligibilityView;
 import com.hengde.auth.vo.VolunteerProfileView;
 import com.hengde.common.constant.Gender;
 import com.hengde.common.constant.UserStatus;
@@ -16,8 +17,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -100,6 +104,57 @@ public class VolunteerQueryService {
     }
 
     /**
+     * 按手机号<b>精确</b>批量换 id（手机号 → volunteer.id）。
+     *
+     * <p><b>为什么必须由 auth 提供这个窄接口</b>：手机号在库里是密文 + {@code phone_hash} 索引，
+     * 只有 auth 持有 {@link com.hengde.common.crypto.CryptoUtil}。若让调用方（如 honor 的证书批量上传）
+     * 自己算 hash 或自己解密，敏感 PII 的处理面就从一个模块散到多个模块——
+     * 项目契约是「PII 解密留在 auth，其它模块只消费窄接口输出」。</p>
+     *
+     * <p><b>只返回 id，不返回姓名手机号等任何 PII</b>。查不到的手机号不入 Map，由调用方按缺失处理。
+     * 一个手机号对应多个账号时（脏数据）同样不入 Map——批量场景下宁可报「匹配不上」让人工核对，
+     * 也不要随便挑一个绑上去。</p>
+     *
+     * @param phones 手机号明文集合
+     * @return 手机号 -> volunteer.id；空集合返回空 Map
+     */
+    public Map<String, Long> findIdsByPhones(Collection<String> phones) {
+        if (phones == null || phones.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> hashByPhone = new HashMap<>();
+        for (String phone : phones) {
+            if (phone != null && !phone.isBlank()) {
+                hashByPhone.put(phone.trim(), cryptoUtil.hashPhone(phone.trim()));
+            }
+        }
+        if (hashByPhone.isEmpty()) {
+            return Map.of();
+        }
+        List<Volunteer> rows = volunteerMapper.selectList(Wrappers.<Volunteer>lambdaQuery()
+                .select(Volunteer::getId, Volunteer::getPhoneHash)
+                .in(Volunteer::getPhoneHash, hashByPhone.values()));
+        // hash -> id；重复 hash（同号多账号）标记为 null 后剔除，不随便挑一个
+        Map<String, Long> idByHash = new HashMap<>();
+        Set<String> ambiguous = new HashSet<>();
+        for (Volunteer v : rows) {
+            if (idByHash.putIfAbsent(v.getPhoneHash(), v.getId()) != null) {
+                ambiguous.add(v.getPhoneHash());
+            }
+        }
+        ambiguous.forEach(idByHash::remove);
+
+        Map<String, Long> result = new HashMap<>();
+        hashByPhone.forEach((phone, hash) -> {
+            Long id = idByHash.get(hash);
+            if (id != null) {
+                result.put(phone, id);
+            }
+        });
+        return result;
+    }
+
+    /**
      * 志愿者账号是否处于可用状态。供志愿者端 RBAC 鉴权：停用/注销/不存在的志愿者不应携带任何权限点
      * （即便 token 未过期，杜绝「停用但 token 仍在」越权窗口）。
      *
@@ -136,6 +191,36 @@ public class VolunteerQueryService {
         Integer status = v.getStatus();
         boolean active = status == null || UserStatus.NORMAL.equals(status);
         return active && Integer.valueOf(1).equals(v.getManagerFlag());
+    }
+
+    /**
+     * <b>当前读</b>版的资格视图：按 id 取志愿者并加共享行锁，返回「已实名 + 账号正常」两个判定。
+     * <b>只能在事务内调用。</b>
+     *
+     * <p>供「授予权益的那一刻再确认一次资格」用。{@link #getFlagInfo} 与 {@link #isActive}
+     * 都是快照读：在 REPEATABLE READ 下，调用方事务里第一条 SELECT 就把读视图定死，
+     * 之后别人把志愿者禁用/注销<b>并提交</b>，这两个方法照样返回「正常」。
+     * 发起与审核之间往往隔着好几天，这个窗口不是理论值。</p>
+     *
+     * <p>返回 null 表示<b>志愿者行已不存在</b>（含逻辑删除），与「存在但状态异常」区分开，
+     * 便于调用方给出不同的提示。</p>
+     *
+     * @param volunteerId 志愿者 id
+     * @return 资格视图；志愿者不存在或已删除返回 null
+     */
+    public VolunteerGrantEligibilityView getGrantEligibilityForShare(Long volunteerId) {
+        if (volunteerId == null) {
+            return null;
+        }
+        Volunteer v = volunteerMapper.selectByIdForShare(volunteerId);
+        if (v == null) {
+            return null;
+        }
+        Integer status = v.getStatus();
+        // status 为 null 按正常处理，与 DB 默认 0 及 isActive 的口径一致
+        boolean active = status == null || UserStatus.NORMAL.equals(status);
+        return new VolunteerGrantEligibilityView(v.getId(), v.getRealName(),
+                v.getRegisterTime() != null, active, status);
     }
 
     /**

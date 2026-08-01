@@ -4,13 +4,16 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hengde.activity.constant.AttendStatus;
 import com.hengde.activity.constant.AuditStatus;
+import com.hengde.activity.constant.PointSourceType;
 import com.hengde.activity.constant.PointsStatus;
 import com.hengde.activity.dao.ActivityAttendanceChangeMapper;
 import com.hengde.activity.dao.ActivityAttendanceMapper;
 import com.hengde.activity.dao.ActivityMapper;
+import com.hengde.activity.dao.ActivitySlotMapper;
 import com.hengde.activity.entity.Activity;
 import com.hengde.activity.entity.ActivityAttendance;
 import com.hengde.activity.entity.ActivityAttendanceChange;
+import com.hengde.activity.entity.ActivitySlot;
 import com.hengde.activity.vo.AttendanceChangeVO;
 import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.common.exception.BusinessException;
@@ -65,11 +68,23 @@ public class ActivityChangeService {
     private ActivityAttendanceChangeMapper changeMapper;
     private ActivityAttendanceMapper attendanceMapper;
     private ActivityMapper activityMapper;
+    private ActivitySlotMapper slotMapper;
     private VolunteerQueryService volunteerQueryService;
+    private PointService pointService;
 
     @Autowired
     public void setChangeMapper(ActivityAttendanceChangeMapper changeMapper) {
         this.changeMapper = changeMapper;
+    }
+
+    @Autowired
+    public void setSlotMapper(ActivitySlotMapper slotMapper) {
+        this.slotMapper = slotMapper;
+    }
+
+    @Autowired
+    public void setPointService(PointService pointService) {
+        this.pointService = pointService;
     }
 
     @Autowired
@@ -149,9 +164,15 @@ public class ActivityChangeService {
                 .collect(Collectors.toMap(Activity::getId, Activity::getTitle));
         Map<Long, String> nameById = volunteerIds.isEmpty() ? Map.of()
                 : volunteerQueryService.listNamesByIds(volunteerIds);
+        // V30：带出场次——既区分同一人同活动的多场申请，也给审核者提供「新值是否合理」的参照
+        List<Long> slotIds = attById.values().stream().map(ActivityAttendance::getSlotId)
+                .filter(Objects::nonNull).distinct().toList();
+        Map<Long, ActivitySlot> slotById = slotIds.isEmpty() ? Map.of()
+                : slotMapper.selectBatchIds(slotIds).stream()
+                .collect(Collectors.toMap(ActivitySlot::getId, Function.identity()));
 
         List<AttendanceChangeVO> vos = page.getRecords().stream()
-                .map(ch -> toVo(ch, attById.get(ch.getAttendanceId()), titleById, nameById)).toList();
+                .map(ch -> toVo(ch, attById.get(ch.getAttendanceId()), titleById, nameById, slotById)).toList();
         return PageResult.of(vos, page.getTotal(), page.getCurrent(), page.getSize());
     }
 
@@ -179,7 +200,8 @@ public class ActivityChangeService {
         if (rows != 1) {
             throw new BusinessException("变更申请已被处理，请刷新重试");
         }
-        applyChange(ch);
+        // 显式传 auditorId：ch 是 CAS 之前读出的快照，其 auditedBy 仍为 null，不能用于积分流水的操作人
+        applyChange(ch, auditorId);
     }
 
     /** 部长二次审核拒绝：CAS 待审→拒绝，不应用变更。 */
@@ -204,8 +226,17 @@ public class ActivityChangeService {
 
     // ---------- 内部 ----------
 
-    private void applyChange(ActivityAttendanceChange ch) {
-        ActivityAttendance att = attendanceMapper.selectById(ch.getAttendanceId());
+    /**
+     * 应用已通过的变更。<b>必须在 {@code approve} 的事务内调用</b>——它对考勤行加了排他锁。
+     *
+     * <p>取考勤用 {@code FOR UPDATE} 而非普通查询，是因为同一条考勤可以同时挂多张待审申请，
+     * 各自审核时 CAS 的是<b>各自的申请行</b>，互不冲突，串行化不了对考勤的读改写：
+     * 快照读会让两个线程都读到同一个旧值，改积分时各自算出的增量相加就会与考勤快照对不上
+     * （详见 {@link ActivityAttendanceMapper#selectByIdForUpdate}）。改签到/签退同样是读改写
+     * （要拿另一端的时间重算时长、且 {@code updateById} 会整行覆盖），一并受这把锁保护。</p>
+     */
+    private void applyChange(ActivityAttendanceChange ch, Long auditorId) {
+        ActivityAttendance att = attendanceMapper.selectByIdForUpdate(ch.getAttendanceId());
         if (att == null) {
             throw new BusinessException("考勤记录不存在");
         }
@@ -218,10 +249,37 @@ public class ActivityChangeService {
                 att.setCheckOutTime(parseTime(ch.getNewValue()));
                 att.setServiceMinutes(recomputeMinutes(att));
             }
-            case CHANGE_POINTS -> att.setPointsAward(parsePoints(ch.getNewValue()));
+            case CHANGE_POINTS -> applyPointsChange(ch, att, auditorId);
             default -> throw new BusinessException("变更项非法");
         }
         attendanceMapper.updateById(att);
+    }
+
+    /**
+     * 应用积分变更：改考勤快照 + <b>按差额</b>写积分账本（V24）。
+     *
+     * <p>账本是追加型的，不能像考勤那样「覆盖」；把积分从 8 改到 10 要记的是 +2 而非 10，
+     * 否则志愿者余额会凭空多出一份。差额为 0（改成和原值一样）时不入账。</p>
+     *
+     * <p>流水的 {@code sourceId} 用<b>变更申请 id</b> 而非考勤 id——同一条考勤可被多次修正，
+     * 用考勤 id 会撞 {@code uk_source} 唯一约束导致第二次修正入账失败。</p>
+     */
+    private void applyPointsChange(ActivityAttendanceChange ch, ActivityAttendance att, Long auditorId) {
+        int oldAward = att.getPointsAward() == null ? 0 : att.getPointsAward();
+        int newAward = parsePoints(ch.getNewValue());
+        att.setPointsAward(newAward);
+
+        int delta = newAward - oldAward;
+        if (delta != 0) {
+            // 带上申请理由：明细页的搜索框搜的是 remark，只写「旧值 → 新值」的话，
+            // 志愿者和后台都无法按「为什么改」检索到这笔修正。理由列 512、remark 列同为 512（V24 已按此设计），极端超长仍由 PointService 安全截断，
+            // 由 PointService 统一安全截断——完整原文仍在 activity_attendance_change.reason 里，
+            // 那才是审计原件，这里只是给人看的展示文案。
+            String reason = StringUtils.hasText(ch.getReason()) ? "：" + ch.getReason().trim() : "";
+            pointService.record(att.getVolunteerId(), delta, PointSourceType.CORRECTION, ch.getId(),
+                    "积分修正（" + oldAward + " → " + newAward + "）" + reason,
+                    PointSourceType.OPERATOR_ADMIN, auditorId);
+        }
     }
 
     /** 改签到/签退后重算时长：请假/缺席记 0；缺一边无法重算则保持原值；否则 签退−签到（负数兜底 0）。 */
@@ -278,7 +336,8 @@ public class ActivityChangeService {
     }
 
     private AttendanceChangeVO toVo(ActivityAttendanceChange ch, ActivityAttendance att,
-                                   Map<Long, String> titleById, Map<Long, String> nameById) {
+                                   Map<Long, String> titleById, Map<Long, String> nameById,
+                                   Map<Long, ActivitySlot> slotById) {
         AttendanceChangeVO vo = new AttendanceChangeVO();
         vo.setId(ch.getId());
         vo.setAttendanceId(ch.getAttendanceId());
@@ -297,6 +356,13 @@ public class ActivityChangeService {
             vo.setActivityTitle(titleById.get(att.getActivityId()));
             vo.setVolunteerId(att.getVolunteerId());
             vo.setVolunteerName(nameById.get(att.getVolunteerId()));
+            vo.setSlotId(att.getSlotId());
+            ActivitySlot slot = slotById.get(att.getSlotId());
+            if (slot != null) {
+                vo.setSlotProjectName(slot.getProjectName());
+                vo.setSlotStartTime(slot.getStartTime());
+                vo.setSlotEndTime(slot.getEndTime());
+            }
         }
         return vo;
     }

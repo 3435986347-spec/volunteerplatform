@@ -27,6 +27,15 @@ public class ActivityAttendance extends BaseEntity {
     /** 活动 activity.id */
     private Long activityId;
 
+    /**
+     * 场次 activity_slot.id（V30 新增）。
+     *
+     * <p>考勤是<b>场次</b>粒度：一人在同一活动报了几场，就有几条考勤。
+     * 依据原型 P15「报名详情」——同一志愿者多行、每行各带「岗位时间 + 签到时间 + 签退时间」，
+     * 且列表可按时间段筛选；P92「我的活动」亦为「岗位名称 + 考勤信息」成对出现。</p>
+     */
+    private Long slotId;
+
     /** 志愿者 volunteer.id */
     private Long volunteerId;
 

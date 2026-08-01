@@ -4,8 +4,10 @@ import com.hengde.activity.constant.ActivityStatus;
 import com.hengde.activity.constant.SecretaryStatus;
 import com.hengde.activity.dao.ActivityAttendanceMapper;
 import com.hengde.activity.dao.ActivityMapper;
+import com.hengde.activity.dao.ActivitySlotMapper;
 import com.hengde.activity.entity.Activity;
 import com.hengde.activity.entity.ActivityAttendance;
+import com.hengde.activity.entity.ActivitySlot;
 import com.hengde.auth.dao.VolunteerMapper;
 import com.hengde.auth.entity.Volunteer;
 import com.hengde.common.testsupport.RedisTestcontainersConfig;
@@ -42,6 +44,8 @@ class DashboardServiceTest {
     private VolunteerSquadMapper squadMapper;
     private ActivityMapper activityMapper;
     private ActivityAttendanceMapper attendanceMapper;
+    @Autowired
+    private ActivitySlotMapper slotMapper;
 
     @Autowired
     public void setDashboardService(DashboardService dashboardService) {
@@ -138,6 +142,9 @@ class DashboardServiceTest {
     private void insertAttendance(Long volunteerId, Long activityId, boolean hasCheckIn, int minutes, int secretaryStatus) {
         ActivityAttendance att = new ActivityAttendance();
         att.setActivityId(activityId);
+        // V30：考勤下沉到场次，slot_id NOT NULL。每条考勤配一个真实场次，
+        // 保持「人次 = 场次数」的 1:1，看板口径不受影响。
+        att.setSlotId(insertSlot(activityId));
         att.setVolunteerId(volunteerId);
         if (hasCheckIn) {
             att.setCheckInTime(LocalDateTime.now());
@@ -145,5 +152,16 @@ class DashboardServiceTest {
         att.setServiceMinutes(minutes);
         att.setSecretaryStatus(secretaryStatus);
         attendanceMapper.insert(att);
+    }
+
+    private Long insertSlot(Long activityId) {
+        ActivitySlot slot = new ActivitySlot();
+        slot.setActivityId(activityId);
+        slot.setProjectName("岗位_" + System.nanoTime());
+        slot.setStartTime(LocalDateTime.now());
+        slot.setEndTime(LocalDateTime.now().plusHours(2));
+        slot.setNeedCount(10);
+        slotMapper.insert(slot);
+        return slot.getId();
     }
 }

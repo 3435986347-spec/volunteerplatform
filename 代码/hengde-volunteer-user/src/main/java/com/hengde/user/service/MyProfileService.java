@@ -121,7 +121,7 @@ public class MyProfileService {
         Map<Long, VolunteerServiceStatsView> stats = serviceRecordService.batchStatsByVolunteerIds(selfId);
         VolunteerServiceStatsView s = stats.get(volunteerId);
         vo.setServiceMinutes(s == null ? 0 : s.confirmedMinutes());
-        vo.setPoints(s == null ? 0 : s.grantedPoints());
+        vo.setPoints(s == null ? 0 : s.points());
         vo.setActivityCount(s == null ? 0 : s.activityCount());
         vo.setGroupName(groupQueryService.listActiveGroupNamesByVolunteerIds(selfId).get(volunteerId));
         if (v.getSquadId() != null) {

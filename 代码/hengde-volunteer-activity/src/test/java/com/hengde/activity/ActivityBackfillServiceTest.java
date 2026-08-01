@@ -131,7 +131,7 @@ class ActivityBackfillServiceTest {
         Long slot = insertSlot(aid, at(9), at(10));
         String phone = uniquePhone();
         Long vid = insertVolunteer("补录丁", phone, null);
-        insertAttendance(aid, vid);   // 已有考勤
+        insertAttendance(aid, slot, vid);   // 已有考勤（同一场次）
 
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> backfillService.requestBackfill(aid, req(phone, null, null, slot), REQUESTER));
@@ -193,6 +193,7 @@ class ActivityBackfillServiceTest {
         // 手工造一条已签退+秘书已确认+未发放的考勤行（绕过补录直接试发积分）
         ActivityAttendance att = new ActivityAttendance();
         att.setActivityId(aid);
+        att.setSlotId(insertSlot(aid, at(9), at(10)));   // V30：考勤按场次，slot_id NOT NULL
         att.setVolunteerId(vid);
         att.setCheckOutTime(at(10));
         att.setServiceMinutes(60);
@@ -306,9 +307,16 @@ class ActivityBackfillServiceTest {
         return v.getId();
     }
 
-    private void insertAttendance(Long activityId, Long volunteerId) {
+    /**
+     * 造一条已有考勤——<b>必须指定场次</b>（V30）。
+     *
+     * <p>补录判重按场次（xlsx Row 65 D「添加指定时间段即可获得时长」），
+     * 若这里自建一个新场次，「已有考勤」就落在了别的场次上，判重理应放行，用例意图会被抹掉。</p>
+     */
+    private void insertAttendance(Long activityId, Long slotId, Long volunteerId) {
         ActivityAttendance att = new ActivityAttendance();
         att.setActivityId(activityId);
+        att.setSlotId(slotId);
         att.setVolunteerId(volunteerId);
         att.setAttendStatus(1);
         att.setSecretaryStatus(0);

@@ -18,6 +18,24 @@ public class ViolationRecordVO {
 
     private Long id;
 
+    /**
+     * 场次 activity_slot.id（V30）。
+     *
+     * <p>违规自 V30 起记在场次上（xlsx Row 32 C：负责人页「显示活动场次…活动时间段…是否违规」）。
+     * 不带场次时，一个多场次活动的违规明细页里「张三 玩手机」会出现两条一模一样的行，
+     * 分不清是上午场还是下午场，也就无从核对。</p>
+     */
+    private Long slotId;
+
+    /** 场次（岗位）名称 */
+    private String slotProjectName;
+
+    /** 场次开始时间 */
+    private LocalDateTime slotStartTime;
+
+    /** 场次结束时间 */
+    private LocalDateTime slotEndTime;
+
     /** 违规者 volunteer.id */
     private Long volunteerId;
 

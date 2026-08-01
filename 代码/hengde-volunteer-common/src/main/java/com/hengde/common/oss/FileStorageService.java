@@ -1,6 +1,10 @@
 package com.hengde.common.oss;
 
+import com.hengde.common.exception.BusinessException;
+import com.hengde.common.result.ResultCode;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.time.Duration;
 
 /**
  * 文件存储服务，封装对象存储的上传/删除。
@@ -40,4 +44,108 @@ public interface FileStorageService {
      * @param objectName 对象名（不含域名的存储路径）
      */
     void delete(String objectName);
+
+    // ---------- 私有对象：证书等不得公开可取的文件 ----------
+
+    /**
+     * 上传<b>私有</b>对象，返回 {@code objectKey}（<b>不是 URL</b>）。
+     *
+     * <p><b>为什么必须单开一个方法，而不是「库里只存 key」就够了</b>：上面两个 {@code upload} 会按
+     * {@code hengde.oss.public-read} 给对象打<b>公共读 ACL</b>（TOS 的 {@code ACL_PUBLIC_READ} /
+     * OSS 的 {@code PublicRead}）。只要 ACL 是公共读，对象就能被任何人凭 URL 直接取走——
+     * <b>数据库里存 key 还是存 URL，对桶上的可访问性毫无影响</b>，key 也不是秘密（可枚举、会出现在日志里）。
+     * 证书这类文件必须在<b>上传时</b>就是私有的。</p>
+     *
+     * <p>本方法<b>永不设置公共读 ACL</b>，无视 {@code public-read} 配置。取用一律走
+     * {@link #presignGet(String, Duration)}。</p>
+     *
+     * @param data        文件字节
+     * @param objectKey   对象 key（含路径，如 {@code cert/2026/abc.pdf}）
+     * @param contentType MIME 类型，可为 null
+     * @return 对象 key（原样返回，便于调用方链式存库）
+     */
+    String uploadPrivate(byte[] data, String objectKey, String contentType);
+
+    /**
+     * 把对象<b>读回字节</b>（服务端内部使用）。
+     *
+     * <p>用途是服务端自己要处理这个文件——例如证书渲染需要把协会的「电子样本」当底图套印，
+     * 那份底图上就带着公章，这正是 Row 36「自动生成一个<b>盖章的</b>电子证书」的落点。</p>
+     *
+     * <p><b>不能用 {@link #presignGet} 代替</b>：那是给浏览器的临时链接，
+     * 服务端拿它还得再发一次 HTTP 绕回对象存储，且把一次内部读取变成了对签名 URL 可达性的依赖。</p>
+     *
+     * <p><b>也不要用它做用户下载的中转</b>——那会让所有证书流量穿过应用服务器，
+     * 白吃带宽和堆内存；用户下载一律走 {@link #presignGet}。</p>
+     *
+     * @param objectKey 对象 key
+     * @return 对象字节
+     * @throws BusinessException 对象不存在或读取失败
+     */
+    byte[] download(String objectKey);
+
+    /**
+     * 读回对象时的大小上限守卫。两家实现共用，保证口径一致。
+     *
+     * <p><b>为什么必须有</b>：{@code readAllBytes()} 会把整个对象读进堆。桶里若有一份几百 MB 的文件
+     * （误传、或被人替换），一次读取就能把应用打到 OOM——而这是<b>服务端主动发起</b>的读取，
+     * 没有任何前端限流挡得住。上限从 {@code hengde.oss.max-download-bytes} 来。</p>
+     *
+     * @param actualBytes 已知或已读出的字节数
+     * @param maxBytes    上限
+     * @param objectKey   仅用于报错信息
+     */
+    static void requireWithinDownloadLimit(long actualBytes, long maxBytes, String objectKey) {
+        // fail-closed：上限配错时拒绝读取，而不是当成「不限」
+        if (maxBytes <= 0) {
+            throw new BusinessException(ResultCode.SERVER_ERROR.getCode(),
+                    "对象读取上限配置非法（hengde.oss.max-download-bytes = " + maxBytes + "），须 > 0");
+        }
+        if (actualBytes > maxBytes) {
+            throw new BusinessException(ResultCode.SERVER_ERROR.getCode(),
+                    "对象过大，拒绝读取：" + objectKey + "（" + actualBytes + " > " + maxBytes + " 字节）");
+        }
+    }
+
+    /**
+     * 为私有对象生成<b>短期有效</b>的签名下载 URL。
+     *
+     * <p>调用方（如证书下载接口）应先校验归属与权限，再换取签名 URL 并 302 或直接返回。
+     * <b>签名 URL 不要落库、不要写进日志</b>——它在有效期内等同于凭证。</p>
+     *
+     * @param objectKey 对象 key
+     * @param ttl       有效期；须为正且不超过 {@code hengde.oss.presign-max-ttl-seconds}（默认 5 分钟）
+     * @return 带签名的临时 URL
+     * @throws com.hengde.common.exception.BusinessException TTL 非正或超过上限
+     */
+    String presignGet(String objectKey, Duration ttl);
+
+    /**
+     * 校验签名有效期。两家实现共用，保证口径一致——各写一份迟早漂开。
+     *
+     * <p><b>超限直接拒绝，不截断</b>：截断会让调用方以为拿到了自己要求的时长，
+     * 问题被推迟到线上才暴露；拒绝则在开发期就暴露。</p>
+     *
+     * @param ttl        请求的有效期
+     * @param maxSeconds 上限（秒）
+     * @throws BusinessException TTL 为 null / 非正 / 超过上限
+     */
+    static void requireValidTtl(Duration ttl, int maxSeconds) {
+        if (ttl == null || ttl.isNegative() || ttl.isZero()) {
+            throw new BusinessException(ResultCode.SERVER_ERROR.getCode(), "签名有效期必须为正");
+        }
+        // **fail-closed**：上限本身非法时拒绝签发，而不是当成「不限」。
+        // 早先写的是 `maxSeconds > 0 && ...`，等于把「配置写错」翻译成「关闭安全上限」——
+        // 一个配置失误就让证书链接可以签成任意时长，且没有任何报错。
+        if (maxSeconds <= 0) {
+            throw new BusinessException(ResultCode.SERVER_ERROR.getCode(),
+                    "签名有效期上限配置非法（hengde.oss.presign-max-ttl-seconds = " + maxSeconds + "），须 > 0");
+        }
+        // 用 Duration 直接比，**不要先 toSeconds()**：那是向下取整，
+        // 300.5s 会被算成 300s 而放行，阿里云那边按毫秒签出 300.5s——上限被亚秒精度绕过。
+        if (ttl.compareTo(Duration.ofSeconds(maxSeconds)) > 0) {
+            throw new BusinessException(ResultCode.SERVER_ERROR.getCode(),
+                    "签名有效期超过上限：请求 " + ttl.toMillis() + "ms，上限 " + maxSeconds + "s");
+        }
+    }
 }

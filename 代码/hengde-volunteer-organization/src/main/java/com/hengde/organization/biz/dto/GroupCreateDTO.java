@@ -10,4 +10,5 @@ public class GroupCreateDTO {
     @NotBlank
     private String name;
     private String description;
+    private String logoUrl;
 }

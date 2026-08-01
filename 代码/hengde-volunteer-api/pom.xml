@@ -80,6 +80,13 @@
             <version>1.1-SNAPSHOT</version>
         </dependency>
 
+        <!-- 领域模块：荣誉（/v/honor/rankings、/a/honor/rankings） -->
+        <dependency>
+            <groupId>com.hengde</groupId>
+            <artifactId>hengde-volunteer-honor</artifactId>
+            <version>1.1-SNAPSHOT</version>
+        </dependency>
+
         <!-- Spring Boot 启动器 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -153,6 +160,23 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.hengde</groupId>
+            <artifactId>hengde-volunteer-common</artifactId>
+            <version>1.1-SNAPSHOT</version>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>mysql</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

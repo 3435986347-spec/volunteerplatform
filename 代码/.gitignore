@@ -1,0 +1,58 @@
+# --- Maven / Java 构建产物 ---
+target/
+*.class
+*.jar
+*.war
+*.ear
+hs_err_pid*
+replay_pid*
+
+# Maven wrapper：jar 不入库（脚本/properties 仍入库，运行时会按需下载）
+.mvn/wrapper/maven-wrapper.jar
+
+# Spring Boot 默认生成
+HELP.md
+
+# --- IDE ---
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.classpath
+.project
+.settings/
+.springBeans
+.sts4-cache
+.apt_generated
+.factorypath
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Office 锁文件 ---
+~$*.xlsx
+~$*.docx
+~$*.pptx
+
+# --- 日志 / 临时 ---
+*.log
+logs/
+*.tmp
+*.swp
+*~
+
+# --- 配置中的敏感项（绝不入库）---
+# application-local.* / application-prod.* 含真实密钥（火山 AK/SK、腾讯云、TOS 等），只在本地/服务器保存
+application-prod.yml
+application-prod.yaml
+application-prod.properties
+application-local.properties
+secrets/
+*.key
+*.pem
+
+# --- Claude Code 本地化配置 ---
+.claude/settings.local.json

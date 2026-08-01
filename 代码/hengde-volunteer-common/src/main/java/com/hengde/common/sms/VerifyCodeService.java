@@ -109,7 +109,7 @@ public class VerifyCodeService {
         redisUtil.set(key, code, properties.getCodeExpireSeconds());
         // 新码重置失败计数（计数与码同生命周期）
         redisUtil.delete(failKey(scene, phone));
-        smsService.sendVerifyCode(phone, code);
+        smsService.sendVerifyCode(phone, code, scene);
     }
 
     /**

@@ -12,7 +12,7 @@
   <img alt="Sa-Token" src="https://img.shields.io/badge/Sa--Token-1.43-blue">
   <img alt="MySQL" src="https://img.shields.io/badge/MySQL-8%2B-4479A1?logo=mysql&logoColor=white">
   <img alt="Redis" src="https://img.shields.io/badge/Redis-7.4-DC382D?logo=redis&logoColor=white">
-  <img alt="Flyway" src="https://img.shields.io/badge/Flyway-V1→V23-CC0200?logo=flyway&logoColor=white">
+  <img alt="Flyway" src="https://img.shields.io/badge/Flyway-V1→V31-CC0200?logo=flyway&logoColor=white">
   <img alt="WeChat MiniProgram" src="https://img.shields.io/badge/WeChat%20Mini%20Program-Native-07C160?logo=wechat&logoColor=white">
 </p>
 
@@ -149,7 +149,7 @@ graph TD
 
 - **Domain vertical slicing**: the parent project only manages dependencies; each domain module bundles its own `controller / service / dao / entity` layers. `hengde-volunteer-api` depends on all domain modules, holds the single bootstrap class, and is the only deployable unit.
 - **Shared capabilities pushed down**: result/exception types, crypto, distributed locks, object storage, SMS, pagination, and the test harness all live in `common`, avoiding circular dependencies.
-- **Centralized DB migrations**: Flyway scripts live in `common` (a single global version sequence, currently V1→V23); both the api runtime and every module's tests obtain the scripts via dependency and auto-provision the schema.
+- **Centralized DB migrations**: Flyway scripts live in `common` (a single global version sequence, currently V1→V31); both the api runtime and every module's tests obtain the scripts via dependency and auto-provision the schema.
 
 ---
 
@@ -213,7 +213,7 @@ graph TD
 ### 🧪 Engineering Practices
 
 - **Real-container integration tests**: a uniform `@SpringBootTest` + Testcontainers spins up **real MySQL / Redis** (no H2, avoiding dialect & migration incompatibilities); Flyway runs real migrations in the container DB, keeping tests close to production behavior.
-- **Versioned database**: Flyway with a single global version sequence (V1→V23) centrally manages schema and permission-point seeds, keeping evolution traceable.
+- **Versioned database**: Flyway with a single global version sequence (V1→V31) centrally manages schema and permission-point seeds, keeping evolution traceable.
 - **Production-ready deployment**: Nginx split deployment (static hosting + same-origin `/api` reverse proxy, no runtime CORS), systemd unit, env-var template, three-tier upload size alignment (nginx 16M > Spring 12M > business validation 10M), plus a complete deployment guide and go-live checklist.
 
 ---
@@ -251,8 +251,8 @@ graph TD
 ```bash
 cd 代码/hengde-volunteer-parent
 
-# 1) Full build (the parent POM aggregates all 8 modules in dependency order;
-#    verify the Reactor Summary lists parent + all 8 modules)
+# 1) Full build (the parent POM aggregates all 9 modules in dependency order;
+#    verify the Reactor Summary lists parent + all 9 modules = 10 rows)
 ./mvnw clean install -DskipTests
 
 # 2) Run the app (requires MySQL / Redis; use the dev profile locally)
@@ -286,11 +286,11 @@ The app listens on `http://localhost:8080` by default, with context-path `/api`.
 │   ├── hengde-volunteer-user/     # Volunteer management
 │   ├── hengde-volunteer-data/     # Dashboard
 │   └── hengde-volunteer-api/      # Bootstrap + global config (deployable unit)
-├── hengde-volunteer-miniprogram/  # WeChat Mini Program source (volunteer client)
-├── volunteer-platform-back/       # Web admin console frontend (React)
 ├── 部署/                          # nginx.conf / systemd unit / env-var template
 └── 文档/                          # Requirements, API, deployment, self-test docs
 ```
+
+> **Frontend code lives in separate repositories**: the WeChat Mini Program and the Web admin console are each their own repo; this one holds the backend, docs, and deployment config.
 
 ---
 
@@ -307,8 +307,10 @@ API paths follow the `/{role}/{domain}/{resource}/{action?}` convention; the ful
 
 ## Project Status
 
-- ✅ **V1 core complete**: auth (incl. the phone-number login system), organization/RBAC (incl. management-team application review), the full activity loop (multi-slot publishing, service guarantees, check-in/hours/points, publish review), publicity/search, volunteer management & my-profile, and the dashboard — all backed by Testcontainers integration tests (migrations up to V23); the admin console frontend is fully wired to real APIs and production-hardened.
-- 🚧 **Pending go-live**: deployment-ready, awaiting the association's production server and WeChat Mini Program appid for the official launch (real-name verification, WeCom group checks and other third-party capabilities are behind ready-to-enable switches).
+- ✅ **V1 core complete**: auth (incl. the phone-number login system), organization/RBAC (incl. management-team application review), the full activity loop (multi-slot publishing, service guarantees, check-in/hours/points, publish review), publicity/search, volunteer management & my-profile, and the dashboard — all backed by Testcontainers integration tests (migrations up to V31); the admin console frontend is fully wired to real APIs and production-hardened.
+- ✅ **Third-party integrations live and verified**: SMS delivery (Volcengine, per-scenario templates), object storage (Volcengine TOS), ID two-factor real-name verification (Tencent Cloud), and map point-picking (AMap JSAPI) have all been exercised end-to-end with real credentials.
+- ✅ **Deployed and verified**: the backend and Web admin console are running on a server and have been tested end-to-end.
+- 🚧 **Mini Program side remaining**: needs an ICP-filed HTTPS domain (a hard WeChat requirement), the Mini Program AppSecret, and a real-device run-through once the client's default mock mode is turned off. WeCom group membership checks remain optional and unimplemented.
 - 🗺️ **Roadmap (future versions)**: corporate sponsors, a points mall / donations, community interaction, an honors/role-model system, and a SaaS supervision console for one-click multi-organization onboarding.
 
 ---

@@ -6,7 +6,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.MediaType;
+import org.springframework.http.converter.ByteArrayHttpMessageConverter;
 import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -26,15 +29,40 @@ public class WebMvcConfig implements WebMvcConfigurer {
     }
 
     /**
-     * Boot 4 / Spring 7 的 MVC 默认用 Jackson 3 序列化（JacksonJsonHttpMessageConverter），
-     * 会忽略本项目配在 Jackson 2 {@code @Primary ObjectMapper}（JacksonConfig）上的日期格式与 Long→String，
-     * 导致响应出现 ISO 'T'、Long 为数字。这里把基于该 ObjectMapper 的 Jackson-2 JSON 转换器<b>前置</b>为首选，
-     * 使响应统一 {@code yyyy-MM-dd HH:mm:ss}、Long 为字符串；入参由该 mapper 的宽松反序列化兼容空格与 ISO 'T'。
+     * Put the Jackson 2 converter before the default general JSON converter so
+     * business responses keep the project ObjectMapper formats. Keep byte[] and
+     * String converters ahead of it; Springdoc writes OpenAPI JSON as bytes, and
+     * Jackson would otherwise serialize those bytes as a Base64 JSON string.
      */
     @Override
     @SuppressWarnings({"deprecation", "removal"})
     public void extendMessageConverters(List<HttpMessageConverter<?>> converters) {
-        converters.add(0, new MappingJackson2HttpMessageConverter(objectMapper));
+        MappingJackson2HttpMessageConverter jackson2Converter = new MappingJackson2HttpMessageConverter(objectMapper);
+        int index = firstGeneralJsonConverterIndex(converters);
+        if (index >= 0) {
+            converters.add(index, jackson2Converter);
+            return;
+        }
+        converters.add(jackson2Converter);
+    }
+
+    private int firstGeneralJsonConverterIndex(List<HttpMessageConverter<?>> converters) {
+        for (int i = 0; i < converters.size(); i++) {
+            HttpMessageConverter<?> converter = converters.get(i);
+            if (converter instanceof ByteArrayHttpMessageConverter || converter instanceof StringHttpMessageConverter) {
+                continue;
+            }
+            if (supportsJson(converter)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private boolean supportsJson(HttpMessageConverter<?> converter) {
+        return converter.getSupportedMediaTypes().stream().anyMatch(mediaType ->
+                mediaType.isCompatibleWith(MediaType.APPLICATION_JSON)
+                        || mediaType.getSubtype().endsWith("+json"));
     }
 
     // CorsFilter 优先级高于 Sa-Token 拦截器，确保 OPTIONS 预检请求能正常通过

@@ -361,6 +361,10 @@ public class VolunteerAuthService {
             throw new BusinessException("登录手机号与注册手机号不一致");
         }
         if (!phoneAlreadyVerified) {
+            // DTO 层不做 @NotBlank（已验证手机号合法不传码），未验证场景在此补必填校验
+            if (!StringUtils.hasText(dto.getSmsCode())) {
+                throw new BusinessException("验证码不能为空");
+            }
             verifyCodeService.verify(dto.getPhone(), SmsScene.REGISTER, dto.getSmsCode());
         }
 

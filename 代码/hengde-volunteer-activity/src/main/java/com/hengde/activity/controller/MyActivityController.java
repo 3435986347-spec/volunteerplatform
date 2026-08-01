@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -40,7 +41,7 @@ public class MyActivityController {
 
     @Operation(summary = "我的活动详情（含考勤 + 签到二维码数据 + 确认到家 + 评价回显）")
     @GetMapping("/{id}")
-    public Result<MyActivityDetailVO> detail(@PathVariable Long id) {
-        return Result.ok(myActivityService.myActivityDetail(StpUtil.getLoginIdAsLong(), id));
+    public Result<MyActivityDetailVO> detail(@PathVariable Long id, @RequestParam Long slotId) {
+        return Result.ok(myActivityService.myActivityDetail(StpUtil.getLoginIdAsLong(), id, slotId));
     }
 }

@@ -14,6 +14,16 @@ import lombok.Data;
 @Data
 public class ActivityReviewDTO {
 
+    /**
+     * 场次 activity_slot.id（V30 新增，必填）。
+     *
+     * <p>考勤是场次粒度（原型 P15：每行「岗位时间 + 签到 + 签退」），
+     * 故所有针对某人某次考勤的操作都要指明是哪一场。</p>
+     */
+    @NotNull(message = "场次不能为空")
+    private Long slotId;
+
+
     /** 对活动评分 1~5 */
     @NotNull(message = "活动评分不能为空")
     @Min(value = 1, message = "活动评分范围 1~5")

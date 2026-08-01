@@ -1,8 +1,10 @@
 package com.hengde.user;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.hengde.activity.constant.PointSourceType;
 import com.hengde.activity.dao.ActivityAttendanceMapper;
 import com.hengde.activity.entity.ActivityAttendance;
+import com.hengde.activity.service.PointService;
 import com.hengde.auth.dao.AdminUserMapper;
 import com.hengde.auth.dao.VolunteerMapper;
 import com.hengde.auth.entity.AdminUser;
@@ -64,11 +66,17 @@ class AdminVolunteerServiceTest {
     private VolunteerGroupMapper groupMapper;
     private VolunteerGroupMemberMapper memberMapper;
     private ActivityAttendanceMapper attendanceMapper;
+    private PointService pointService;
     private JdbcTemplate jdbcTemplate;
 
     @Autowired
     public void setService(AdminVolunteerService service) {
         this.service = service;
+    }
+
+    @Autowired
+    public void setPointService(PointService pointService) {
+        this.pointService = pointService;
     }
 
     @Autowired
@@ -169,8 +177,11 @@ class AdminVolunteerServiceTest {
         memberMapper.insert(m);
 
         // 两条考勤：A 已确认+已发放(120min/50分)，B 仅参与未确认
-        insertAttendance(id, 9001L, 120, 1, 50, 1);
+        Long attA = insertAttendance(id, 9001L, 120, 1, 50, 1);
         insertAttendance(id, 9002L, 60, 0, 0, 0);
+        // V24 起积分取自账本而非考勤快照，故真实流程（grantPoints）会同时写这一笔；夹具直插考勤要补上
+        pointService.record(id, 50, PointSourceType.ACTIVITY, attA, "活动积分",
+                PointSourceType.OPERATOR_SYSTEM, null);
 
         AdminVolunteerDetailVO vo = service.detail(id);
 
@@ -180,7 +191,12 @@ class AdminVolunteerServiceTest {
         assertEquals(group.getName(), vo.getGroup(), "应解析所在小组名");
         assertEquals(2, vo.getActivities(), "参与活动按 activity_id 去重计 2");
         assertEquals(2.0, vo.getHours(), 0.001, "已确认 120min = 2.0h（未确认的 B 不计）");
-        assertEquals(50, vo.getPoints(), "仅已发放积分计入");
+        assertEquals(50, vo.getPoints(), "积分取自账本余额");
+
+        // 手工扣分只写账本、不动考勤 points_award：详情必须跟着账本走，否则与积分中心显示两个数
+        pointService.record(id, -20, PointSourceType.MANUAL, null, "手工扣分",
+                PointSourceType.OPERATOR_ADMIN, 1L);
+        assertEquals(30, service.detail(id).getPoints(), "手工扣分后详情应显示账本余额 30，而非快照 50");
     }
 
     @Test
@@ -383,15 +399,20 @@ class AdminVolunteerServiceTest {
         return v.getId();
     }
 
-    private void insertAttendance(Long volunteerId, Long activityId, int minutes,
+    private Long insertAttendance(Long volunteerId, Long activityId, int minutes,
                                   int secretaryStatus, int pointsAward, int pointsStatus) {
         ActivityAttendance att = new ActivityAttendance();
         att.setActivityId(activityId);
+        // V30：考勤下沉到场次，slot_id NOT NULL。本用例测的是跨域聚合（参与活动数/时长/积分），
+        // 用的本就是合成 activityId（9001/9002，库里没有对应活动行），故场次同样用合成 id
+        // ——表上无外键，与该用例语义一致；每个活动一个场次，不影响「活动数按 activity_id 去重」。
+        att.setSlotId(activityId + 100_000L);
         att.setVolunteerId(volunteerId);
         att.setServiceMinutes(minutes);
         att.setSecretaryStatus(secretaryStatus);
         att.setPointsAward(pointsAward);
         att.setPointsStatus(pointsStatus);
         attendanceMapper.insert(att);
+        return att.getId();
     }
 }

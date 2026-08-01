@@ -115,8 +115,8 @@ class ActivityAttendanceServiceTest {
         approveEnroll(aid, vid);
 
         attendanceService.startActivity(aid, 100L);
-        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 2);   // 同点，半径内
-        int signedOut = attendanceService.bulkCheckOut(aid, null, 100L);
+        attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, 2);   // 同点，半径内
+        int signedOut = attendanceService.bulkCheckOut(aid, firstSlotOf(aid), null, 100L);
         assertEquals(1, signedOut);
 
         ActivityAttendance att = findAtt(aid, vid);
@@ -142,8 +142,8 @@ class ActivityAttendanceServiceTest {
         approveEnroll(aid, vid);
         leaderService.assign(aid, 1, vid, 100L);   // 该志愿者即现场负责人
 
-        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 1);
-        attendanceService.bulkCheckOut(aid, null, 100L);
+        attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, 1);
+        attendanceService.bulkCheckOut(aid, firstSlotOf(aid), null, 100L);
         ActivityAttendance att = findAtt(aid, vid);
         serviceRecordService.secretaryConfirm(att.getId(), 200L);
 
@@ -157,8 +157,8 @@ class ActivityAttendanceServiceTest {
         Long vid = insertManagerVolunteer();   // manager_flag=1
         approveEnroll(aid, vid);
 
-        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 2);
-        attendanceService.bulkCheckOut(aid, null, 100L);
+        attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, 2);
+        attendanceService.bulkCheckOut(aid, firstSlotOf(aid), null, 100L);
         ActivityAttendance att = findAtt(aid, vid);
         serviceRecordService.secretaryConfirm(att.getId(), 200L);
 
@@ -172,8 +172,8 @@ class ActivityAttendanceServiceTest {
         Long aid = insertInProgressActivity();
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);
-        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 2);
-        attendanceService.bulkCheckOut(aid, null, 100L);
+        attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, 2);
+        attendanceService.bulkCheckOut(aid, firstSlotOf(aid), null, 100L);
         ActivityAttendance att = findAtt(aid, vid);
         serviceRecordService.secretaryConfirm(att.getId(), 200L);
         assertEquals(50, serviceRecordService.grantPoints(att.getId(), 1, 200L), "减半=100×0.5");
@@ -182,8 +182,8 @@ class ActivityAttendanceServiceTest {
         Long aid2 = insertInProgressActivity();
         Long vid2 = insertVolunteer();
         approveEnroll(aid2, vid2);
-        attendanceService.checkIn(aid2, vid2, ACT_LAT, ACT_LNG, 2);
-        attendanceService.bulkCheckOut(aid2, null, 100L);
+        attendanceService.checkIn(aid2, slotOf(aid2, vid2), vid2, ACT_LAT, ACT_LNG, 2);
+        attendanceService.bulkCheckOut(aid2, firstSlotOf(aid2), null, 100L);
         ActivityAttendance att2 = findAtt(aid2, vid2);
         serviceRecordService.secretaryConfirm(att2.getId(), 200L);
         assertEquals(0, serviceRecordService.grantPoints(att2.getId(), 2, 200L), "不发=0");
@@ -197,7 +197,7 @@ class ActivityAttendanceServiceTest {
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> attendanceService.checkIn(aid, vid, FAR_LAT, ACT_LNG, 2));
+                () -> attendanceService.checkIn(aid, slotOf(aid, vid), vid, FAR_LAT, ACT_LNG, 2));
         assertTrue(ex.getMessage().contains("签到范围"));
     }
 
@@ -208,7 +208,7 @@ class ActivityAttendanceServiceTest {
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 2));
+                () -> attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, 2));
         assertTrue(ex.getMessage().contains("未到签到时间"));
     }
 
@@ -219,7 +219,7 @@ class ActivityAttendanceServiceTest {
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> attendanceService.checkIn(aid, vid, ACT_LAT.add(BigDecimal.valueOf(360)), ACT_LNG, 2));
+                () -> attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT.add(BigDecimal.valueOf(360)), ACT_LNG, 2));
         assertTrue(ex.getMessage().contains("坐标"));
     }
 
@@ -227,8 +227,9 @@ class ActivityAttendanceServiceTest {
     void checkIn_notEnrolled_rejected() {
         Long aid = insertInProgressActivity();
         Long vid = insertVolunteer();   // 未报名
+        Long sid = insertSlot(aid);     // 活动有场次，但该志愿者没报这一场
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 2));
+                () -> attendanceService.checkIn(aid, sid, vid, ACT_LAT, ACT_LNG, 2));
         assertTrue(ex.getMessage().contains("未报名"));
     }
 
@@ -237,9 +238,9 @@ class ActivityAttendanceServiceTest {
         Long aid = insertInProgressActivity();
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);
-        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 2);
+        attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, 2);
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 2));
+                () -> attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, 2));
         assertTrue(ex.getMessage().contains("已签到"));
     }
 
@@ -250,9 +251,9 @@ class ActivityAttendanceServiceTest {
         Long aid = insertInProgressActivity();
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);
-        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 1);
+        attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, 1);
 
-        attendanceService.selfCheckOut(aid, vid, ACT_LAT, ACT_LNG);
+        attendanceService.selfCheckOut(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG);
 
         ActivityAttendance att = findAtt(aid, vid);
         assertNotNull(att.getCheckOutTime(), "应落签退时间");
@@ -267,7 +268,7 @@ class ActivityAttendanceServiceTest {
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);   // 报名但没签到
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> attendanceService.selfCheckOut(aid, vid, ACT_LAT, ACT_LNG));
+                () -> attendanceService.selfCheckOut(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG));
         assertTrue(ex.getMessage().contains("还未签到"));
     }
 
@@ -276,10 +277,10 @@ class ActivityAttendanceServiceTest {
         Long aid = insertInProgressActivity();
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);
-        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 1);
-        attendanceService.selfCheckOut(aid, vid, ACT_LAT, ACT_LNG);
+        attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, 1);
+        attendanceService.selfCheckOut(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG);
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> attendanceService.selfCheckOut(aid, vid, ACT_LAT, ACT_LNG));
+                () -> attendanceService.selfCheckOut(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG));
         assertTrue(ex.getMessage().contains("已签退"));
     }
 
@@ -288,9 +289,9 @@ class ActivityAttendanceServiceTest {
         Long aid = insertInProgressActivity();
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);
-        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 1);
+        attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, 1);
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> attendanceService.selfCheckOut(aid, vid, FAR_LAT, ACT_LNG));
+                () -> attendanceService.selfCheckOut(aid, slotOf(aid, vid), vid, FAR_LAT, ACT_LNG));
         assertTrue(ex.getMessage().contains("签退范围"));
     }
 
@@ -299,9 +300,9 @@ class ActivityAttendanceServiceTest {
         Long aid = insertInProgressActivity();
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);
-        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 1);
+        attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, 1);
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> attendanceService.selfCheckOut(aid, vid, ACT_LAT.add(BigDecimal.valueOf(360)), ACT_LNG));
+                () -> attendanceService.selfCheckOut(aid, slotOf(aid, vid), vid, ACT_LAT.add(BigDecimal.valueOf(360)), ACT_LNG));
         assertTrue(ex.getMessage().contains("坐标"));
     }
 
@@ -312,7 +313,7 @@ class ActivityAttendanceServiceTest {
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> attendanceService.selfCheckOut(aid, vid, ACT_LAT, ACT_LNG));
+                () -> attendanceService.selfCheckOut(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG));
         assertTrue(ex.getMessage().contains("已过签退时间"));
     }
 
@@ -322,11 +323,11 @@ class ActivityAttendanceServiceTest {
         Long aid = insertInProgressActivity();
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);
-        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 1);
-        attendanceService.selfCheckOut(aid, vid, ACT_LAT, ACT_LNG);
+        attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, 1);
+        attendanceService.selfCheckOut(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG);
         ActivityAttendance afterSelf = findAtt(aid, vid);
 
-        int count = attendanceService.bulkCheckOut(aid, null, 999L);
+        int count = attendanceService.bulkCheckOut(aid, firstSlotOf(aid), null, 999L);
         assertEquals(0, count, "已自助签退的行不应被统一签退计入");
 
         ActivityAttendance afterBulk = findAtt(aid, vid);
@@ -343,7 +344,7 @@ class ActivityAttendanceServiceTest {
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);
 
-        attendanceService.markAttendStatus(aid, vid, 4, 100L);   // 缺席
+        attendanceService.markAttendStatus(aid, slotOf(aid, vid), vid, 4, 100L);   // 缺席
 
         ActivityAttendance att = findAtt(aid, vid);
         assertEquals(4, att.getAttendStatus());
@@ -355,7 +356,7 @@ class ActivityAttendanceServiceTest {
         assertEquals(1L, violations, "缺席应自动记一条违规");
 
         // 重复标缺席不重复记违规
-        attendanceService.markAttendStatus(aid, vid, 4, 100L);
+        attendanceService.markAttendStatus(aid, slotOf(aid, vid), vid, 4, 100L);
         Long again = violationMapper.selectCount(Wrappers.<ActivityViolation>lambdaQuery()
                 .eq(ActivityViolation::getActivityId, aid)
                 .eq(ActivityViolation::getVolunteerId, vid)
@@ -373,7 +374,7 @@ class ActivityAttendanceServiceTest {
         leaderService.assign(aid, 1, leaderVid, 100L);   // 记录人 = 本活动志愿者负责人
 
         // 自由文本：violationType 传 null（DTO 可选）；description=记录明细
-        attendanceService.recordViolation(aid, offender, null, "长时间交头接耳", leaderVid);
+        attendanceService.recordViolation(aid, slotOf(aid, offender), offender, null, "长时间交头接耳", leaderVid);
 
         List<ViolationRecordVO> records = attendanceService.violationRecords(aid);
         assertEquals(1, records.size());
@@ -393,7 +394,7 @@ class ActivityAttendanceServiceTest {
         Long offender = insertVolunteer();
         approveEnroll(aid, offender);
         // 记录人 = 非本活动志愿者负责人（模拟管理端 admin_user.id；即便与某 volunteer.id 同号也不该错认）
-        attendanceService.recordViolation(aid, offender, 1, "玩手机", 999_999L);
+        attendanceService.recordViolation(aid, slotOf(aid, offender), offender, 1, "玩手机", 999_999L);
 
         ViolationRecordVO r = attendanceService.violationRecords(aid).get(0);
         assertEquals(999_999L, r.getRecordedBy());
@@ -406,7 +407,7 @@ class ActivityAttendanceServiceTest {
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> attendanceService.recordViolation(aid, vid, 1, "  ", 100L));
+                () -> attendanceService.recordViolation(aid, slotOf(aid, vid), vid, 1, "  ", 100L));
         assertTrue(ex.getMessage().contains("违规说明"), "记录明细必填，空白应被拒");
     }
 
@@ -417,7 +418,7 @@ class ActivityAttendanceServiceTest {
         approveEnroll(aid, vid);
         // 99 超 TINYINT 业务范围（且超 DB 取值）→ service 兜底拦下，不落库变 500
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> attendanceService.recordViolation(aid, vid, 99, "玩手机", 100L));
+                () -> attendanceService.recordViolation(aid, slotOf(aid, vid), vid, 99, "玩手机", 100L));
         assertTrue(ex.getMessage().contains("违规类型"), "类型超 0~4 应被拒");
     }
 
@@ -428,8 +429,8 @@ class ActivityAttendanceServiceTest {
         Long aid = insertInProgressActivity();
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);
-        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 2);
-        attendanceService.bulkCheckOut(aid, null, 100L);
+        attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, 2);
+        attendanceService.bulkCheckOut(aid, firstSlotOf(aid), null, 100L);
         ActivityAttendance att = findAtt(aid, vid);
 
         BusinessException ex = assertThrows(BusinessException.class,
@@ -442,8 +443,8 @@ class ActivityAttendanceServiceTest {
         Long aid = insertInProgressActivity();
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);
-        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 2);
-        attendanceService.bulkCheckOut(aid, null, 100L);
+        attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, 2);
+        attendanceService.bulkCheckOut(aid, firstSlotOf(aid), null, 100L);
         ActivityAttendance att = findAtt(aid, vid);
 
         serviceRecordService.secretaryConfirm(att.getId(), 200L);
@@ -458,7 +459,7 @@ class ActivityAttendanceServiceTest {
         Long aid = insertInProgressActivity();
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);
-        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 2);   // 只签到未签退
+        attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, 2);   // 只签到未签退
         ActivityAttendance att = findAtt(aid, vid);
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> serviceRecordService.secretaryConfirm(att.getId(), 200L));
@@ -496,7 +497,7 @@ class ActivityAttendanceServiceTest {
         // 报名(已通过) + GPS 签到成功（不再「活动未设置签到坐标」）
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);
-        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 2);
+        attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, 2);
         assertNotNull(findAtt(aid, vid).getCheckInTime(), "发布带坐标后应能签到");
     }
 
@@ -539,9 +540,9 @@ class ActivityAttendanceServiceTest {
         Long aid = insertEndedActivity();
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);
-        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 2);
+        attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, 2);
 
-        attendanceService.confirmHome(aid, vid, ACT_LAT, ACT_LNG);
+        attendanceService.confirmHome(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG);
         ActivityAttendance att = findAtt(aid, vid);
         assertNotNull(att.getConfirmHomeTime(), "应记录确认到家时间");
         assertEquals(0, ACT_LAT.compareTo(att.getConfirmHomeLat()));
@@ -552,9 +553,9 @@ class ActivityAttendanceServiceTest {
         Long aid = insertInProgressActivity();   // end +1h，未结束
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);
-        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 2);
+        attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, 2);
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> attendanceService.confirmHome(aid, vid, ACT_LAT, ACT_LNG));
+                () -> attendanceService.confirmHome(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG));
         assertTrue(ex.getMessage().contains("尚未结束"));
     }
 
@@ -564,7 +565,7 @@ class ActivityAttendanceServiceTest {
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);   // 报名但没签到
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> attendanceService.confirmHome(aid, vid, ACT_LAT, ACT_LNG));
+                () -> attendanceService.confirmHome(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG));
         assertTrue(ex.getMessage().contains("未签到"));
     }
 
@@ -573,9 +574,9 @@ class ActivityAttendanceServiceTest {
         Long aid = insertEndedActivity();
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);
-        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 2);
+        attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, 2);
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> attendanceService.confirmHome(aid, vid, ACT_LAT.add(BigDecimal.valueOf(360)), ACT_LNG));
+                () -> attendanceService.confirmHome(aid, slotOf(aid, vid), vid, ACT_LAT.add(BigDecimal.valueOf(360)), ACT_LNG));
         assertTrue(ex.getMessage().contains("坐标"));
     }
 
@@ -584,9 +585,9 @@ class ActivityAttendanceServiceTest {
         Long aid = insertEndedActivity();
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);
-        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 2);
+        attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, 2);
 
-        attendanceService.submitReview(aid, vid, 5, 4, "很好");
+        attendanceService.submitReview(aid, slotOf(aid, vid), vid, 5, 4, "很好");
         ActivityAttendance att = findAtt(aid, vid);
         assertEquals(5, att.getVolActivityScore());
         assertEquals(4, att.getVolLeaderScore());
@@ -598,9 +599,9 @@ class ActivityAttendanceServiceTest {
         Long aid = insertEndedActivity();
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);
-        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 2);
+        attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, 2);
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> attendanceService.submitReview(aid, vid, 6, 4, "越界"));
+                () -> attendanceService.submitReview(aid, slotOf(aid, vid), vid, 6, 4, "越界"));
         assertTrue(ex.getMessage().contains("1~5"));
     }
 
@@ -610,7 +611,7 @@ class ActivityAttendanceServiceTest {
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);   // 没签到→无考勤行
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> attendanceService.submitReview(aid, vid, 5, 5, "x"));
+                () -> attendanceService.submitReview(aid, slotOf(aid, vid), vid, 5, 5, "x"));
         assertTrue(ex.getMessage().contains("未实际参加") || ex.getMessage().contains("签到"));
     }
 
@@ -620,9 +621,9 @@ class ActivityAttendanceServiceTest {
         Long aid = insertEndedActivity();
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);
-        attendanceService.leaderEvaluate(aid, vid, "评一下", 100L);   // 补建行，无签到
+        attendanceService.leaderEvaluate(aid, slotOf(aid, vid), vid, "评一下", 100L);   // 补建行，无签到
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> attendanceService.submitReview(aid, vid, 5, 5, "x"));
+                () -> attendanceService.submitReview(aid, slotOf(aid, vid), vid, 5, 5, "x"));
         assertTrue(ex.getMessage().contains("未实际参加") || ex.getMessage().contains("签到"));
     }
 
@@ -631,7 +632,7 @@ class ActivityAttendanceServiceTest {
         Long aid = insertInProgressActivity();
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);   // 无考勤行
-        attendanceService.leaderEvaluate(aid, vid, "表现优秀", 100L);
+        attendanceService.leaderEvaluate(aid, slotOf(aid, vid), vid, "表现优秀", 100L);
         assertEquals("表现优秀", findAtt(aid, vid).getLeaderEvaluation());
     }
 
@@ -686,12 +687,22 @@ class ActivityAttendanceServiceTest {
         return a.getId();
     }
 
+    /**
+     * 插入场次——<b>起止跟随所属活动</b>。
+     *
+     * <p>V30 起签到/签退时间窗按<b>场次</b>判（见 AttendanceService.checkIn 注释），
+     * 若这里仍固定用 {@code now()}，那么「活动 5 小时后才开始」这类用例造出的场次却是「现在」，
+     * 窗口校验会通过，用例意图被悄悄抹掉。故与活动时间对齐；活动无起止时才回退到 now。</p>
+     */
     private Long insertSlot(Long activityId) {
+        Activity a = activityMapper.selectById(activityId);
+        LocalDateTime s = a != null && a.getStartTime() != null ? a.getStartTime() : LocalDateTime.now();
+        LocalDateTime e = a != null && a.getEndTime() != null ? a.getEndTime() : s.plusHours(2);
         ActivitySlot slot = new ActivitySlot();
         slot.setActivityId(activityId);
         slot.setProjectName("项目_" + System.nanoTime());
-        slot.setStartTime(LocalDateTime.now());
-        slot.setEndTime(LocalDateTime.now().plusHours(2));
+        slot.setStartTime(s);
+        slot.setEndTime(e);
         slot.setNeedCount(10);
         slotMapper.insert(slot);
         return slot.getId();
@@ -735,4 +746,30 @@ class ActivityAttendanceServiceTest {
                 .eq(ActivityAttendance::getVolunteerId, volunteerId)
                 .last("limit 1"));
     }
+
+    /**
+     * 取该志愿者在本活动的报名场次（V30：考勤按场次，服务方法都要 slotId）。
+     *
+     * <p>测试里 approveEnroll 每次都会新建一个场次并把志愿者报进去，
+     * 故按「活动 + 志愿者 + 已通过」反查即可拿到他那一场。</p>
+     */
+    private Long slotOf(Long activityId, Long volunteerId) {
+        ActivityEnrollment e = enrollmentMapper.selectOne(Wrappers.<ActivityEnrollment>lambdaQuery()
+                .eq(ActivityEnrollment::getActivityId, activityId)
+                .eq(ActivityEnrollment::getVolunteerId, volunteerId)
+                .eq(ActivityEnrollment::getStatus, 1)
+                .last("limit 1"));
+        return e == null ? null : e.getSlotId();
+    }
+
+
+    /** 取活动的第一个场次（统一签退是场次级操作，测试里活动只造一场时够用）。 */
+    private Long firstSlotOf(Long activityId) {
+        ActivitySlot s = slotMapper.selectOne(Wrappers.<ActivitySlot>lambdaQuery()
+                .eq(ActivitySlot::getActivityId, activityId)
+                .orderByAsc(ActivitySlot::getStartTime, ActivitySlot::getId)
+                .last("limit 1"));
+        return s == null ? null : s.getId();
+    }
+
 }

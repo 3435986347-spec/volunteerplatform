@@ -3,13 +3,17 @@ package com.hengde.activity.service;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hengde.activity.constant.AttendStatus;
+import com.hengde.activity.constant.PointSourceType;
 import com.hengde.activity.constant.PointsFactor;
 import com.hengde.activity.constant.PointsStatus;
 import com.hengde.activity.constant.SecretaryStatus;
 import com.hengde.activity.dao.ActivityAttendanceMapper;
 import com.hengde.activity.dao.ActivityMapper;
+import com.hengde.activity.dao.ActivitySlotMapper;
 import com.hengde.activity.entity.Activity;
 import com.hengde.activity.entity.ActivityAttendance;
+import com.hengde.activity.entity.ActivitySlot;
+import com.hengde.activity.event.AttendanceConfirmedEvent;
 import com.hengde.activity.vo.ServiceRecordVO;
 import com.hengde.activity.vo.VolunteerServiceStatsView;
 import com.hengde.auth.service.VolunteerQueryService;
@@ -18,6 +22,7 @@ import com.hengde.common.exception.BusinessException;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -59,12 +64,30 @@ public class ServiceRecordService {
 
     private ActivityAttendanceMapper attendanceMapper;
     private ActivityMapper activityMapper;
+    private ActivitySlotMapper slotMapper;
     private VolunteerQueryService volunteerQueryService;
     private ActivityLeaderService activityLeaderService;
+    private PointService pointService;
+    private ApplicationEventPublisher eventPublisher;
+
+    @Autowired
+    public void setEventPublisher(ApplicationEventPublisher eventPublisher) {
+        this.eventPublisher = eventPublisher;
+    }
 
     @Autowired
     public void setAttendanceMapper(ActivityAttendanceMapper attendanceMapper) {
         this.attendanceMapper = attendanceMapper;
+    }
+
+    @Autowired
+    public void setSlotMapper(ActivitySlotMapper slotMapper) {
+        this.slotMapper = slotMapper;
+    }
+
+    @Autowired
+    public void setPointService(PointService pointService) {
+        this.pointService = pointService;
     }
 
     @Autowired
@@ -125,50 +148,67 @@ public class ServiceRecordService {
     /**
      * 批量聚合多名志愿者的服务统计（参与活动数 / 已确认时长 / 已发放积分），供 user 域志愿者管理列表与详情展示。
      *
-     * <p>一次查库取这些志愿者的全部考勤行后在内存聚合，<b>避免逐人查询（N+1）</b>；单人详情传单元素集合即可精确统计。
+     * <p>两次查库后在内存聚合，<b>避免逐人查询（N+1）</b>；单人详情传单元素集合即可精确统计。
      * 口径：activityCount 按 activity_id 去重；confirmedMinutes 仅累计 secretary_status=已确认；
-     * grantedPoints 仅累计 points_status=已发放（与「服务记录闭环」三态一致，未确认/未发放不计入）。</p>
+     * points 取<b>积分账本余额</b>。</p>
+     *
+     * <p><b>积分为什么不再从考勤汇总</b>（V24）：{@code activity_attendance.points_award} 只是「这场活动
+     * 发了多少分」的业务快照，管理员手工扣分、积分修正、（V3）兑换消费都只写账本、不动它。继续按
+     * {@code SUM(points_award)} 汇总，会让志愿者资料页/后台列表与积分中心显示两个不同的数字。
+     * 账本是唯一事实来源，这里必须跟着走 {@link PointService#batchBalance}。</p>
+     *
+     * <p>因此返回集合也不再等于「有考勤记录的人」——<b>只有手工调整、没有任何考勤的志愿者同样要出现</b>
+     * （否则调用方按缺省补 0，他手上的积分就凭空消失了），其 activityCount/confirmedMinutes 为 0。</p>
      *
      * @param volunteerIds 志愿者 id 集合
-     * @return id -> 统计视图；<b>仅包含有考勤记录者</b>，无记录的 id 不在 Map 中（调用方按 best-effort 补 0）
+     * @return id -> 统计视图；<b>仅包含有考勤记录或有积分流水者</b>，二者皆无的 id 不在 Map 中
+     *         （调用方按 best-effort 补 0）
      */
     public Map<Long, VolunteerServiceStatsView> batchStatsByVolunteerIds(Collection<Long> volunteerIds) {
         if (volunteerIds == null || volunteerIds.isEmpty()) {
             return Map.of();
         }
+        Set<Long> ids = new HashSet<>(volunteerIds);
         List<ActivityAttendance> rows = attendanceMapper.selectList(Wrappers.<ActivityAttendance>lambdaQuery()
                 .select(ActivityAttendance::getVolunteerId, ActivityAttendance::getActivityId,
-                        ActivityAttendance::getServiceMinutes, ActivityAttendance::getSecretaryStatus,
-                        ActivityAttendance::getPointsAward, ActivityAttendance::getPointsStatus)
-                .in(ActivityAttendance::getVolunteerId, new HashSet<>(volunteerIds)));
-        if (rows.isEmpty()) {
+                        ActivityAttendance::getServiceMinutes, ActivityAttendance::getSecretaryStatus)
+                .in(ActivityAttendance::getVolunteerId, ids));
+        Map<Long, Integer> balanceByVol = pointService.batchBalance(ids);
+        if (rows.isEmpty() && balanceByVol.isEmpty()) {
             return Map.of();
         }
         Map<Long, Set<Long>> activitiesByVol = new HashMap<>();
         Map<Long, Integer> minutesByVol = new HashMap<>();
-        Map<Long, Integer> pointsByVol = new HashMap<>();
         for (ActivityAttendance att : rows) {
             Long vid = att.getVolunteerId();
             activitiesByVol.computeIfAbsent(vid, k -> new HashSet<>()).add(att.getActivityId());
             if (Integer.valueOf(SECRETARY_CONFIRMED).equals(att.getSecretaryStatus()) && att.getServiceMinutes() != null) {
                 minutesByVol.merge(vid, att.getServiceMinutes(), Integer::sum);
             }
-            if (Integer.valueOf(POINTS_GRANTED).equals(att.getPointsStatus()) && att.getPointsAward() != null) {
-                pointsByVol.merge(vid, att.getPointsAward(), Integer::sum);
-            }
         }
+        // 并集：有考勤的 ∪ 有积分流水的
+        Set<Long> covered = new HashSet<>(activitiesByVol.keySet());
+        covered.addAll(balanceByVol.keySet());
         Map<Long, VolunteerServiceStatsView> result = new HashMap<>();
-        for (Map.Entry<Long, Set<Long>> e : activitiesByVol.entrySet()) {
-            Long vid = e.getKey();
-            result.put(vid, new VolunteerServiceStatsView(vid, e.getValue().size(),
-                    minutesByVol.getOrDefault(vid, 0), pointsByVol.getOrDefault(vid, 0)));
+        for (Long vid : covered) {
+            result.put(vid, new VolunteerServiceStatsView(vid,
+                    activitiesByVol.getOrDefault(vid, Set.of()).size(),
+                    minutesByVol.getOrDefault(vid, 0),
+                    balanceByVol.getOrDefault(vid, 0)));
         }
         return result;
     }
 
     // ---------- 秘书部确认 / 积分发放 ----------
 
-    /** 秘书部确认时长：要求已签退且未确认。CAS 保原子。 */
+    /**
+     * 秘书部确认时长：要求已签退且未确认。CAS 保原子。
+     *
+     * <p>确认成功后发布 {@link AttendanceConfirmedEvent}，由 honor 域据此自动创建电子证书权益记录
+     * （xlsx Row 36「参加完活动后，自动生成一个盖章的电子证书」）。
+     * <b>CAS 保证同一条考勤只会成功确认一次，故事件也只发一次</b>；
+     * 即便重复投递，证书侧还有 {@code uk_slot_cert} 兜底。</p>
+     */
     @Transactional(rollbackFor = Exception.class)
     public void secretaryConfirm(Long attendanceId, Long adminId) {
         LocalDateTime now = LocalDateTime.now();
@@ -182,6 +222,12 @@ public class ServiceRecordService {
                 .isNotNull(ActivityAttendance::getCheckOutTime));
         if (rows != 1) {
             throw new BusinessException("记录不存在、未签退或已确认");
+        }
+        // CAS 之后再读，拿本行的活动/场次/志愿者作为证书归属
+        ActivityAttendance att = attendanceMapper.selectById(attendanceId);
+        if (att != null) {
+            eventPublisher.publishEvent(new AttendanceConfirmedEvent(
+                    att.getId(), att.getActivityId(), att.getSlotId(), att.getVolunteerId()));
         }
     }
 
@@ -228,6 +274,13 @@ public class ServiceRecordService {
         if (rows != 1) {
             throw new BusinessException("积分已发放或状态变更，请刷新重试");
         }
+        // 同事务写积分账本（V24）：考勤上的 points_award 只是业务快照，汇总一律以 point_record 为准。
+        // 放在 CAS 之后——CAS 成功才代表本次确实是「首次发放」，据此入账不会重复。
+        // award 可能为 0（违规系数=不发 / 请假缺席），0 分不入账：账本只记真实变动。
+        if (award != 0) {
+            pointService.record(att.getVolunteerId(), award, PointSourceType.ACTIVITY, attendanceId,
+                    "参加活动「" + activity.getTitle() + "」", PointSourceType.OPERATOR_ADMIN, adminId);
+        }
         return award;
     }
 
@@ -268,11 +321,19 @@ public class ServiceRecordService {
     private PageResult<ServiceRecordVO> toVoPage(Page<ActivityAttendance> page, boolean withVolunteerName) {
         List<ActivityAttendance> records = page.getRecords();
         Map<Long, Activity> activityById = batchActivities(records);
+        Map<Long, ActivitySlot> slotById = batchSlots(records);
         Map<Long, VolunteerDisplayView> displayById = withVolunteerName ? batchDisplays(records) : Map.of();
         List<ServiceRecordVO> vos = records.stream().map(att -> {
             ServiceRecordVO vo = new ServiceRecordVO();
             vo.setAttendanceId(att.getId());
             vo.setActivityId(att.getActivityId());
+            vo.setSlotId(att.getSlotId());
+            ActivitySlot slot = slotById.get(att.getSlotId());
+            if (slot != null) {
+                vo.setSlotProjectName(slot.getProjectName());
+                vo.setSlotStartTime(slot.getStartTime());
+                vo.setSlotEndTime(slot.getEndTime());
+            }
             vo.setVolunteerId(att.getVolunteerId());
             vo.setCheckInTime(att.getCheckInTime());
             vo.setCheckOutTime(att.getCheckOutTime());
@@ -304,6 +365,17 @@ public class ServiceRecordService {
         }
         return activityMapper.selectBatchIds(ids).stream()
                 .collect(java.util.stream.Collectors.toMap(Activity::getId, java.util.function.Function.identity()));
+    }
+
+    /** 批量取本页涉及的场次（V30）：服务记录一行一场次，需展示岗位名与岗位时间以区分同活动的多条。 */
+    private Map<Long, ActivitySlot> batchSlots(List<ActivityAttendance> records) {
+        List<Long> ids = records.stream().map(ActivityAttendance::getSlotId)
+                .filter(java.util.Objects::nonNull).distinct().toList();
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        return slotMapper.selectBatchIds(ids).stream()
+                .collect(java.util.stream.Collectors.toMap(ActivitySlot::getId, java.util.function.Function.identity()));
     }
 
     private Map<Long, VolunteerDisplayView> batchDisplays(List<ActivityAttendance> records) {

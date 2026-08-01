@@ -1,6 +1,7 @@
 package com.hengde.activity;
 
 import com.hengde.activity.dao.ActivityEnrollmentMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.hengde.activity.dao.ActivityMapper;
 import com.hengde.activity.dao.ActivitySlotMapper;
 import com.hengde.activity.entity.Activity;
@@ -78,9 +79,9 @@ class MyActivityServiceTest {
         Long aid = insertActivity();
         enroll(aid, vid, 1);
         leaderService.assign(aid, 1, vid, 100L);   // 该志愿者也是负责人 → leaders 带名字
-        attendanceService.checkIn(aid, vid, ACT_LAT, ACT_LNG, 2);
+        attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, 2);
 
-        MyActivityDetailVO vo = myActivityService.myActivityDetail(vid, aid);
+        MyActivityDetailVO vo = myActivityService.myActivityDetail(vid, aid, slotOf(aid, vid));
         assertEquals(aid, vo.getActivityId());
         assertNotNull(vo.getCheckInTime(), "应带出签到时间");
         assertEquals("hengde-activity-checkin:" + aid, vo.getCheckInQrContent());
@@ -97,7 +98,7 @@ class MyActivityServiceTest {
         enroll(aid, owner, 1);
 
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> myActivityService.myActivityDetail(stranger, aid));
+                () -> myActivityService.myActivityDetail(stranger, aid, slotOf(aid, stranger)));
         assertTrue(ex.getMessage().contains("未参加") || ex.getMessage().contains("不存在"));
     }
 
@@ -146,4 +147,20 @@ class MyActivityServiceTest {
         volunteerMapper.insert(v);
         return v.getId();
     }
+
+    /**
+     * 取该志愿者在本活动的报名场次（V30：考勤按场次，服务方法都要 slotId）。
+     *
+     * <p>测试里 approveEnroll 每次都会新建一个场次并把志愿者报进去，
+     * 故按「活动 + 志愿者 + 已通过」反查即可拿到他那一场。</p>
+     */
+    private Long slotOf(Long activityId, Long volunteerId) {
+        ActivityEnrollment e = enrollmentMapper.selectOne(Wrappers.<ActivityEnrollment>lambdaQuery()
+                .eq(ActivityEnrollment::getActivityId, activityId)
+                .eq(ActivityEnrollment::getVolunteerId, volunteerId)
+                .eq(ActivityEnrollment::getStatus, 1)
+                .last("limit 1"));
+        return e == null ? null : e.getSlotId();
+    }
+
 }

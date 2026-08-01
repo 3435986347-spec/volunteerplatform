@@ -78,6 +78,13 @@ public class ProductionConfigGuard {
         if (authProperties.isDevLoginEnabled()) {
             problems.add("hengde.auth.dev-login-enabled 必须为 false（开发登录会绕过微信鉴权，禁止上生产）");
         }
+        if (authProperties.isRealnameEnabled()
+                && (isBlank(authProperties.getRealnameSecretId())
+                || isBlank(authProperties.getRealnameSecretKey()))) {
+            // 缺密钥时实名校验会在首次注册才抛错，等于把配置问题拖到线上真实用户身上，故启动即拦
+            problems.add("hengde.auth.realname-enabled=true 但腾讯云密钥未配置"
+                    + "（REALNAME_SECRET_ID / REALNAME_SECRET_KEY）");
+        }
         if (authProperties.getAgreementVersion() == null || authProperties.getAgreementVersion().isBlank()) {
             problems.add("hengde.auth.agreement-version 不能为空");
         }
@@ -94,5 +101,9 @@ public class ProductionConfigGuard {
 
     private boolean isBlankOrDev(String value, String devValue) {
         return value == null || value.isBlank() || devValue.equals(value);
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }

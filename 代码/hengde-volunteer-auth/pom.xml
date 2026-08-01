@@ -60,6 +60,12 @@
             <artifactId>weixin-java-miniapp</artifactId>
         </dependency>
 
+        <!-- 腾讯云 faceid：身份证二要素核验（RealNameServiceImpl 依赖它） -->
+        <dependency>
+            <groupId>com.tencentcloudapi</groupId>
+            <artifactId>tencentcloud-sdk-java-faceid</artifactId>
+        </dependency>
+
         <!-- Lombok（common 里是 provided 不传递，本模块需单独声明） -->
         <dependency>
             <groupId>org.projectlombok</groupId>

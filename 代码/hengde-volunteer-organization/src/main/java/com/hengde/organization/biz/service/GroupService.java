@@ -162,7 +162,7 @@ public class GroupService {
                 .orderByDesc(VolunteerGroup::getId)
                 .last("limit " + offset + "," + limit));
         return list.stream()
-                .map(g -> new SearchItemVO("group", g.getId(), g.getName(), g.getDescription(), null))
+                .map(g -> new SearchItemVO("group", g.getId(), g.getName(), g.getDescription(), g.getLogoUrl()))
                 .toList();
     }
 
@@ -201,6 +201,7 @@ public class GroupService {
         group.setGroupNo("G" + System.currentTimeMillis());
         group.setName(dto.getName());
         group.setDescription(dto.getDescription());
+        group.setLogoUrl(dto.getLogoUrl());
         group.setLeaderId(volunteerId);
         group.setStatus(GROUP_PENDING);
         groupMapper.insert(group);
@@ -725,6 +726,7 @@ public class GroupService {
             vo.setGroupNo(g.getGroupNo());
             vo.setName(g.getName());
             vo.setDescription(g.getDescription());
+            vo.setLogoUrl(g.getLogoUrl());
             vo.setLeaderId(g.getLeaderId());
             vo.setLeaderName(g.getLeaderId() == null ? null : leaderNameById.get(g.getLeaderId()));
             vo.setStatus(g.getStatus());
@@ -767,6 +769,7 @@ public class GroupService {
         vo.setGroupNo(group.getGroupNo());
         vo.setName(group.getName());
         vo.setDescription(group.getDescription());
+        vo.setLogoUrl(group.getLogoUrl());
         vo.setLeaderId(group.getLeaderId());
         Volunteer leader = volunteerMapper.selectById(group.getLeaderId());
         vo.setLeaderName(leader == null ? null : leader.getRealName());

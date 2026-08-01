@@ -66,4 +66,10 @@ public final class PermissionCode {
 
     /** 活动发布审核（部长；审核小程序提交的活动，V19） */
     public static final String ACTIVITY_PUBLISH_AUDIT = "activity:publish-audit";
+
+    /** 积分明细查看（后台查任意志愿者的积分流水） */
+    public static final String ACTIVITY_POINTS_VIEW = "activity:points-view";
+
+    /** 积分手工调整（绕过发放公式加减分，须填原因并落审计） */
+    public static final String ACTIVITY_POINTS_ADJUST = "activity:points-adjust";
 }

@@ -18,6 +18,15 @@ import java.math.BigDecimal;
 @Data
 public class CheckOutDTO {
 
+    /**
+     * 场次 activity_slot.id（V30 新增，必填）。
+     *
+     * <p>签退是<b>场次</b>粒度：一人在同一活动报了几场，就分别签退几次。
+     * 依据原型 P15「报名详情」每行「岗位时间 + 签到时间 + 签退时间」。</p>
+     */
+    @NotNull(message = "场次不能为空")
+    private Long slotId;
+
     @NotNull(message = "纬度不能为空")
     @DecimalMin(value = "-90", message = "纬度范围 -90~90")
     @DecimalMax(value = "90", message = "纬度范围 -90~90")

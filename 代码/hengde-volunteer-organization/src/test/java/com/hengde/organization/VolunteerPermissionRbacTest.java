@@ -60,7 +60,10 @@ class VolunteerPermissionRbacTest {
     @Test
     void grantableCatalogIsActivitySubsetWithoutMenu() {
         List<PermissionVO> grantable = permissionService.listGrantableToVolunteer();
-        assertEquals(16, grantable.size(), "本期开放给志愿者的应为活动域 16 点（17 减去 activity:menu）");
+        // V24 又给活动域加了 points-view/points-adjust，但二者 volunteer_grantable 保持默认 0：
+        // 手工调分是高危动作，绝不开放给志愿者；查明细志愿者端另有 /v/activity/points 只读本人。
+        // 故白名单仍是 V18 圈定的那 16 点，活动域总点数已是 19。
+        assertEquals(16, grantable.size(), "开放给志愿者的仍为 V18 圈定的活动域 16 点（不含 menu、不含 V24 积分 2 点）");
         assertTrue(grantable.stream().allMatch(p -> "activity".equals(p.getModule())), "仅活动域");
         assertTrue(grantable.stream().anyMatch(p -> "activity:publish".equals(p.getCode())));
         assertFalse(grantable.stream().anyMatch(p -> "activity:menu".equals(p.getCode())), "活动管理菜单不开放给志愿者");

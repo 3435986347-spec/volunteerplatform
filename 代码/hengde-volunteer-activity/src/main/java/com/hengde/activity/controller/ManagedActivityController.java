@@ -95,13 +95,14 @@ public class ManagedActivityController {
         return Result.ok();
     }
 
-    @Operation(summary = "统一签退（全部或指定志愿者）")
+    @Operation(summary = "统一签退（指定场次的全部或指定志愿者）")
     @PostMapping("/{id}/check-outs")
-    public Result<Integer> checkOut(@PathVariable Long id, @RequestBody(required = false) BulkCheckOutDTO dto) {
+    public Result<Integer> checkOut(@PathVariable Long id, @RequestBody @Valid BulkCheckOutDTO dto) {
+        // V30 起 slotId 必填（统一签退只针对某一场次），故请求体不再可省。
+        // 此前保留 required=false 又直接取 dto.getSlotId()，不带 body 调用会 NPE 成 500。
         Long vid = StpUtil.getLoginIdAsLong();
         activityLeaderService.requireVolunteerLeader(id, vid);
-        List<Long> ids = dto == null ? null : dto.getVolunteerIds();
-        return Result.ok(attendanceService.bulkCheckOut(id, ids, vid));
+        return Result.ok(attendanceService.bulkCheckOut(id, dto.getSlotId(), dto.getVolunteerIds(), vid));
     }
 
     @Operation(summary = "标记到位状态（正常/请假/迟到/缺席）")
@@ -110,7 +111,7 @@ public class ManagedActivityController {
                                        @RequestBody @Valid MarkAttendanceDTO dto) {
         Long vid = StpUtil.getLoginIdAsLong();
         activityLeaderService.requireVolunteerLeader(id, vid);
-        attendanceService.markAttendStatus(id, volunteerId, dto.getAttendStatus(), vid);
+        attendanceService.markAttendStatus(id, dto.getSlotId(), volunteerId, dto.getAttendStatus(), vid);
         return Result.ok();
     }
 
@@ -120,7 +121,7 @@ public class ManagedActivityController {
                                         @RequestBody @Valid ViolationDTO dto) {
         Long vid = StpUtil.getLoginIdAsLong();
         activityLeaderService.requireVolunteerLeader(id, vid);
-        return Result.ok(attendanceService.recordViolation(id, volunteerId, dto.getViolationType(),
+        return Result.ok(attendanceService.recordViolation(id, dto.getSlotId(), volunteerId, dto.getViolationType(),
                 dto.getDescription(), vid));
     }
 
@@ -137,7 +138,7 @@ public class ManagedActivityController {
                                  @RequestBody @Valid LeaderEvaluationDTO dto) {
         Long vid = StpUtil.getLoginIdAsLong();
         activityLeaderService.requireVolunteerLeader(id, vid);
-        attendanceService.leaderEvaluate(id, volunteerId, dto.getEvaluation(), vid);
+        attendanceService.leaderEvaluate(id, dto.getSlotId(), volunteerId, dto.getEvaluation(), vid);
         return Result.ok();
     }
 

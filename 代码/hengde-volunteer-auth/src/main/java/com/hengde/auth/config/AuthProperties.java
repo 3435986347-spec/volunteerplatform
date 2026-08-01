@@ -24,6 +24,18 @@ public class AuthProperties {
     /** 是否启用真实身份证二要素实名校验（腾讯云）。false 时直接放行 */
     private boolean realnameEnabled = false;
 
+    /** 腾讯云 API 密钥 SecretId（访问管理 CAM 处获取）。与火山引擎的 AK/SK 无关，不可复用 */
+    private String realnameSecretId;
+
+    /** 腾讯云 API 密钥 SecretKey */
+    private String realnameSecretKey;
+
+    /**
+     * 腾讯云地域。身份证二要素核验（IdCardVerification）<b>不需要 Region</b>，
+     * 此项仅用于构造 SDK 客户端，留默认即可。
+     */
+    private String realnameRegion = "ap-guangzhou";
+
     /** 是否启用真实企业微信群成员校验。false 时直接放行 */
     private boolean weworkGroupEnabled = false;
 

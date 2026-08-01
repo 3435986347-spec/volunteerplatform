@@ -48,8 +48,13 @@ class OrganizationRbacTest {
 
     @Test
     void permissionsSeeded() {
-        assertEquals(34L, permissionMapper.selectCount(null),
-                "可分配权限点：V2 23 + V4 enroll-view + V10 活动 6 + V12 manager-flag + V16 补录 2 + V19 发布审核 1 = 34");
+        assertEquals(46L, permissionMapper.selectCount(null),
+                "可分配权限点：V2 23 + V4 enroll-view + V10 活动 6 + V12 manager-flag + V16 补录 2 "
+                        + "+ V19 发布审核 1 + V24 积分 2（points-view/points-adjust）"
+                        + "+ V25 排行榜 2（ranking-view/ranking-snapshot）"
+                        + "+ V28 勋章榜样 5（medal/medal-audit/medal-grant/medal-grant-audit/role-model）"
+                        + "+ V31 证书 3（certificate/certificate-delete/certificate-template）= 46。"
+                        + "🛑 纸质的 honor:paper-apply / honor:paper-apply-pii 随纸质路径冻结，不在此列");
     }
 
     @Test

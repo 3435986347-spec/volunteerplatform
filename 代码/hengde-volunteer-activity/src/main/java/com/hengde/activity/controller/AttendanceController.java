@@ -48,28 +48,28 @@ public class AttendanceController {
     @Operation(summary = "自助签到（GPS 距活动 ≤ 半径 + 时间窗口）")
     @PostMapping("/activities/{id}/check-in")
     public Result<Void> checkIn(@PathVariable Long id, @RequestBody @Valid CheckInDTO dto) {
-        attendanceService.checkIn(id, StpUtil.getLoginIdAsLong(), dto.getLat(), dto.getLng(), dto.getMethod());
+        attendanceService.checkIn(id, dto.getSlotId(), StpUtil.getLoginIdAsLong(), dto.getLat(), dto.getLng(), dto.getMethod());
         return Result.ok();
     }
 
     @Operation(summary = "自助签退（扫签退码 + GPS 距活动 ≤ 半径 + 结束后2h内；算服务时长）")
     @PostMapping("/activities/{id}/check-out")
     public Result<Void> checkOut(@PathVariable Long id, @RequestBody @Valid CheckOutDTO dto) {
-        attendanceService.selfCheckOut(id, StpUtil.getLoginIdAsLong(), dto.getLat(), dto.getLng());
+        attendanceService.selfCheckOut(id, dto.getSlotId(), StpUtil.getLoginIdAsLong(), dto.getLat(), dto.getLng());
         return Result.ok();
     }
 
     @Operation(summary = "确认到家（活动结束后；超时仅记录）")
     @PostMapping("/activities/{id}/confirm-home")
     public Result<Void> confirmHome(@PathVariable Long id, @RequestBody @Valid ConfirmHomeDTO dto) {
-        attendanceService.confirmHome(id, StpUtil.getLoginIdAsLong(), dto.getLat(), dto.getLng());
+        attendanceService.confirmHome(id, dto.getSlotId(), StpUtil.getLoginIdAsLong(), dto.getLat(), dto.getLng());
         return Result.ok();
     }
 
     @Operation(summary = "评价活动与负责人（活动评分/负责人评分/评论）")
     @PostMapping("/activities/{id}/review")
     public Result<Void> review(@PathVariable Long id, @RequestBody @Valid ActivityReviewDTO dto) {
-        attendanceService.submitReview(id, StpUtil.getLoginIdAsLong(), dto.getActivityScore(),
+        attendanceService.submitReview(id, dto.getSlotId(), StpUtil.getLoginIdAsLong(), dto.getActivityScore(),
                 dto.getLeaderScore(), dto.getComment());
         return Result.ok();
     }

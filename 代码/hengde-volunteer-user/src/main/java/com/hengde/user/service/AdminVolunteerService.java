@@ -237,7 +237,7 @@ public class AdminVolunteerService {
             row.setManagerFlag(Integer.valueOf(1).equals(v.getManagerFlag()) ? "是" : "否");
             VolunteerServiceStatsView s = enrich.stats.get(v.getId());
             row.setHours(minutesToHours(s == null ? 0 : s.confirmedMinutes()));
-            row.setPoints(s == null ? 0 : s.grantedPoints());
+            row.setPoints(s == null ? 0 : s.points());
             row.setActivities(s == null ? 0 : s.activityCount());
             row.setStatus(statusLabel(v.getStatus()));
             return row;
@@ -386,7 +386,7 @@ public class AdminVolunteerService {
         vo.setGroup(enrich.groupNames.get(v.getId()));
         VolunteerServiceStatsView s = enrich.stats.get(v.getId());
         vo.setHours(minutesToHours(s == null ? 0 : s.confirmedMinutes()));
-        vo.setPoints(s == null ? 0 : s.grantedPoints());
+        vo.setPoints(s == null ? 0 : s.points());
         vo.setActivities(s == null ? 0 : s.activityCount());
         vo.setStatus(v.getStatus());
         vo.setRegisterTime(v.getRegisterTime());

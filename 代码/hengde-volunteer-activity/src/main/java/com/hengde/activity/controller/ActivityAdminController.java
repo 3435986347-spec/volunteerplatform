@@ -138,6 +138,14 @@ public class ActivityAdminController {
         return Result.ok();
     }
 
+    @Operation(summary = "取消活动（已有报名记录时使用，保留报名与考勤数据）")
+    @SaCheckPermission(value = PermissionCode.ACTIVITY_DELETE, type = "admin")
+    @PostMapping("/{id}/cancel")
+    public Result<Void> cancel(@PathVariable Long id) {
+        activityService.cancel(id);
+        return Result.ok();
+    }
+
     @Operation(summary = "复制活动")
     @SaCheckPermission(value = PermissionCode.ACTIVITY_PUBLISH, type = "admin")
     @PostMapping("/{id}/copy")

@@ -53,7 +53,14 @@ public class ActivityStatsService {
                 .in(Activity::getStatus, ActivityStatus.PUBLISHED, ActivityStatus.FINISHED));
     }
 
-    /** 参与人次：已发布/已结束活动上有签到记录（check_in_time 非空）的考勤行数。 */
+    /**
+     * 参与人次：已发布/已结束活动上有签到记录（check_in_time 非空）的考勤行数。
+     *
+     * <p><b>V30 口径变化（有意为之，非回归）</b>：考勤改为场次粒度后，
+     * 一人在同一活动报了两场并各自签到，这里计 <b>2 人次</b>（旧版计 1）。
+     * 依据原型 P97「服务记录」——每条记录对应一次签到/签退，即<b>一个场次</b>；
+     * 「人次」本就是「参加了几场」，不是「参加了几个活动」。</p>
+     */
     public long countParticipations() {
         return attendanceMapper.selectCount(Wrappers.<ActivityAttendance>lambdaQuery()
                 .isNotNull(ActivityAttendance::getCheckInTime)
