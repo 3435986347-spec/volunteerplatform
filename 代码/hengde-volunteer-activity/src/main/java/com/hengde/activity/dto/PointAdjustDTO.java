@@ -3,6 +3,7 @@ package com.hengde.activity.dto;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
@@ -36,8 +37,16 @@ public class PointAdjustDTO {
     @Size(max = 200, message = "调整原因过长")
     private String reason;
 
-    /** 幂等键：前端每次打开调整弹窗生成一个 UUID，重放同一次调整只入账一次 */
+    /**
+     * 幂等键：前端每次打开调整弹窗生成一个 UUID，重放同一次调整只入账一次。
+     *
+     * <p><b>限 ASCII 安全字符集</b>（与 {@code PointService.REQUEST_ID_PATTERN} 同一条规则）：
+     * {@code uk_request_id} 的「相等」由排序规则说了算，而 Java 的 {@code equals} 由码点说了算，
+     * 两者不重合的地方（重音折叠、全角、尾空格）就是系统保留前缀守卫的漏洞。
+     * 限死字符集后这类等价不再存在；V33 另把该列改成了 {@code utf8mb4_0900_bin}。</p>
+     */
     @NotBlank(message = "缺少幂等键 requestId")
     @Size(max = 64, message = "requestId 过长")
+    @Pattern(regexp = "[A-Za-z0-9:._-]+", message = "requestId 只能由字母、数字与 : . _ - 组成")
     private String requestId;
 }

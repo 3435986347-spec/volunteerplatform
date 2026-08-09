@@ -72,4 +72,12 @@ public final class PermissionCode {
 
     /** 积分手工调整（绕过发放公式加减分，须填原因并落审计） */
     public static final String ACTIVITY_POINTS_ADJUST = "activity:points-adjust";
+
+    /**
+     * 活动违规审核（组织部；V2 第 5 批）。
+     *
+     * <p>出处 xlsx Row 59 后台首页待办里单列的「活动违规审核」，
+     * 与 Row 41 F「各类违规记录和奖励均需组织部同学审核才可显示」。</p>
+     */
+    public static final String ACTIVITY_VIOLATION_REVIEW = "activity:violation-review";
 }

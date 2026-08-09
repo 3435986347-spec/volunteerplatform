@@ -20,10 +20,40 @@ public class HonorProperties {
     /** 证书相关（第 4 批） */
     private Certificate certificate = new Certificate();
 
+    /** 奖惩中心相关（第 5 批） */
+    private RewardPunish rewardPunish = new RewardPunish();
+
     /** 本类是 {@code @Component}，校验挂这里才真正会跑。 */
     @jakarta.annotation.PostConstruct
     public void validateAll() {
         certificate.validate();
+        rewardPunish.validate();
+    }
+
+    /** 奖惩中心配置。 */
+    @Data
+    public static class RewardPunish {
+
+        /**
+         * 申诉期天数（默认 7）。
+         *
+         * <p><b>需求原文</b>：xlsx Row 41 F「审核之后，志愿者会收到提示，并有<b>7天申诉期</b>」。
+         * 做成配置只是为了协会日后想调；默认值就是原文那个 7。</p>
+         *
+         * <p><b>改它不影响在途的处罚</b>：截止时刻在审核通过那一刻就写进
+         * {@code honor_reward_punish.appeal_deadline}，此后不再重算——
+         * 否则把 7 改成 3 会追溯性地缩短甚至当场作废别人已经在走的申诉权。</p>
+         */
+        private int appealDays = 7;
+
+        /** 配错就起不来，而不是静默按 0 天算（那等于取消申诉权）。 */
+        public void validate() {
+            if (appealDays <= 0) {
+                throw new IllegalStateException(
+                        "hengde.honor.reward-punish.appeal-days 必须 > 0，当前为 " + appealDays
+                                + "；配成 0 等于取消 Row 41 F 要求的申诉期");
+            }
+        }
     }
 
     /** 证书配置。 */

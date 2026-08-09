@@ -1,5 +1,6 @@
 package com.hengde.activity;
 
+import com.hengde.common.testsupport.TestcontainersConfig;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,7 +35,7 @@ class V30MigrationTest {
 
     @BeforeEach
     void startContainer() {
-        mysql = new MySQLContainer<>(DockerImageName.parse("mysql:8.0"));
+        mysql = new MySQLContainer<>(DockerImageName.parse(TestcontainersConfig.IMAGE));
         mysql.start();
     }
 

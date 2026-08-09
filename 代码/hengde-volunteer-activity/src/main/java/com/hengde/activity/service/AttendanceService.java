@@ -2,6 +2,8 @@ package com.hengde.activity.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.hengde.activity.config.ActivityProperties;
+import com.hengde.auth.constant.SanctionScope;
+import com.hengde.auth.service.SanctionQueryService;
 import com.hengde.activity.constant.ActivityStatus;
 import com.hengde.activity.constant.AttendStatus;
 import com.hengde.activity.constant.AttendanceQr;
@@ -90,6 +92,7 @@ public class AttendanceService {
     private ActivityAttendanceMapper attendanceMapper;
     private ActivityViolationMapper violationMapper;
     private ActivityEnrollmentMapper enrollmentMapper;
+    private SanctionQueryService sanctionQueryService;
     private ActivityLeaderMapper leaderMapper;
     private VolunteerQueryService volunteerQueryService;
     private ActivityProperties activityProperties;
@@ -117,6 +120,11 @@ public class AttendanceService {
     @Autowired
     public void setViolationMapper(ActivityViolationMapper violationMapper) {
         this.violationMapper = violationMapper;
+    }
+
+    @Autowired
+    public void setSanctionQueryService(SanctionQueryService sanctionQueryService) {
+        this.sanctionQueryService = sanctionQueryService;
     }
 
     @Autowired
@@ -182,6 +190,14 @@ public class AttendanceService {
      */
     @Transactional(rollbackFor = Exception.class)
     public void checkIn(Long activityId, Long slotId, Long volunteerId, BigDecimal lat, BigDecimal lng, Integer method) {
+        // 处置闸门（V2 第 5 批）：「限制参加活动」不能只挡报名。
+        // 【报名在前、处罚在后】是常见时序——人已报上名，几天后因别的事被处罚，
+        // 若只挡报名，他照样能到场签到拿时长积分，那条处罚等于没执行。
+        //
+        // ⚠️ 边界：本闸门【不回溯取消已有报名】。取消报名是破坏性动作，
+        //    需求（Row 41 / Row 73 / P109）只说「限制其使用」，没有要求撤销既有报名；
+        //    真要清退应当是一次显式的、看得见的操作，不是处罚的隐藏副作用。
+        sanctionQueryService.assertNotRestricted(volunteerId, SanctionScope.ACTIVITY, "签到");
         Activity a = requirePublished(activityId);
         if (a.getLat() == null || a.getLng() == null) {
             throw new BusinessException("活动未设置签到坐标，无法签到");

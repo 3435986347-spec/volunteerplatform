@@ -30,9 +30,32 @@ import org.testcontainers.utility.DockerImageName;
 @TestConfiguration(proxyBeanMethods = false)
 public class TestcontainersConfig {
 
+    /**
+     * <b>钉死补丁版本，不用浮动的 {@code mysql:8.0}</b>。
+     *
+     * <p>迁移里有把 {@code CHECK} 当作硬防线的地方（V32 的 {@code ck_rp_sanction_days}、
+     * V33 的 {@code ck_rp_sanction_days_cap}），而 <b>MySQL 8.0.16 之前会解析 CHECK 却不执行</b>——
+     * 在那种服务器上约束形同注释、相关用例会「通过」，而通过的原因是约束根本没生效。
+     * 浮动标签意味着某天镜像变了、行为跟着变，且没有任何提示。</p>
+     *
+     * <p>{@link #MIN_SUPPORTED} 是本项目的最低支持版本（部署侧同此口径，见 {@code 部署/} 与 README）；
+     * 这里固定的 {@link #IMAGE} 必须不低于它。升级镜像时一并确认 CHECK 与
+     * {@code utf8mb4_0900_bin} 排序规则这两类特性仍然可用。</p>
+     */
+    public static final String IMAGE = "mysql:8.0.46";
+
+    /**
+     * 本项目要求的最低 MySQL 版本，与 {@code DatabaseVersionGuard.MIN_VERSION} 同一口径。
+     *
+     * <p>由两条硬前提取大得到：<b>8.0.16</b> 起 CHECK 约束才真正执行；
+     * <b>8.0.17</b> 起才有 {@code utf8mb4_0900_bin} 排序规则（V34 靠它，8.0.16 上会
+     * {@code ERROR 1273 Unknown collation}，已在 {@code mysql:8.0.16} 容器实测）。</p>
+     */
+    public static final String MIN_SUPPORTED = "8.0.17";
+
     @Bean
     @ServiceConnection
     public MySQLContainer<?> mysqlContainer() {
-        return new MySQLContainer<>(DockerImageName.parse("mysql:8.0"));
+        return new MySQLContainer<>(DockerImageName.parse(IMAGE));
     }
 }

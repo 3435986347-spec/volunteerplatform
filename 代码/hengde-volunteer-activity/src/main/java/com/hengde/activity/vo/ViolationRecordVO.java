@@ -56,4 +56,26 @@ public class ViolationRecordVO {
 
     /** 记录时间 */
     private LocalDateTime recordedTime;
+
+    // ---------- 组织部审核（V32，第 5 批）----------
+
+    /** 所属活动 id（后台跨活动的审核队列要用；负责人页只看单个活动，可为 null） */
+    private Long activityId;
+
+    /** 所属活动名称（同上） */
+    private String activityTitle;
+
+    /**
+     * 审核状态 0待审核/1已通过/2已驳回（xlsx Row 41 F「审核才可显示」、Row 59 待办「活动违规审核」）。
+     *
+     * <p>负责人页也回这一列：记完之后看不到「审了没、有没有被驳回」，
+     * 负责人就无从知道自己那条记录到底作不作数。</p>
+     */
+    private Integer reviewStatus;
+
+    /** 审核时间 */
+    private LocalDateTime reviewTime;
+
+    /** 驳回原因 */
+    private String rejectReason;
 }

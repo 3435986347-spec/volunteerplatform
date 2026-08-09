@@ -1,0 +1,37 @@
+-- honor_reward_punish.sanction_days 补上限（V2 第 5 批评审第 3 / 6 轮）。
+--
+-- 不是新功能，是把 V32 里靠上层代码维持的约束固化到数据库上。
+-- 需求出处仍是 Row 73「限制其使用指定天数」——本文件只保护它的实现。
+--
+-- ────────────────────────────────────────────────────────────────────────────
+-- 【本文件只有一条语句，这是刻意的】MySQL 的每条 DDL 各自隐式提交，一个 .sql 文件不是一个事务。
+--   多条语句放在一起时，「第 1 条成功提交、第 2 条失败」会让 Flyway 把整个版本记为失败，
+--   而重跑时第 1 条会因为「已经做过」再失败一次（约束重名 / 索引已存在），库就卡死了。
+--   第 6 轮评审真的踩到了这一形态：本文件原先第 2 条是把 point_record.request_id 改成
+--   utf8mb4_0900_bin，而那个排序规则 **MySQL 8.0.17 才有**；在 8.0.16 上实测是
+--     ① ADD CONSTRAINT ...                    → 成功（并隐式提交）
+--     ② MODIFY ... COLLATE utf8mb4_0900_bin   → ERROR 1273 Unknown collation
+--     ③ 升级数据库后 repair 重跑              → ERROR 3822 Duplicate check constraint name
+--   已拆出去为 V34。**此后每个迁移文件只放一条有失败可能的语句**，失败即「什么都没发生」。
+--
+-- 【必须是 ADD 一条新约束，不能 DROP 旧的再 ADD 回去】同一条理由的另一个形态：
+--   DROP 与 ADD 是两条 DDL、各自提交。若存量有 sanction_days > 3650 的行，
+--   DROP 已经生效并提交、ADD 校验失败，于是迁移失败【而且旧约束已经没了】；
+--   重跑时 DROP 又会因为约束不存在再失败一次。
+--   只做 ADD 则失败时什么都没改变，且 MySQL 的报错直接点名约束，等于自带脏数据检查。
+--
+-- 若本条失败，先查出脏数据再决定怎么修（截断到 3650 还是改成不设期限）：
+--   SELECT id, rp_no, volunteer_id, sanction_days
+--     FROM honor_reward_punish WHERE sanction_days > 3650;
+--
+-- 与 V32 的 ck_rp_sanction_days（> 0、且必须有能力域）并存，两条各管一头。
+--
+-- 3650 = 10 年。它不是协会给的期限，是一个「再长就应当改用『不设期限』明说」的工程上限：
+-- 用 99999 天伪装成有期限的处罚，在志愿者那边看到的是一个荒唐的解除日期；
+-- 而 now.plusDays(Integer.MAX_VALUE) 会直接抛 DateTimeException（报 500，不是人话报错）。
+-- 协会若给出真实上限口径，改这里与 VolunteerSanction.MAX_SANCTION_DAYS 两处即可。
+--
+-- ⚠️ CHECK 约束 MySQL 8.0.16 起才真正执行，更早版本只解析不执行；本项目的最低版本是
+--   **8.0.17**（由 V34 的排序规则决定，见那里），启动时由 DatabaseVersionGuard 强制校验。
+ALTER TABLE honor_reward_punish
+    ADD CONSTRAINT ck_rp_sanction_days_cap CHECK (sanction_days IS NULL OR sanction_days <= 3650);

@@ -248,11 +248,19 @@ public class MyActivityService {
      *
      * <p>列表行已是场次粒度，若计数仍按活动汇总，同一活动的每一行都会显示<b>整个活动</b>的违规数——
      * 上午场没违规的人也会看到「违规 1 次」。违规自 V30 起带 {@code slot_id}（依据 xlsx Row 32），故按场次分组。</p>
+     *
+     * <p><b>只计已通过组织部审核的（V32，第 5 批）</b>：xlsx Row 41 F「各类违规记录和奖励均需
+     * <b>组织部同学审核才可显示</b>」。此前是负责人现场一记、志愿者这里立刻看到条数，
+     * 中间没有任何闸门——等于把负责人的一面之词直接当定论呈现给被记的那个人。</p>
+     *
+     * <p><b>负责人端刻意不走这条口径</b>：{@code AttendanceService} 的名单与违规记录列表仍返回全部，
+     * 那是负责人自己的工作底稿——看不到刚记的那条反而没法复核与更正。</p>
      */
     private Map<String, Integer> violationCountBySlot(Long volunteerId, List<Long> activityIds) {
         Map<String, Integer> map = new HashMap<>();
         for (ActivityViolation v : violationMapper.selectList(Wrappers.<ActivityViolation>lambdaQuery()
                 .eq(ActivityViolation::getVolunteerId, volunteerId)
+                .eq(ActivityViolation::getReviewStatus, ActivityViolation.REVIEW_APPROVED)
                 .in(ActivityViolation::getActivityId, activityIds))) {
             map.merge(attKey(v.getActivityId(), v.getSlotId()), 1, Integer::sum);
         }

@@ -46,6 +46,25 @@ public final class PointSourceType {
     /** 奖惩调整（V2 第 5 批奖惩中心）；独占一码，勿与 {@link #CORRECTION} 合并 */
     public static final int REWARD_PUNISH = 6;
 
+    /**
+     * 奖惩申诉成立时那笔<b>反向流水</b>的 {@code request_id} 前缀，<b>系统保留</b>。
+     *
+     * <p>反向流水不能复用 {@code source_id}（{@code uk_source(6, id)} 已被原始那笔占住），
+     * 只能靠 {@code uk_request_id} 保幂等。而手工调整的 {@code request_id} 是<b>前端传进来的</b>——
+     * 若有人（哪怕只是手滑粘错）用了同样的串先记一笔，那张单的冲正位就被占住了。</p>
+     *
+     * <p><b>后果是「申诉办不下去」，不是「静默半提交」</b>：日后那张单申诉成立时，反向流水撞上这条
+     * 已存在的键，{@code PointService} 的载荷复核会发现来源码不同（5 手工 vs 6 奖惩）而抛
+     * 「积分入账冲突」，<b>整个受理事务随之回滚</b>——处置没解除、分没退、申诉也办不成，
+     * 直到有人手工清掉那条占位流水。失败是响亮的，但那张单被彻底卡死，
+     * 且报错指向积分而不是「有人占了你的幂等键」，排查起来并不直观。
+     * （早先这里写的是「被当成重放静默跳过、处置解除了分退不回来」，那是错的——
+     * 载荷复核会拦下来，不会出现只解除处置却不退分的半提交。）</p>
+     *
+     * <p>故 {@code PointService} 对非奖惩来源的流水拒绝这个前缀。</p>
+     */
+    public static final String REVERT_REQUEST_PREFIX = "sys:rp-revert:";
+
     /** 操作方：系统自动 */
     public static final int OPERATOR_SYSTEM = 0;
     /** 操作方：管理员 */

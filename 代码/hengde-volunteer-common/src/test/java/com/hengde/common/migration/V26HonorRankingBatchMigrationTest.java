@@ -1,5 +1,6 @@
 package com.hengde.common.migration;
 
+import com.hengde.common.testsupport.TestcontainersConfig;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -71,7 +72,7 @@ class V26HonorRankingBatchMigrationTest {
 
     @BeforeAll
     static void startContainer() {
-        mysql = new MySQLContainer<>(DockerImageName.parse("mysql:8.0"));
+        mysql = new MySQLContainer<>(DockerImageName.parse(TestcontainersConfig.IMAGE));
         mysql.start();
     }
 

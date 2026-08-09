@@ -15,6 +15,7 @@ import com.hengde.activity.entity.ActivitySlot;
 import com.hengde.activity.vo.MyEnrollmentVO;
 import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.auth.vo.VolunteerProfileView;
+import com.hengde.auth.constant.SanctionScope;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.lock.DistributedLockSupport;
 import com.hengde.common.page.PageQuery;
@@ -119,19 +120,30 @@ public class EnrollmentService {
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
+    private com.hengde.auth.service.SanctionQueryService sanctionQueryService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setSanctionQueryService(com.hengde.auth.service.SanctionQueryService sanctionQueryService) {
+        this.sanctionQueryService = sanctionQueryService;
+    }
+
     /**
      * 报名：选定活动下若干时间段。校验链见方法体；need_audit 决定落库初值（0待审核/1已通过）。
      *
      * @return 实际新增的报名记录条数（= 报名的时间段数）
      */
     public int enroll(Long activityId, List<Long> slotIds, Long volunteerId) {
-        // 去重，保留选择顺序
+        // 去重，保留选择顺序。（处置闸门在 doEnroll 里、锁与事务之内——理由见那里）
         List<Long> distinctSlotIds = new ArrayList<>(new LinkedHashSet<>(slotIds));
         return DistributedLockSupport.runLocked(redissonClient, LOCK_KEY_PREFIX + volunteerId,
                 () -> transactionTemplate.execute(s -> doEnroll(activityId, distinctSlotIds, volunteerId)));
     }
 
     private int doEnroll(Long activityId, List<Long> slotIds, Long volunteerId) {
+        // 处置闸门（V32）：被「限制参加活动」或「拒绝使用本程序」的人不得报名。
+        // 【在锁与事务之内】口径是「审核通过即刻生效」，若放在锁外，
+        // 「查过没被限制 → 处罚在这一刻生效 → 提交报名」这个窗口会漏掉一次刚生效的处罚。
+        sanctionQueryService.assertNotRestricted(volunteerId, SanctionScope.ACTIVITY, "报名");
         LocalDateTime now = LocalDateTime.now();
 
         Activity activity = activityMapper.selectById(activityId);
@@ -167,7 +179,7 @@ public class EnrollmentService {
         }
 
         // 资格校验
-        VolunteerProfileView profile = volunteerQueryService.getProfileForEligibility(volunteerId);
+        VolunteerProfileView profile = volunteerQueryService.getProfileForEligibilityForShare(volunteerId);
         if (profile == null) {
             throw new BusinessException("志愿者信息不存在");
         }
@@ -211,12 +223,19 @@ public class EnrollmentService {
      * @return 新增的报名记录条数
      */
     public int manualEnroll(Long activityId, Long volunteerId, List<Long> slotIds, Long adminId) {
+        // 处置闸门（V32）：后台补录同样不得绕过。它确实是管理员的越权动作，
+        // 但「越过报名条件」与「越过一条正在执行的处罚」是两回事——
+        // 后者若能被一次补录悄悄抵消，处罚就不再是处罚。要放行请先显式解除处置（/lift-sanction）。
         List<Long> distinctSlotIds = new ArrayList<>(new LinkedHashSet<>(slotIds));
         return DistributedLockSupport.runLocked(redissonClient, LOCK_KEY_PREFIX + volunteerId,
                 () -> transactionTemplate.execute(s -> doManualEnroll(activityId, distinctSlotIds, volunteerId, adminId)));
     }
 
     private int doManualEnroll(Long activityId, List<Long> slotIds, Long volunteerId, Long adminId) {
+        // 处置闸门（V32）：后台补录同样不得绕过（在锁与事务之内，理由同 doEnroll）。
+        // 它确实是管理员的越权动作，但「越过报名条件」与「越过一条正在执行的处罚」是两回事——
+        // 后者若能被一次补录悄悄抵消，处罚就不再是处罚。要放行请先显式解除处置（/lift-sanction）。
+        sanctionQueryService.assertNotRestricted(volunteerId, SanctionScope.ACTIVITY, "被补录报名");
         LocalDateTime now = LocalDateTime.now();
 
         Activity activity = activityMapper.selectById(activityId);
@@ -224,7 +243,7 @@ public class EnrollmentService {
             throw new BusinessException("活动不存在");
         }
         // 越权仅跳过「资格条件」（年龄/年级/性别/次数/截止）；账号存在与「未被禁用」不是资格条件，仍须拦截。
-        VolunteerProfileView profile = volunteerQueryService.getProfileForEligibility(volunteerId);
+        VolunteerProfileView profile = volunteerQueryService.getProfileForEligibilityForShare(volunteerId);
         if (profile == null) {
             throw new BusinessException("志愿者不存在");
         }
@@ -299,6 +318,22 @@ public class EnrollmentService {
         // 事务+锁内再校验同组：把 TOCTOU 窗口缩到「再校验 → 提交」的几毫秒内
         groupQueryService.requireSameActiveGroup(actorId, targets);
 
+        // 处置闸门（V32）：【报名不止 enroll 一个入口】，代报名同样能把人放进活动，
+        // 只挡自助报名等于留了一扇后门——同组的人替他报一次，处罚就绕过去了。
+        //
+        // 【必须放在同组校验之后】处置报错里带着「限制到什么时候」，
+        // 放在前面等于任何人传一串 id 就能探出这些人有没有被处罚、罚到几号——
+        // 那是别人的处分信息，只有同组且真能替他报名的人才谈得上看到。
+        //
+        // 【也必须在锁与事务之内】否则「查过没被限制 → 处罚在这一刻生效 → 提交报名」
+        // 这个窗口会让刚生效的处罚漏掉一次；放进来后它与同组校验共用同一条串行化边界。
+        //
+        // 【用批量版而不是循环单人版】闸门的处置查询是 FOR SHARE 当前读，在 RR 下会连间隙一起锁，
+        // 范围可能盖到本批后面的志愿者身上。逐个「锁父行→读处置」会形成
+        // 「闸门持 v1 父行 + 覆盖 v5 的间隙 → 等 v5 父行」与「impose(v5) 持 v5 父行 → 等那把间隙」
+        // 的环，直接 ER_LOCK_DEADLOCK。批量版先把父行锁按 id 升序全部拿齐再读，不成环。
+        sanctionQueryService.assertNoneRestricted(targets, SanctionScope.ACTIVITY, "被代报名");
+
         LocalDateTime now = LocalDateTime.now();
 
         Activity activity = activityMapper.selectById(activityId);
@@ -337,7 +372,7 @@ public class EnrollmentService {
 
         // 逐个 target：资格/防重/时段冲突
         for (Long targetId : targets) {
-            VolunteerProfileView profile = volunteerQueryService.getProfileForEligibility(targetId);
+            VolunteerProfileView profile = volunteerQueryService.getProfileForEligibilityForShare(targetId);
             if (profile == null) {
                 throw new BusinessException("被代报名同学(id=" + targetId + ")信息异常");
             }

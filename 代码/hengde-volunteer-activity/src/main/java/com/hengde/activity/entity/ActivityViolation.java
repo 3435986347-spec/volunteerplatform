@@ -45,4 +45,33 @@ public class ActivityViolation extends BaseEntity {
 
     /** 记录时间 */
     private LocalDateTime recordedTime;
+
+    // ---------- 组织部审核（V32，第 5 批）----------
+
+    /** 待审核 */
+    public static final int REVIEW_PENDING = 0;
+    /** 审核通过——通过后才对志愿者可见 */
+    public static final int REVIEW_APPROVED = 1;
+    /** 已驳回 */
+    public static final int REVIEW_REJECTED = 2;
+
+    /**
+     * 组织部审核状态 0待审核/1已通过/2已驳回。
+     *
+     * <p><b>需求出处</b>：xlsx Row 41 F「各类违规记录和奖励均需<b>组织部同学审核才可显示</b>」；
+     * Row 59 后台首页待办里单列了「<b>活动违规审核</b>」这一项，即违规记录本身要过一道审。</p>
+     *
+     * <p>现场记录是负责人的<b>工作底稿</b>：负责人在活动现场凭观察点几下，
+     * 未经组织部核实就直接呈现给志愿者，等于把一面之词当成定论。</p>
+     */
+    private Integer reviewStatus;
+
+    /** 审核人 admin_user.id */
+    private Long reviewedBy;
+
+    /** 审核时间 */
+    private LocalDateTime reviewTime;
+
+    /** 驳回原因 */
+    private String rejectReason;
 }

@@ -57,7 +57,34 @@ public class VolunteerQueryService {
      * @return 资格视图；志愿者不存在时返回 null（由调用方决定如何处理）
      */
     public VolunteerProfileView getProfileForEligibility(Long volunteerId) {
-        Volunteer v = volunteerMapper.selectById(volunteerId);
+        return toProfile(volunteerMapper.selectById(volunteerId));
+    }
+
+    /**
+     * <b>当前读</b>版的资格档案（{@code FOR SHARE}）。<b>只能在事务内调用。</b>
+     *
+     * <p><b>凡是「读完就据此放行一个动作」的路径都必须用这条</b>，典型是报名三个入口的
+     * 「账号状态是否正常」。{@link #getProfileForEligibility} 是普通 {@code selectById}：
+     * REPEATABLE READ 下读视图在本事务第一次一致性读时就定死，此后无论过多久，
+     * 别人提交的禁用/注销/逻辑删除都读不到。</p>
+     *
+     * <p><b>这个窗口在代报名上是敞开的</b>：{@code doProxyEnroll} 先跑同组校验（普通读）
+     * 建立读视图，之后处置闸门虽然当前读并锁住了志愿者行，但资格判定若仍走快照读，
+     * 就会拿着旧状态放行——闸门锁到了真相却没有使用它。<b>闸门之后不得再用快照读判定这个人的状态。</b></p>
+     *
+     * <p>取 S 与闸门同一把锁，重复获取在同一事务内是无操作，不产生升级。</p>
+     *
+     * @param volunteerId 志愿者 id
+     * @return 资格视图；志愿者不存在或已逻辑删除返回 null
+     */
+    public VolunteerProfileView getProfileForEligibilityForShare(Long volunteerId) {
+        if (volunteerId == null) {
+            return null;
+        }
+        return toProfile(volunteerMapper.selectByIdForShare(volunteerId));
+    }
+
+    private VolunteerProfileView toProfile(Volunteer v) {
         if (v == null) {
             return null;
         }
@@ -213,6 +240,35 @@ public class VolunteerQueryService {
             return null;
         }
         Volunteer v = volunteerMapper.selectByIdForShare(volunteerId);
+        if (v == null) {
+            return null;
+        }
+        Integer status = v.getStatus();
+        // status 为 null 按正常处理，与 DB 默认 0 及 isActive 的口径一致
+        boolean active = status == null || UserStatus.NORMAL.equals(status);
+        return new VolunteerGrantEligibilityView(v.getId(), v.getRealName(),
+                v.getRegisterTime() != null, active, status);
+    }
+
+    /**
+     * <b>排他锁</b>版的资格视图，语义与 {@link #getGrantEligibilityForShare} 完全相同，
+     * 只是把 {@code FOR SHARE} 换成 {@code FOR UPDATE}。<b>只能在事务内调用。</b>
+     *
+     * <p>给「复核完资格之后，同一个事务里还要写这个志愿者的处置」用（奖惩审核通过）。
+     * 先取 S、再由 {@code SanctionService.impose} 取 X 是一次锁升级，两名管理员同时审同一个人
+     * 就会死锁；一开始取 X 则没有升级，第二次取同一把锁在本事务内是无操作。
+     * 这把锁的两个用途与选择依据见 {@link com.hengde.auth.dao.VolunteerMapper#selectByIdForUpdate}。</p>
+     *
+     * <p>只读不写的复核（如勋章发放审核）仍应当用 {@code ForShare} 那条，多个审核可以并行。</p>
+     *
+     * @param volunteerId 志愿者 id
+     * @return 资格视图；志愿者不存在或已删除返回 null
+     */
+    public VolunteerGrantEligibilityView getGrantEligibilityForUpdate(Long volunteerId) {
+        if (volunteerId == null) {
+            return null;
+        }
+        Volunteer v = volunteerMapper.selectByIdForUpdate(volunteerId);
         if (v == null) {
             return null;
         }

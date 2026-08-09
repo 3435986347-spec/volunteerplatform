@@ -324,7 +324,8 @@ class PointLedgerIntegrationTest {
         Long attId = insertAttendance(actId, vid, 1);
         int award = serviceRecordService.grantPoints(attId, 0, ADMIN);
 
-        pointService.record(vid, -20, PointSourceType.MANUAL, null, "手工扣分-" + SEQ.incrementAndGet(),
+        // 幂等键限 ASCII 安全字符集（见 PointService.REQUEST_ID_PATTERN）——中文只放 remark，不放键
+        pointService.record(vid, -20, PointSourceType.MANUAL, null, "manual-deduct-" + SEQ.incrementAndGet(),
                 "扣分", PointSourceType.OPERATOR_ADMIN, ADMIN);
 
         Map<Long, VolunteerServiceStatsView> stats = serviceRecordService.batchStatsByVolunteerIds(List.of(vid));
@@ -337,7 +338,7 @@ class PointLedgerIntegrationTest {
     @Test
     void batchStats_includesVolunteerWithLedgerButNoAttendance() {
         Long vid = insertVolunteer("链路辛");
-        pointService.record(vid, 33, PointSourceType.MANUAL, null, "纯手工-" + SEQ.incrementAndGet(),
+        pointService.record(vid, 33, PointSourceType.MANUAL, null, "manual-only-" + SEQ.incrementAndGet(),
                 "奖励", PointSourceType.OPERATOR_ADMIN, ADMIN);
 
         Map<Long, VolunteerServiceStatsView> stats = serviceRecordService.batchStatsByVolunteerIds(List.of(vid));

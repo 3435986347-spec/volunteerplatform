@@ -33,4 +33,26 @@ public interface VolunteerMapper extends BaseMapper<Volunteer> {
      */
     @Select("SELECT * FROM volunteer WHERE id = #{id} AND is_deleted = 0 FOR SHARE")
     Volunteer selectByIdForShare(@Param("id") Long id);
+
+    /**
+     * 按 id 取志愿者并加<b>排他行锁</b>（{@code FOR UPDATE}），必须在事务内调用。
+     *
+     * <p><b>用途一：审核奖惩单时复核资格</b>。与 {@link #selectByIdForShare} 同为当前读，
+     * 但这条读完之后紧接着要写 {@code volunteer_sanction}，而处置写入本身也要锁这一行
+     * （见用途二）。若复核先取 S、施加处置再取 X，就是一次锁升级：两名管理员同时审同一个人的
+     * 两张单，各持一把 S、各等对方放掉，直接死锁（ERROR 1213）。一开始就取 X 反而不产生升级。</p>
+     *
+     * <p><b>用途二：把志愿者这一行当作「处置」的串行化父行</b>。处置的写入端是
+     * {@code SanctionService.impose}，执行端是报名/补录/代报名/签到那几道闸门，
+     * 两边分处不同事务、也不共用 Redisson 锁（{@code lock:enroll:volunteer:} 只锁报名自己）。
+     * 于是「闸门查无处罚 → 处罚提交 → 报名提交」这个窗口无人看守。
+     * {@code volunteer_sanction} 里那条记录在闸门查的时候还不存在，锁不住不存在的行；
+     * 所以两边约定去锁一行<b>必定存在且稳定</b>的父行：写入端取 X、闸门取 S，
+     * 谁先谁后都由数据库排成先后，不再有交叠。</p>
+     *
+     * @param id 志愿者 id
+     * @return 志愿者行；不存在或已逻辑删除返回 null
+     */
+    @Select("SELECT * FROM volunteer WHERE id = #{id} AND is_deleted = 0 FOR UPDATE")
+    Volunteer selectByIdForUpdate(@Param("id") Long id);
 }

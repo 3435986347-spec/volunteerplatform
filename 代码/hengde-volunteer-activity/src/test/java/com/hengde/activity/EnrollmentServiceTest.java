@@ -11,8 +11,11 @@ import com.hengde.activity.entity.ActivityAttendance;
 import com.hengde.activity.entity.ActivityEnrollment;
 import com.hengde.activity.entity.ActivitySlot;
 import com.hengde.activity.service.EnrollmentService;
+import com.hengde.auth.constant.SanctionScope;
 import com.hengde.auth.dao.VolunteerMapper;
 import com.hengde.auth.entity.Volunteer;
+import com.hengde.auth.entity.VolunteerSanction;
+import com.hengde.auth.service.SanctionService;
 import com.hengde.common.constant.Gender;
 import com.hengde.common.constant.Grade;
 import com.hengde.common.exception.BusinessException;
@@ -32,6 +35,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -60,6 +64,8 @@ class EnrollmentServiceTest {
     private VolunteerMapper volunteerMapper;
     @Autowired
     private ActivityAttendanceMapper attendanceMapper;
+    @Autowired
+    private SanctionService sanctionService;
     @Autowired
     private VolunteerGroupMapper groupMapper;
     @Autowired
@@ -416,6 +422,69 @@ class EnrollmentServiceTest {
         assertEquals(Integer.valueOf(1), e1.getStatus(), "needAudit=0 → 直接通过");
         // 群 id 仅用于断言 setup 成功，避免编译告警未使用
         assertTrue(groupId > 0);
+    }
+
+    /**
+     * 处置闸门必须挡住<b>代报名</b>这条入口，而不只是自助报名。
+     *
+     * <p>删掉 {@code doProxyEnroll} 里那道闸门，本用例必须变红——上一轮那条
+     * 「代报名与补录」的用例其实只调了 {@code manualEnroll}，代报名这条路当时是没人守的。
+     * 代报名同样能把人放进活动：同组的人替他报一次，处罚就绕过去了。</p>
+     *
+     * <p>整批回滚也一并压住：一个 target 被挡，整个事务不能只落下另一个。</p>
+     */
+    @Test
+    void proxyEnroll_targetUnderSanction_rejectedRollsBackAll() {
+        Long actor = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(22), Grade.COLLEGE_1);
+        Long clean = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(22), Grade.COLLEGE_1);
+        Long punished = insertVolunteer(Gender.FEMALE, LocalDate.now().minusYears(22), Grade.COLLEGE_1);
+        insertGroupWithMembers(actor, List.of(clean, punished));
+        sanctionService.impose(punished, VolunteerSanction.SOURCE_REWARD_PUNISH, 90_001L,
+                SanctionScope.ACTIVITY, 7);
+
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long slot = insertSlot(aid, A_START, A_START.plusHours(2));
+        ProxyEnrollDTO dto = new ProxyEnrollDTO();
+        dto.setVolunteerIds(List.of(clean, punished));
+        dto.setSlotIds(List.of(slot));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> enrollmentService.proxyEnroll(aid, dto, actor),
+                "代报名绕过处罚 = 处罚等于没执行");
+        assertTrue(ex.getMessage().contains("限制参加活动"), "实际：" + ex.getMessage());
+        assertEquals(0L, enrollmentMapper.selectCount(Wrappers.<ActivityEnrollment>lambdaQuery()
+                        .eq(ActivityEnrollment::getActivityId, aid)),
+                "一个 target 被挡 → 整批回滚，没受罚的那个也不该报上");
+    }
+
+    /**
+     * 处置闸门在代报名里<b>必须排在同组校验之后</b>：否则任何人传一串陌生 id，
+     * 就能从报错文案里读出「这些人有没有被处罚、罚到几号」——那是别人的处分信息。
+     *
+     * <p>把 {@code doProxyEnroll} 里两句的顺序调换，本用例会变红：报错会从「不在同一小组」
+     * 变成带解除时间的处罚提示。</p>
+     */
+    @Test
+    void proxyEnroll_strangerUnderSanction_reportsGroupNotPunishment() {
+        Long actor = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(22), Grade.COLLEGE_1);
+        Long member = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(22), Grade.COLLEGE_1);
+        Long stranger = insertVolunteer(Gender.FEMALE, LocalDate.now().minusYears(22), Grade.COLLEGE_1);
+        insertGroupWithMembers(actor, List.of(member));      // stranger 不在组
+        sanctionService.impose(stranger, VolunteerSanction.SOURCE_REWARD_PUNISH, 90_002L,
+                SanctionScope.ACTIVITY, 7);
+
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long slot = insertSlot(aid, A_START, A_START.plusHours(2));
+        ProxyEnrollDTO dto = new ProxyEnrollDTO();
+        dto.setVolunteerIds(List.of(stranger));
+        dto.setSlotIds(List.of(slot));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> enrollmentService.proxyEnroll(aid, dto, actor));
+        assertFalse(ex.getMessage().contains("限制参加活动"),
+                "不同组就不该看到对方的处分信息，实际：" + ex.getMessage());
+        assertFalse(ex.getMessage().contains("自动解除"),
+                "解除时间尤其不能漏出去，实际：" + ex.getMessage());
     }
 
     @Test

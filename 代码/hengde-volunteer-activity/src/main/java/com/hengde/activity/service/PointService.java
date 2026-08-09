@@ -75,6 +75,21 @@ public class PointService {
     /** {@code point_record.remark} 的列宽（字符数），超长在此截断而非让 DB 抛错 */
     private static final int REMARK_MAX_LENGTH = 512;
 
+    /**
+     * 幂等键允许的字符集：ASCII 字母数字与 {@code : . _ -}，长度 1~64（对齐列宽）。
+     *
+     * <p>够用：前端生成的是 UUID，系统侧是 {@code sys:rp-revert:{id}}。</p>
+     *
+     * <p><b>为什么要限死字符集</b>：{@code uk_request_id} 的「相等」由排序规则说了算，
+     * 而 Java 的 {@code equals} 由码点说了算，两者不重合的地方就是守卫的漏洞——
+     * 重音折叠（{@code sýs} = {@code sys}）、大小写、PAD SPACE 下的尾空格，都能让
+     * 一个「Java 看着不同、数据库看着相同」的键溜过前缀检查，去抢占某张奖惩单的冲正键。
+     * V33 已把该列改成 {@code utf8mb4_0900_bin} 从根上消除这类等价，这道字符集守卫是第二层：
+     * 它在**任何**排序规则下都成立，因此不依赖 V33 是否已在某个实例上跑过。</p>
+     */
+    private static final java.util.regex.Pattern REQUEST_ID_PATTERN =
+            java.util.regex.Pattern.compile("[A-Za-z0-9:._-]{1,64}");
+
     private PointRecordMapper pointRecordMapper;
     private RedissonClient redissonClient;
     private VolunteerQueryService volunteerQueryService;
@@ -147,6 +162,21 @@ public class PointService {
             throw new BusinessException("积分变动值不能为 0");
         }
         String key = StringUtils.hasText(requestId) ? requestId : null;
+        if (key != null) {
+            assertRequestIdWellFormed(key);
+            // 系统保留前缀：只有奖惩冲正可以用它。放开的话，一笔手工调整就能抢占某张奖惩单的
+            // 冲正幂等键；等那张单申诉成立时，反向流水撞上这条已存在的键，下面的载荷复核会发现
+            // 来源码不同（5 vs 6）而抛「积分入账冲突」，【整个申诉受理事务回滚】——
+            // 处置没解除、分没退、申诉也办不成，直到有人手工清掉那条占位流水。
+            // （不是「静默跳过、只解除处置不退分」：载荷复核会拦下来，不存在那种半提交。）
+            // 【仍然忽略大小写】V33 已把 request_id 改成 utf8mb4_0900_bin（库里区分大小写），
+            // 这条比库更严一格：对一个系统保留前缀宁可多挡，也免得 V33 落地前的实例留着口子。
+            if (key.regionMatches(true, 0, PointSourceType.REVERT_REQUEST_PREFIX, 0,
+                    PointSourceType.REVERT_REQUEST_PREFIX.length())
+                    && sourceType != PointSourceType.REWARD_PUNISH) {
+                throw new BusinessException("幂等键前缀 " + PointSourceType.REVERT_REQUEST_PREFIX + " 为系统保留");
+            }
+        }
         // 统一在此截断：remark 列 512，而上游拼进来的活动名、修正理由等长度不受本服务控制，
         // 不截断会在严格模式下抛 data too long 把整个调用方事务带崩（发积分/审核都会连带失败）。
         // 截断后的值同时用于下面的载荷比对，保证「写进去的」与「比对的」是同一个串。
@@ -187,6 +217,13 @@ public class PointService {
             throw new BusinessException("积分入账冲突，请稍后重试");
         }
         return pointRecordMapper.sumBalance(volunteerId);
+    }
+
+    /** 幂等键必须落在 {@link #REQUEST_ID_PATTERN} 内，理由见该常量的注释。 */
+    private static void assertRequestIdWellFormed(String key) {
+        if (!REQUEST_ID_PATTERN.matcher(key).matches()) {
+            throw new BusinessException("幂等键只能由字母、数字与 : . _ - 组成，且不超过 64 位");
+        }
     }
 
     /**
