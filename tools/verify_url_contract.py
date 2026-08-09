@@ -19,7 +19,8 @@
 
 `--selftest` 覆盖解析器与比对逻辑最容易写错的地方（都是真实踩过的形态）：
 无参数的裸 `@GetMapping`、`PermissionCode.X` 常量解引用、`SaMode.OR` 多权限、
-markdown 粗体写的 `**或**`、以及「文档要求权限点但代码没有注解」这一类权限回归。
+markdown 粗体写的 `**或**`、「文档要求权限点但代码没有注解」这一类权限回归，
+以及**注释吞掉端点**（javadoc 漏写 `*/`，`mvn` 与本脚本曾同时放过）。
 
 **能力边界（不要高估本脚本）**：
 
@@ -27,6 +28,8 @@ markdown 粗体写的 `**或**`、以及「文档要求权限点但代码没有�
     它仅作提示，不参与通过/失败判定，因此「未标记」不等于「没有守卫」。
   · 只比对静态注解与文档表格。运行期的动态鉴权（拦截器、`StpUtil` 手工判定、
     数据级越权）一概不在覆盖范围内。
+  · 本脚本读的是**源码文本**（已剥注释，但不做真正的语法分析）。它能证明「注解写对了」，
+    不能证明「端点真的被注册进了 Spring」——后者只有启动上下文或 `javap` 看得到。
   · 文档只写「需登录」而不细化权限点时无从比对，这类端点的权限正确性靠人工与测试保证。
 
 退出码：0 = 一致；1 = 发现问题；2 = 用法/环境错误。
@@ -133,6 +136,86 @@ def join_path(base: str, sub: str) -> str:
 
 # ---------------------------------------------------------------- 解析：代码侧
 
+def strip_java_comments(src: str) -> str:
+    """把注释抹成等长空白（换行保留），字符串字面量原样留下。
+
+    **为什么必须有这一步**：本脚本原来直接在原始文本上跑正则，于是「被注释掉的端点」
+    与「真的存在的端点」在它眼里完全一样。这不是假想——V32 那轮改 javadoc 时漏了一个
+    `*/`，`AdminRewardPunishController.list` 连同它的 `@GetMapping` 一起被后面的注释块吞掉，
+    `javap` 里没有这个方法、`GET /a/honor/reward-punishes` 在运行期根本不存在，
+    而 `mvn` 照样 BUILD SUCCESS（注释是合法 Java）、本脚本照样打印「✓ 契约一致」。
+    两道关卡同时失灵，只因为它们都不看「编译器眼里的代码」。
+
+    抹成**等长**空白而不是删掉：`_split_methods` 依赖字符下标与行结构做注解簇回溯，
+    长度一变就全错位。
+    """
+    out = list(src)
+    i, n = 0, len(src)
+    state = None   # None=代码 / line / block / str / char / text（文本块）
+    while i < n:
+        c = src[i]
+        nxt = src[i + 1] if i + 1 < n else ""
+        if state is None:
+            if c == "/" and nxt == "/":
+                state = "line"
+                out[i] = out[i + 1] = " "
+                i += 2
+                continue
+            if c == "/" and nxt == "*":
+                state = "block"
+                out[i] = out[i + 1] = " "
+                i += 2
+                continue
+            if src.startswith('"""', i):
+                state = "text"
+                i += 3
+                continue
+            if c == '"':
+                state = "str"
+            elif c == "'":
+                state = "char"
+            i += 1
+            continue
+        if state == "line":
+            if c == "\n":
+                state = None
+            else:
+                out[i] = " "
+            i += 1
+            continue
+        if state == "block":
+            if c == "*" and nxt == "/":
+                out[i] = out[i + 1] = " "
+                state = None
+                i += 2
+                continue
+            if c != "\n":
+                out[i] = " "
+            i += 1
+            continue
+        # 字面量内部
+        if c == "\\":
+            i += 2
+            continue
+        if state == "text" and src.startswith('"""', i):
+            state = None
+            i += 3
+            continue
+        if (state == "str" and c == '"') or (state == "char" and c == "'"):
+            state = None
+            i += 1
+            continue
+        # 字面量的**内容**要留着——路径正是从 `@RequestMapping("/a/x")` 的引号里取的；
+        # 但把里面的 `@` 抹掉：注解 token 只可能出现在代码里，出现在字符串里的
+        # `@GetMapping(...)`（文本块里的接口示例、拼 SQL、转义引号写的假注解）不是端点，
+        # 数进来就会凭空多出一个「代码有、文档无」，或者反过来掩盖一个真的缺失。
+        # 抹 `@` 而不是抹整段内容，是因为真实路径与权限码里都不含 `@`，互不干扰。
+        if c == "@":
+            out[i] = " "
+        i += 1
+    return "".join(out)
+
+
 _CLASS_MAPPING = re.compile(r'@RequestMapping\(\s*(?:value\s*=\s*)?"([^"]*)"')
 # 裸注解（无括号）与带参数两种都要吃到——漏掉裸注解会让端点数悄悄少一截
 _METHOD_MAPPING = re.compile(
@@ -152,7 +235,8 @@ def load_permission_constants(code_root: Path) -> dict:
     for f in code_root.rglob("PermissionCode.java"):
         if "target" in f.parts:
             continue
-        for name, value in _CONST_DEF.findall(f.read_text(encoding="utf-8", errors="ignore")):
+        text = strip_java_comments(f.read_text(encoding="utf-8", errors="ignore"))
+        for name, value in _CONST_DEF.findall(text):
             mapping[name] = value
     return mapping
 
@@ -223,7 +307,8 @@ def parse_controllers(code_root: Path, consts: dict) -> dict:
     for f in code_root.rglob("*Controller.java"):
         if "target" in f.parts or "/test/" in f.as_posix():
             continue
-        body = f.read_text(encoding="utf-8", errors="ignore")
+        # 先剥注释：被注释掉（含漏写 `*/` 而误吞）的端点，在编译产物里不存在，这里也必须不存在
+        body = strip_java_comments(f.read_text(encoding="utf-8", errors="ignore"))
         cm = _CLASS_MAPPING.search(body)
         base = cm.group(1) if cm else ""
         for m, block in _split_methods(body):
@@ -424,6 +509,71 @@ def selftest() -> int:
     check("单权限时 OR 与 AND 签名等价（避免误报）",
           Perm(frozenset({"a:b"}), "OR").signature(),
           Perm(frozenset({"a:b"}), "AND").signature())
+
+    print("\n注释剥离回归用例（被注释掉的端点必须消失）：")
+    # ⓐ **真实事故形态**：javadoc 漏写 `*/`，后面整个方法连同 @GetMapping 被吞进注释。
+    #    javac 眼里这个方法不存在（javap 里查无此方法），端点在运行期是 404，
+    #    而剥注释之前的本脚本会照常把它数进来并打印「契约一致」。
+    swallowed = '''
+@RestController
+@RequestMapping("/a/demo")
+public class DemoController {
+    /**
+     * 这段 javadoc 少了结束符
+    @GetMapping("/items")
+    public Result list() { return null; }
+
+    /** 下一个方法的注释才补上了结束符 */
+    @PostMapping("/items")
+    public Result create() { return null; }
+}
+'''
+    eps = set()
+    stripped = strip_java_comments(swallowed)
+    cm2 = _CLASS_MAPPING.search(stripped)
+    for m, _ in _split_methods(stripped):
+        eps.add(Endpoint(m.group(1).upper(), join_path(cm2.group(1) if cm2 else "", m.group(3) or "")))
+    check("ⓐ 被漏写 */ 吞掉的 @GetMapping 不再算作端点",
+          Endpoint("GET", "/a/demo/items") in eps, False)
+    check("ⓐ 同文件里正常的端点仍被识别",
+          Endpoint("POST", "/a/demo/items") in eps, True)
+    check("ⓑ 行注释掉的端点不算数",
+          "@GetMapping" in strip_java_comments('// @GetMapping("/x")\n'), False)
+    check("ⓒ 字符串字面量里的 // 不被当成注释起点",
+          '"http://x"' in strip_java_comments('String u = "http://x"; // 注释\n'), True)
+    check("ⓓ 剥离后长度不变（_split_methods 依赖字符下标）",
+          len(strip_java_comments(SELFTEST_CONTROLLER)), len(SELFTEST_CONTROLLER))
+    # ⓔ 文本块里的接口示例不是端点。剥注释解决不了这个——它在字符串里，不在注释里。
+    textblock = '''
+@RestController
+@RequestMapping("/a/demo")
+public class DocController {
+    private static final String SAMPLE = """
+        @GetMapping("/from-a-text-block")
+        public Result fake() { return null; }
+        """;
+
+    @PostMapping("/real")
+    public Result real() { return null; }
+}
+'''
+    tb = strip_java_comments(textblock)
+    eps2 = set()
+    cm3 = _CLASS_MAPPING.search(tb)
+    for m, _ in _split_methods(tb):
+        eps2.add(Endpoint(m.group(1).upper(), join_path(cm3.group(1) if cm3 else "", m.group(3) or "")))
+    check("ⓔ 文本块里的 @GetMapping 不算端点",
+          Endpoint("GET", "/a/demo/from-a-text-block") in eps2, False)
+    check("ⓔ 同文件里真的端点仍被识别",
+          Endpoint("POST", "/a/demo/real") in eps2, True)
+    check("ⓕ 转义引号写的假注解也不算（普通字符串里的 @ 一并抹掉）",
+          "@GetMapping" in strip_java_comments('String s = "@GetMapping(\\"/x\\")";\n'), False)
+    check("ⓕ 但类级路径仍从字符串里取得到（路径本身不含 @）",
+          _CLASS_MAPPING.search(strip_java_comments('@RequestMapping("/a/demo")\n')).group(1),
+          "/a/demo")
+    check("ⓕ 权限码字面量不受影响",
+          _PERM_LITERAL.findall(strip_java_comments('value = "honor:reward-punish"')),
+          ["honor:reward-punish"])
 
     print("\n文档侧解析回归用例：")
     # 文档用 markdown 粗体写「或」，不剥强调符就会漏判成 AND（第一版误报的 3 处即此）

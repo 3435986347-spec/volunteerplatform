@@ -10,9 +10,9 @@
   <img alt="Spring Cloud" src="https://img.shields.io/badge/Spring%20Cloud-2025.0.0-6DB33F?logo=spring&logoColor=white">
   <img alt="MyBatis-Plus" src="https://img.shields.io/badge/MyBatis--Plus-3.5.16-red">
   <img alt="Sa-Token" src="https://img.shields.io/badge/Sa--Token-1.43-blue">
-  <img alt="MySQL" src="https://img.shields.io/badge/MySQL-8%2B-4479A1?logo=mysql&logoColor=white">
+  <img alt="MySQL" src="https://img.shields.io/badge/MySQL-8.0.17%2B-4479A1?logo=mysql&logoColor=white">
   <img alt="Redis" src="https://img.shields.io/badge/Redis-7.4-DC382D?logo=redis&logoColor=white">
-  <img alt="Flyway" src="https://img.shields.io/badge/Flyway-V1→V31-CC0200?logo=flyway&logoColor=white">
+  <img alt="Flyway" src="https://img.shields.io/badge/Flyway-V1→V36-CC0200?logo=flyway&logoColor=white">
   <img alt="WeChat MiniProgram" src="https://img.shields.io/badge/WeChat%20Mini%20Program-Native-07C160?logo=wechat&logoColor=white">
 </p>
 
@@ -84,7 +84,7 @@ Screenshot setup:
 |---|---|
 | Core framework | Spring Boot 4.0.6 · Spring Cloud 2025 · Spring Cloud Alibaba · Java 17 |
 | Auth | Sa-Token 1.43 (dual `StpLogic` isolating volunteer/admin sessions) · JWT (jjwt) |
-| Persistence | MyBatis-Plus 3.5.16 · MySQL 8 · HikariCP · Flyway (DB migrations) |
+| Persistence | MyBatis-Plus 3.5.16 · MySQL 8.0.17+ · HikariCP · Flyway (DB migrations) |
 | Cache / concurrency | Redis 7.4 · Redisson 4.4 (distributed locks, watchdog auto-renewal) |
 | Object storage | Aliyun OSS / Volcengine TOS / MinIO (pluggable) |
 | Messaging / 3rd-party | Volcengine SMS · WeChat Mini Program login · WeCom group membership check |
@@ -149,7 +149,7 @@ graph TD
 
 - **Domain vertical slicing**: the parent project only manages dependencies; each domain module bundles its own `controller / service / dao / entity` layers. `hengde-volunteer-api` depends on all domain modules, holds the single bootstrap class, and is the only deployable unit.
 - **Shared capabilities pushed down**: result/exception types, crypto, distributed locks, object storage, SMS, pagination, and the test harness all live in `common`, avoiding circular dependencies.
-- **Centralized DB migrations**: Flyway scripts live in `common` (a single global version sequence, currently V1→V31); both the api runtime and every module's tests obtain the scripts via dependency and auto-provision the schema.
+- **Centralized DB migrations**: Flyway scripts live in `common` (a single global version sequence, currently V1→V36); both the api runtime and every module's tests obtain the scripts via dependency and auto-provision the schema.
 
 ---
 
@@ -213,7 +213,7 @@ graph TD
 ### 🧪 Engineering Practices
 
 - **Real-container integration tests**: a uniform `@SpringBootTest` + Testcontainers spins up **real MySQL / Redis** (no H2, avoiding dialect & migration incompatibilities); Flyway runs real migrations in the container DB, keeping tests close to production behavior.
-- **Versioned database**: Flyway with a single global version sequence (V1→V31) centrally manages schema and permission-point seeds, keeping evolution traceable.
+- **Versioned database**: Flyway with a single global version sequence (V1→V36) centrally manages schema and permission-point seeds, keeping evolution traceable.
 - **Production-ready deployment**: Nginx split deployment (static hosting + same-origin `/api` reverse proxy, no runtime CORS), systemd unit, env-var template, three-tier upload size alignment (nginx 16M > Spring 12M > business validation 10M), plus a complete deployment guide and go-live checklist.
 
 ---
@@ -240,7 +240,7 @@ graph TD
 ### Prerequisites
 
 - JDK 17
-- MySQL 8+, Redis 7+
+- **MySQL 8.0.17+** (before 8.0.16 `CHECK` constraints are parsed but not enforced, silently disabling the V32/V33 guards; `utf8mb4_0900_bin` only exists from 8.0.17, so V34 fails outright below it. `DatabaseVersionGuard` enforces this *before* Flyway runs), Redis 7+
 - Docker (only for integration tests via Testcontainers)
 - Maven 3.9+ (a Maven Wrapper is bundled — use `./mvnw`)
 
@@ -307,7 +307,7 @@ API paths follow the `/{role}/{domain}/{resource}/{action?}` convention; the ful
 
 ## Project Status
 
-- ✅ **V1 core complete**: auth (incl. the phone-number login system), organization/RBAC (incl. management-team application review), the full activity loop (multi-slot publishing, service guarantees, check-in/hours/points, publish review), publicity/search, volunteer management & my-profile, and the dashboard — all backed by Testcontainers integration tests (migrations up to V31); the admin console frontend is fully wired to real APIs and production-hardened.
+- ✅ **V1 core complete**: auth (incl. the phone-number login system), organization/RBAC (incl. management-team application review), the full activity loop (multi-slot publishing, service guarantees, check-in/hours/points, publish review), publicity/search, volunteer management & my-profile, and the dashboard — all backed by Testcontainers integration tests (migrations up to V33); the admin console frontend is fully wired to real APIs and production-hardened.
 - ✅ **Third-party integrations live and verified**: SMS delivery (Volcengine, per-scenario templates), object storage (Volcengine TOS), ID two-factor real-name verification (Tencent Cloud), and map point-picking (AMap JSAPI) have all been exercised end-to-end with real credentials.
 - ✅ **Deployed and verified**: the backend and Web admin console are running on a server and have been tested end-to-end.
 - 🚧 **Mini Program side remaining**: needs an ICP-filed HTTPS domain (a hard WeChat requirement), the Mini Program AppSecret, and a real-device run-through once the client's default mock mode is turned off. WeCom group membership checks remain optional and unimplemented.

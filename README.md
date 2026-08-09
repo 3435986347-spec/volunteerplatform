@@ -10,9 +10,9 @@
   <img alt="Spring Cloud" src="https://img.shields.io/badge/Spring%20Cloud-2025.0.0-6DB33F?logo=spring&logoColor=white">
   <img alt="MyBatis-Plus" src="https://img.shields.io/badge/MyBatis--Plus-3.5.16-red">
   <img alt="Sa-Token" src="https://img.shields.io/badge/Sa--Token-1.43-blue">
-  <img alt="MySQL" src="https://img.shields.io/badge/MySQL-8%2B-4479A1?logo=mysql&logoColor=white">
+  <img alt="MySQL" src="https://img.shields.io/badge/MySQL-8.0.17%2B-4479A1?logo=mysql&logoColor=white">
   <img alt="Redis" src="https://img.shields.io/badge/Redis-7.4-DC382D?logo=redis&logoColor=white">
-  <img alt="Flyway" src="https://img.shields.io/badge/Flyway-V1→V31-CC0200?logo=flyway&logoColor=white">
+  <img alt="Flyway" src="https://img.shields.io/badge/Flyway-V1→V36-CC0200?logo=flyway&logoColor=white">
   <img alt="WeChat MiniProgram" src="https://img.shields.io/badge/微信小程序-原生-07C160?logo=wechat&logoColor=white">
 </p>
 
@@ -74,7 +74,7 @@
 |---|---|
 | 基础框架 | Spring Boot 4.0.6 · Spring Cloud 2025 · Spring Cloud Alibaba · Java 17 |
 | 认证授权 | Sa-Token 1.43（双域 StpLogic 隔离志愿者端/后台端）· JWT（jjwt）|
-| 持久层 | MyBatis-Plus 3.5.16 · MySQL 8 · HikariCP · Flyway（数据库版本迁移）|
+| 持久层 | MyBatis-Plus 3.5.16 · MySQL 8.0.17+ · HikariCP · Flyway（数据库版本迁移）|
 | 缓存 / 并发 | Redis 7.4 · Redisson 4.4（分布式锁，watchdog 自动续期）|
 | 对象存储 | 阿里云 OSS / 火山引擎 TOS / MinIO（可插拔）|
 | 消息 / 第三方 | 火山引擎短信 · 微信小程序登录 · 企业微信群校验 |
@@ -139,7 +139,7 @@ graph TD
 
 - **领域垂直切分**：父工程仅做依赖管理，下挂各领域模块，每个模块内部自带 `controller / service / dao / entity` 三层；`hengde-volunteer-api` 依赖全部领域模块、持有唯一启动类，是唯一可部署单元。
 - **公共能力下沉**：返回体/异常、加解密、分布式锁、对象存储、短信、分页、测试基座等统一沉到 `common`，避免循环依赖。
-- **数据库迁移集中**：Flyway 脚本集中在 `common`（全局唯一版本序列，目前 V1→V31），api 运行期与各模块测试都经依赖拿到脚本自动建表。
+- **数据库迁移集中**：Flyway 脚本集中在 `common`（全局唯一版本序列，目前 V1→V36），api 运行期与各模块测试都经依赖拿到脚本自动建表。
 
 ---
 
@@ -203,7 +203,7 @@ graph TD
 ### 🧪 工程化
 
 - **真实容器集成测试**：统一 `@SpringBootTest` + Testcontainers 拉起**真实 MySQL / Redis**（不用 H2，避免方言与迁移不兼容），Flyway 在容器库跑真实迁移，测试贴近生产行为。
-- **数据库版本化**：Flyway 单一全局版本序列（V1→V31）集中管理表结构与权限点种子，演进可追溯。
+- **数据库版本化**：Flyway 单一全局版本序列（V1→V36）集中管理表结构与权限点种子，演进可追溯。
 - **生产部署就绪**：Nginx 分离部署（前端静态托管 + `/api` 同源反代，无运行期 CORS）、systemd 单元、环境变量模板、上传体积三层对齐（nginx 16M > Spring 12M > 业务校验 10M），配套完整部署文档与上线 checklist。
 
 ---
@@ -230,7 +230,7 @@ graph TD
 ### 环境要求
 
 - JDK 17
-- MySQL 8+、Redis 7+
+- **MySQL 8.0.17+**（8.0.16 之前解析 `CHECK` 却不执行，V32/V33 的约束将形同注释；`utf8mb4_0900_bin` 则要 8.0.17 才有，V34 在更低版本上直接失败。启动时由 `DatabaseVersionGuard` 在迁移前强制校验）、Redis 7+
 - Docker（仅运行集成测试时需要，用于 Testcontainers）
 - Maven 3.9+（项目自带 Maven Wrapper，可用 `./mvnw`）
 
@@ -297,7 +297,7 @@ cd 代码/hengde-volunteer-parent
 
 ## 项目状态
 
-- ✅ **V1 核心已完成**：认证（含手机号登录体系）、组织/RBAC（含报名管理团队问卷审核）、活动全流程（多场次发布、服务保障、签到/时长/积分闭环、发布审核）、公示/搜索、志愿者管理与我的资料、数据看板，后端均带 Testcontainers 集成测试（迁移至 V31）；管理后台前端已全页面对接真实接口并完成生产硬化。
+- ✅ **V1 核心已完成**：认证（含手机号登录体系）、组织/RBAC（含报名管理团队问卷审核）、活动全流程（多场次发布、服务保障、签到/时长/积分闭环、发布审核）、公示/搜索、志愿者管理与我的资料、数据看板，后端均带 Testcontainers 集成测试（迁移至 V33）；管理后台前端已全页面对接真实接口并完成生产硬化。
 - ✅ **第三方能力已接通并实测**：短信下发（火山引擎，分场景模板）、对象存储（火山引擎 TOS）、身份证二要素实名核验（腾讯云）、地图选点（高德 JSAPI）均已用真实凭证跑通。
 - ✅ **已部署上线验证**：后端与 Web 管理后台已部署至服务器并测试通过。
 - 🚧 **小程序端待完成**：需已备案 HTTPS 域名（微信硬性要求）、小程序 AppSecret，以及关闭小程序默认的 mock 模式后做真机全流程验证。企业微信群校验为可选项，实接未做。

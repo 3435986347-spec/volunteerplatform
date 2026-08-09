@@ -264,7 +264,7 @@
 |---|---|---|---|
 | GET | /a/activity/points?volunteerId= | 查某志愿者积分总览（口径同 `/v/activity/points`） | 需登录（activity:points-view） |
 | GET | /a/activity/points/records?volunteerId= | 查某志愿者积分明细（分页；`keyword` 搜索说明 + `sourceType`/`startTime`/`endTime` 筛选） | 需登录（activity:points-view） |
-| POST | /a/activity/points/adjust | 管理员手工调整积分（body: `volunteerId`/`changeAmount` 正负非零/`reason` 必填/**`requestId` 幂等键必填**——前端每次打开调整弹窗生成一个 UUID，重放同一 UUID 只入账一次，**同一 UUID 若用于另一个人/另一金额/另一理由/另一操作人则报「积分入账冲突」**；目标须为已实名志愿者[停用/注销亦可调，用于纠正历史账目]；扣分不得把余额扣成负数） | 需登录（activity:points-adjust） |
+| POST | /a/activity/points/adjust | 管理员手工调整积分（body: `volunteerId`/`changeAmount` 正负非零/`reason` 必填/**`requestId` 幂等键必填**——前端每次打开调整弹窗生成一个 UUID，**只收 `[A-Za-z0-9:._-]`、最长 64**（幂等键的「相等」在库里由排序规则决定、在 Java 里由码点决定，限死字符集才能让两者重合，见 V33），重放同一 UUID 只入账一次，**同一 UUID 若用于另一个人/另一金额/另一理由/另一操作人则报「积分入账冲突」**；目标须为已实名志愿者[停用/注销亦可调，用于纠正历史账目]；扣分不得把余额扣成负数） | 需登录（activity:points-adjust） |
 
 ### 排行榜 — 管理端 `/a/honor`（V2 第 2 批，V25+V26）
 
@@ -357,6 +357,45 @@
 | POST | /a/honor/certificate-templates | 新增（传 `activityId`=按活动，不传=全局默认）。**不收前端直接传的 `scopeKey`**，由服务端组装，避免造出永远匹配不上的作用域。同一作用域重复新增被拒——覆盖会让此前按该样本发的证书与当前配置对不上且无痕迹。**`fileKey` 必须是上一行那个上传接口返回的 key（以 `certificate-template/` 开头）**，否则报错：与不收 `scopeKey` 同一理由，随手写的字符串要等到那个活动第一次出证才报「文件读取失败」，而那时是志愿者在点下载 | honor:certificate-template |
 | PUT | /a/honor/certificate-templates/{id} | 修改（**作用域不可改**：传了与现存不一致的 `activityId` 会**明确报错**而非静默忽略——静默忽略会让管理员以为「已经把样本挪到另一个活动了」，而错要等到那个活动发不出证书才暴露）。`fileKey` 同样只收上传接口产出的 key。**`layout` 传 null 会真的清空**（不是「不变」）；样本在修改期间被并发删除时返回「已被删除，本次修改未生效」而**不报成功** | honor:certificate-template |
 | DELETE | /a/honor/certificate-templates/{id} | 删除 | honor:certificate-template |
+
+### 活动违规审核 — 管理端 `/a/activity/violations`（V2 第 5 批，V32）
+
+> 出处：xlsx **Row 59** 后台首页待办里单列的「**活动违规审核**」；**Row 41 F**「各类违规记录和奖励均需**组织部同学审核才可显示**」。
+> **为什么违规记录要单独过一道审**：现场记录是负责人的**工作底稿**——他在活动现场凭观察点几下就落库了。未经核实直接呈现给被记的那个人，等于把一面之词当成定论。
+> 通过之后它才对志愿者可见（`MyActivityVO.violationCount` 只计已通过的），也才够格作为开一张处罚单的依据。
+> ⚠️ **存量违规一律是「待审核」**：V32 刻意不把历史数据伪造成「已通过」（那样 `reviewed_by` 只能是 NULL，库里会出现「已通过但没有审核人」的自相矛盾行）。代价是存量违规在组织部逐条处理前不再对志愿者显示，而它们会全部出现在下面这个队列里。
+> **Row 59 那个待办数字**用本队列 `reviewStatus=0&size=1` 的 `total`，**不另开看板字段**——同一个数字两个出处迟早对不上（`DashboardVO` 的既有决定也是这条）。
+
+| Method | URL | 说明 | 鉴权 |
+|---|---|---|---|
+| GET | /a/activity/violations | 违规审核队列（分页）。`reviewStatus` 缺省 **0 待审核**（待办队列的默认视图就是还没处理的），可传 1/2 查已通过/已驳回；`activityId` 可选。行上带活动名与场次，否则审的人不知道是哪一场 | activity:violation-review |
+| POST | /a/activity/violations/{id}/approve | 审核通过。**CAS：只有仍待审核的行可被裁决**——两人同时点，后一个必须落空而不是覆盖前一个的结论与审核人 | activity:violation-review |
+| POST | /a/activity/violations/{id}/reject | 驳回，body `reason` **必填**——驳回等于否定负责人的现场判断，不写理由他既无从改正也无从申辩 | activity:violation-review |
+
+### 奖惩中心 — 志愿者端 `/v/honor`（V2 第 5 批，V32）
+
+> xlsx **Row 41** C「各类违规记录和奖励」、F「各类违规记录和奖励均需组织部同学审核才可显示，审核之后，志愿者会收到提示，并有 **7 天申诉期**」；原型 **P109**「奖惩记录」给出卡片与详情形态。
+> **本组接口刻意不受「拒绝使用本程序」处置的拦截**：申诉就在这里提交，若最重的那条处置把这里也挡掉，被罚得最重的人恰恰成了唯一无法申诉的人。
+
+| Method | URL | 说明 | 鉴权 |
+|---|---|---|---|
+| GET | /v/honor/reward-punishes | 我的奖惩记录，**只返回已通过组织部审核的**（Row 41 F）。行上带 `rpNo`（P109「处罚编号」）/类别/标题/说明/`pointsDelta`/处置（`sanctionScope` + 中文名 + `sanctionDays`）/申诉状态与截止时刻，以及 **`appealable`**——「是处罚 + 已生效 + 未申诉 + 未过期」四条由**服务端**算，散到前端拼迟早两端算出不同结果（按钮在但点了报错，或反过来） | 需登录 |
+| GET | /v/honor/sanctions | 我当前生效中的处置。**到期即自动消失，不依赖任何定时任务**——判定恒为 `status=1 AND effective_time<=NOW() AND (expire_time IS NULL OR expire_time>NOW())`；靠 cron 改状态位的话，任务漏跑一次处罚就会超期继续生效，而「到期即恢复」是对志愿者的承诺 | 需登录 |
+| POST | /v/honor/reward-punishes/{id}/appeal | 对**处罚**提交申诉，body `reason` 必填。**奖励不能申诉**（P109 的申诉按钮只画在处罚卡片与处罚详情上，奖励卡片只有「查看详情」）；超过 `appealDeadline` 拒绝；**重复提交拒绝**而不是覆盖第一次的理由与时间。非本人的单返回「奖惩记录不存在」，不区分「不存在」与「不是你的」 | 需登录 |
+
+### 奖惩中心 — 管理端 `/a/honor`（V2 第 5 批，V32）
+
+> **三条效力全部挂在「审核通过」那一刻**：对志愿者可见、积分加减入账、处置开始生效。待审核期间它只是一张草稿——这既是 Row 41 F 的意思，也免掉了「先罚后审、审不过再退回去」那种要冲正三处状态的麻烦。
+
+| Method | URL | 说明 | 鉴权 |
+|---|---|---|---|
+| GET | /a/honor/reward-punishes | 奖惩单列表（分页），可按 `volunteerId`/`type`/`reviewStatus`/`appealStatus` 筛。**两权其一**：`honor:reward-punish` 见全部；**只有 `honor:reward-punish-appeal` 的受理人只看得到已进入申诉流程的单**（看不到待审核草稿与别人尚未批的处罚）——放宽是为了不盲审，收窄是因为「不盲审」要的是看到自己要判的那张，不是看到全部 | honor:reward-punish **或** honor:reward-punish-appeal |
+| POST | /a/honor/reward-punishes | 开单，落**待审核**。`type` 1奖励/2处罚；`category` 是**开放集合**（P113 的违规类型列表结尾写着「........」，P109 又出现了不属于活动现场枚举的「信息泄露」，故用文本而非枚举码）。**奖励的 `pointsDelta` 不能为负、处罚不能为正**（符号写反会让「处罚」给人加分而列表仍显示为处罚）；**奖励不得附带处置或关联违规**。传 `violationId` 时该违规**必须已通过组织部审核**，且归属（志愿者/活动/场次）**以违规记录为准、不采信入参**——否则可以拿甲的违规去罚乙；同一条违规同时只能有一张**未被驳回**的单（V35：驳回后可以就同一条违规重新开单——`reject` 强制填写的那条原因本就是给开单人据以改正的，而系统没有修改/重提入口）。⚠️ **`sanctionScope=3`（拒绝其使用本程序）需额外持有 `honor:sanction-all`**（V36，Row 73「监察部拥有全部限制能力」）；1/2 两档仍在开单权之内。这一档是**按请求体字段条件校验**的（`AdminRewardPunishController.assertScopeAllowed`），不是方法级注解——挂成注解会把「限制参加活动」这类日常处罚一并锁死，故右列只列注解上的那个点 | honor:reward-punish |
+| POST | /a/honor/reward-punishes/{id}/approve | 审核通过：对志愿者可见 + 积分入账（`source_type=6`，`source_id`=单据 id，`uk_source` 保幂等）+ 处置生效 + **申诉截止时刻落库定死**（= 此刻 + 7 天）。**截止时刻不现算**：现算意味着哪天把 7 改成 3，在途的申诉权会被追溯性缩短甚至当场作废。⚠️ **审核那一刻会当前读复核账号状态**：行已不存在 / 已注销 / **已禁用**一律拒绝并提示驳回——禁用账号连 `/v/**` 都进不来，通过审核只会让 7 天申诉期在他够不到的地方流逝；单子留在队列里，恢复正常后照常可审 | honor:reward-punish |
+| POST | /a/honor/reward-punishes/{id}/reject | 驳回，`reason` 必填。志愿者始终看不到这张单，不入账、不生效 | honor:reward-punish |
+| POST | /a/honor/reward-punishes/{id}/appeal | **受理**申诉。`upheld=true` 成立 → 撤销处置 **+ 冲正积分**；`false` 驳回 → 维持原处罚。两种都必须填 `result`（驳回不写理由，志愿者只会看到「申诉失败」四个字）。<br>**冲正走反向流水而不是改原始流水**（账本追加型，原始那笔是「当时确实按这张单扣了分」的事实）；且反向流水**不能复用 `source_id`**——`uk_source(6, id)` 已被审核通过那笔占住，再写必然撞键，故走 `source_id=null` + `requestId=sys:rp-revert:{id}`，由 `uk_request_id` 兜幂等。<br>**单独一个权限点**：需求只写了审核方是组织部，**没写申诉由谁受理**；做成可授权的点，谁受理由后台配置决定，而不是在代码里替协会挑一个部门 | honor:reward-punish-appeal |
+| GET | /a/honor/sanctions | 查某人当前生效中的处置（`volunteerId` 必填） | honor:sanction |
+| POST | /a/honor/reward-punishes/{id}/lift-sanction | 提前解除某张单产生的处置，`reason` 必填，回实际解除条数。申诉成立时由系统自动解除，不走这个接口 | honor:sanction |
 
 ### 考勤/积分变更二次审核 — 管理端 `/a/activity`
 
