@@ -71,3 +71,7 @@ secrets/
 # --- 杂项本地产物 ---
 # 后台前端原型本地预览生成的临时缩略图目录，不入库
 **/.thumbnail
+
+# --- Python 工具缓存（tools/verify_url_contract.py）---
+__pycache__/
+*.py[cod]

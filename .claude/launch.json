@@ -4,13 +4,13 @@
     {
       "name": "admin-web",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "5500", "--directory", "volunteer-platform-back"],
+      "runtimeArgs": ["-m", "http.server", "5500", "--directory", "../volunteerplatform-back"],
       "port": 5500
     },
     {
       "name": "admin-web-5599",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "5599", "--directory", "volunteer-platform-back"],
+      "runtimeArgs": ["-m", "http.server", "5599", "--directory", "../volunteerplatform-back"],
       "port": 5599
     }
   ]
