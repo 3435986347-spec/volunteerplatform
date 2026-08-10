@@ -12,7 +12,7 @@
   <img alt="Sa-Token" src="https://img.shields.io/badge/Sa--Token-1.43-blue">
   <img alt="MySQL" src="https://img.shields.io/badge/MySQL-8.0.17%2B-4479A1?logo=mysql&logoColor=white">
   <img alt="Redis" src="https://img.shields.io/badge/Redis-7.4-DC382D?logo=redis&logoColor=white">
-  <img alt="Flyway" src="https://img.shields.io/badge/Flyway-V1→V36-CC0200?logo=flyway&logoColor=white">
+  <img alt="Flyway" src="https://img.shields.io/badge/Flyway-V1→V37-CC0200?logo=flyway&logoColor=white">
   <img alt="WeChat MiniProgram" src="https://img.shields.io/badge/微信小程序-原生-07C160?logo=wechat&logoColor=white">
 </p>
 
@@ -139,7 +139,7 @@ graph TD
 
 - **领域垂直切分**：父工程仅做依赖管理，下挂各领域模块，每个模块内部自带 `controller / service / dao / entity` 三层；`hengde-volunteer-api` 依赖全部领域模块、持有唯一启动类，是唯一可部署单元。
 - **公共能力下沉**：返回体/异常、加解密、分布式锁、对象存储、短信、分页、测试基座等统一沉到 `common`，避免循环依赖。
-- **数据库迁移集中**：Flyway 脚本集中在 `common`（全局唯一版本序列，目前 V1→V36），api 运行期与各模块测试都经依赖拿到脚本自动建表。
+- **数据库迁移集中**：Flyway 脚本集中在 `common`（全局唯一版本序列，目前 V1→V37），api 运行期与各模块测试都经依赖拿到脚本自动建表。
 
 ---
 
@@ -203,7 +203,7 @@ graph TD
 ### 🧪 工程化
 
 - **真实容器集成测试**：统一 `@SpringBootTest` + Testcontainers 拉起**真实 MySQL / Redis**（不用 H2，避免方言与迁移不兼容），Flyway 在容器库跑真实迁移，测试贴近生产行为。
-- **数据库版本化**：Flyway 单一全局版本序列（V1→V36）集中管理表结构与权限点种子，演进可追溯。
+- **数据库版本化**：Flyway 单一全局版本序列（V1→V37）集中管理表结构与权限点种子，演进可追溯。
 - **生产部署就绪**：Nginx 分离部署（前端静态托管 + `/api` 同源反代，无运行期 CORS）、systemd 单元、环境变量模板、上传体积三层对齐（nginx 16M > Spring 12M > 业务校验 10M），配套完整部署文档与上线 checklist。
 
 ---

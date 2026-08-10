@@ -12,7 +12,7 @@
   <img alt="Sa-Token" src="https://img.shields.io/badge/Sa--Token-1.43-blue">
   <img alt="MySQL" src="https://img.shields.io/badge/MySQL-8.0.17%2B-4479A1?logo=mysql&logoColor=white">
   <img alt="Redis" src="https://img.shields.io/badge/Redis-7.4-DC382D?logo=redis&logoColor=white">
-  <img alt="Flyway" src="https://img.shields.io/badge/Flyway-V1→V36-CC0200?logo=flyway&logoColor=white">
+  <img alt="Flyway" src="https://img.shields.io/badge/Flyway-V1→V37-CC0200?logo=flyway&logoColor=white">
   <img alt="WeChat MiniProgram" src="https://img.shields.io/badge/WeChat%20Mini%20Program-Native-07C160?logo=wechat&logoColor=white">
 </p>
 
@@ -149,7 +149,7 @@ graph TD
 
 - **Domain vertical slicing**: the parent project only manages dependencies; each domain module bundles its own `controller / service / dao / entity` layers. `hengde-volunteer-api` depends on all domain modules, holds the single bootstrap class, and is the only deployable unit.
 - **Shared capabilities pushed down**: result/exception types, crypto, distributed locks, object storage, SMS, pagination, and the test harness all live in `common`, avoiding circular dependencies.
-- **Centralized DB migrations**: Flyway scripts live in `common` (a single global version sequence, currently V1→V36); both the api runtime and every module's tests obtain the scripts via dependency and auto-provision the schema.
+- **Centralized DB migrations**: Flyway scripts live in `common` (a single global version sequence, currently V1→V37); both the api runtime and every module's tests obtain the scripts via dependency and auto-provision the schema.
 
 ---
 
@@ -213,7 +213,7 @@ graph TD
 ### 🧪 Engineering Practices
 
 - **Real-container integration tests**: a uniform `@SpringBootTest` + Testcontainers spins up **real MySQL / Redis** (no H2, avoiding dialect & migration incompatibilities); Flyway runs real migrations in the container DB, keeping tests close to production behavior.
-- **Versioned database**: Flyway with a single global version sequence (V1→V36) centrally manages schema and permission-point seeds, keeping evolution traceable.
+- **Versioned database**: Flyway with a single global version sequence (V1→V37) centrally manages schema and permission-point seeds, keeping evolution traceable.
 - **Production-ready deployment**: Nginx split deployment (static hosting + same-origin `/api` reverse proxy, no runtime CORS), systemd unit, env-var template, three-tier upload size alignment (nginx 16M > Spring 12M > business validation 10M), plus a complete deployment guide and go-live checklist.
 
 ---
