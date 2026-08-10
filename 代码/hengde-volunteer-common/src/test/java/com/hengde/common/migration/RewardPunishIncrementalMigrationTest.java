@@ -110,6 +110,41 @@ class RewardPunishIncrementalMigrationTest {
     }
 
     /**
+     * <b>V31 → V32：存量违规一律转「待审核」，且不伪造审核痕迹。</b>
+     *
+     * <p><b>为什么必须专门测</b>：其余用例都是空库一路迁到最新，那条路上
+     * {@code activity_violation} 一行都没有——「存量怎么办」这个问题在它们眼里不存在。
+     * 而 V32 给这张表加的是<b>带默认值的新列</b>，默认值只作用于新行还是也落到存量行上，
+     * 取决于 MySQL 对 {@code ALTER TABLE ... ADD COLUMN ... NOT NULL DEFAULT} 的处理，
+     * 不实际跑一遍看不出来。</p>
+     *
+     * <p><b>口径本身也要钉住</b>：存量必须是 0（待审核），<b>不能</b>图省事标成「已通过」——
+     * 那会造出「已通过但没有审核人」的自相矛盾行（{@code reviewed_by} 只能填 NULL），
+     * 审计上是撒谎；代价是存量违规在组织部逐条处理前不再对志愿者显示，
+     * 而那正是 Row 41 F 要求的方向，且这些行会自动出现在待办队列里，不会消失无踪。</p>
+     *
+     * <p>把 V32 的默认值改成 1，或改成「顺手把存量 UPDATE 成已通过」，本用例必红。</p>
+     */
+    @Test
+    void v31ToV32_existingViolationsBecomePendingWithoutFakingAReviewer() throws SQLException {
+        migrateTo("31");
+        insertViolation(9901L);
+        insertViolation(9902L);
+
+        migrateTo("32");
+
+        assertEquals(2, count("SELECT COUNT(*) FROM activity_violation WHERE review_status = 0"),
+                "存量违规必须一律落在「待审核」，否则它们会绕过 Row 41 F 的审核直接对志愿者显示");
+        assertEquals(0, count("SELECT COUNT(*) FROM activity_violation WHERE reviewed_by IS NOT NULL"),
+                "不能伪造审核人");
+        assertEquals(0, count("SELECT COUNT(*) FROM activity_violation WHERE review_time IS NOT NULL"),
+                "不能伪造审核时间");
+        // 待办队列的两条索引也要真的建上，否则全局队列会退化成 filesort
+        assertTrue(indexExists("activity_violation", "idx_review"));
+        assertTrue(indexExists("activity_violation", "idx_review_activity"));
+    }
+
+    /**
      * <b>V33 只做约束、不碰排序规则</b>——两者必须分属不同版本。
      *
      * <p>把 V34 的 {@code ALTER TABLE point_record ...} 挪回 V33，本用例立刻变红。
@@ -206,6 +241,30 @@ class RewardPunishIncrementalMigrationTest {
                     + " VALUES ('" + no + "', 960002, 2, 'V35 增量用例', 0, "
                     + violationId + ", " + reviewStatus + ")");
         }
+    }
+
+    /**
+     * V31 形态的现场违规行：那时还没有审核四列。
+     *
+     * <p>{@code slot_id} 必须显式给——V30 回填之后把它 {@code MODIFY ... NOT NULL} 了
+     * （见 V30 末尾），省掉会得到 {@code Field 'slot_id' doesn't have a default value}。
+     * 这里不建真的场次：本用例只关心 V32 怎么处理存量行，跨表引用没有外键约束。</p>
+     */
+    private void insertViolation(long activityId) throws SQLException {
+        try (Connection conn = open();
+             Statement st = conn.createStatement()) {
+            st.executeUpdate("INSERT INTO activity_violation"
+                    + " (activity_id, slot_id, volunteer_id, violation_type, description,"
+                    + "  recorded_by, recorded_time)"
+                    + " VALUES (" + activityId + ", " + (activityId + 500) + ", 960003, 1,"
+                    + " 'V32 增量用例', 900, NOW())");
+        }
+    }
+
+    private boolean indexExists(String table, String index) throws SQLException {
+        return count("SELECT COUNT(*) FROM information_schema.STATISTICS"
+                + " WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '" + table + "'"
+                + " AND INDEX_NAME = '" + index + "'") > 0;
     }
 
     private void deleteByNo(String no) throws SQLException {

@@ -6,7 +6,9 @@ import com.hengde.activity.constant.PointSourceType;
 import com.hengde.activity.service.PointService;
 import com.hengde.activity.service.ViolationReviewService;
 import com.hengde.auth.constant.SanctionScope;
+import com.hengde.auth.entity.VolunteerNotification;
 import com.hengde.auth.entity.VolunteerSanction;
+import com.hengde.auth.service.NotificationService;
 import com.hengde.auth.service.SanctionService;
 import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.auth.vo.VolunteerGrantEligibilityView;
@@ -73,11 +75,15 @@ public class RewardPunishService {
      */
     private static final int MAX_SANCTION_DAYS = VolunteerSanction.MAX_SANCTION_DAYS;
 
+    /** 提示正文里的申诉截止时刻格式；与 {@code SanctionQueryService} 报错文案同一口径 */
+    private static final DateTimeFormatter DEADLINE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+
     private HonorRewardPunishMapper rewardPunishMapper;
     private ViolationReviewService violationReviewService;
     private VolunteerQueryService volunteerQueryService;
     private PointService pointService;
     private SanctionService sanctionService;
+    private NotificationService notificationService;
     private HonorProperties honorProperties;
 
     @Autowired
@@ -103,6 +109,11 @@ public class RewardPunishService {
     @Autowired
     public void setSanctionService(SanctionService sanctionService) {
         this.sanctionService = sanctionService;
+    }
+
+    @Autowired
+    public void setNotificationService(NotificationService notificationService) {
+        this.notificationService = notificationService;
     }
 
     @Autowired
@@ -295,6 +306,38 @@ public class RewardPunishService {
             sanctionService.impose(rp.getVolunteerId(), VolunteerSanction.SOURCE_REWARD_PUNISH, id,
                     rp.getSanctionScope(), rp.getSanctionDays());
         }
+        // 提示：Row 41 F「审核之后，志愿者会收到提示，并有 7 天申诉期」的前半句。
+        // 【与本事务同生共死】审核回滚了提示不该留下，提示失败了审核也不该算数——
+        // 那条提示是申诉期的起点，收不到就等于申诉权没有被告知。故不做异步、不吞异常。
+        notificationService.notify(rp.getVolunteerId(),
+                VolunteerNotification.TYPE_REWARD_PUNISH_APPROVED,
+                approvedTitle(rp), approvedContent(rp, deadline),
+                VolunteerNotification.BIZ_REWARD_PUNISH, id);
+    }
+
+    /** 提示标题：一眼看出是奖是惩。 */
+    private static String approvedTitle(HonorRewardPunish rp) {
+        return Integer.valueOf(HonorRewardPunish.TYPE_REWARD).equals(rp.getType())
+                ? "您收到一条奖励记录" : "您收到一条处罚记录";
+    }
+
+    /**
+     * 提示正文。
+     *
+     * <p><b>处罚必须写明申诉截止时刻</b>：Row 41 F 给的是「7 天申诉期」，
+     * 只说「您可以申诉」而不说到几号，等于把一个有期限的权利说成了没期限的——
+     * 而那个时刻已经落库定死（{@code appeal_deadline}），这里直接用它，不另算一遍。</p>
+     *
+     * <p>奖励没有申诉入口（P109 的奖励卡片只有「查看详情」），故不提申诉。</p>
+     */
+    private static String approvedContent(HonorRewardPunish rp, LocalDateTime deadline) {
+        String what = (rp.getCategory() == null ? "" : rp.getCategory())
+                + (rp.getTitle() == null || rp.getTitle().isBlank() ? "" : "（" + rp.getTitle() + "）");
+        if (Integer.valueOf(HonorRewardPunish.TYPE_REWARD).equals(rp.getType())) {
+            return "奖励「" + what + "」已通过组织部审核，可在奖惩记录中查看详情。";
+        }
+        return "处罚「" + what + "」已通过组织部审核并即时生效，可在奖惩记录中查看详情。"
+                + "如有异议，请在 " + deadline.format(DEADLINE_FMT) + " 前提交申诉。";
     }
 
     /**
@@ -440,6 +483,16 @@ public class RewardPunishService {
         if (rows != 1) {
             throw new BusinessException("该申诉不存在或已被受理");
         }
+        // 受理结果提示。⚠️ 这一条是【推论、不是需求原文】：Row 41 F 只写了「审核之后会收到提示」，
+        // 没写申诉有了结果要不要再提示一次。取这个口径的理由是——申诉是志愿者自己发起的，
+        // 让他反复刷奖惩记录页面才知道结果，比不做提示更差。见 VolunteerNotification.TYPE_APPEAL_HANDLED。
+        // 【成立与驳回都要发】只在成立时发，等于用「有没有收到提示」泄露结论，
+        // 而驳回恰恰是更需要把理由送到他眼前的那一种。
+        notificationService.notify(rp.getVolunteerId(),
+                VolunteerNotification.TYPE_APPEAL_HANDLED,
+                upheld ? "您的申诉已成立" : "您的申诉未获支持",
+                appealResultContent(upheld, dto.getResult()),
+                VolunteerNotification.BIZ_REWARD_PUNISH, id);
         if (!upheld) {
             return;
         }
@@ -453,6 +506,14 @@ public class RewardPunishService {
                     "申诉成立冲正：" + pointRemark(rp),
                     PointSourceType.OPERATOR_ADMIN, adminId);
         }
+    }
+
+    /** 受理结论必须原样带给志愿者——驳回时那句说明是他唯一能看到的理由。 */
+    private static String appealResultContent(boolean upheld, String result) {
+        String head = upheld
+                ? "您的申诉已被受理并成立，相关处置已撤销、积分已冲正。"
+                : "您的申诉已受理，经复核维持原处罚。";
+        return result == null || result.isBlank() ? head : head + "受理说明：" + result;
     }
 
     /** 冲正流水的幂等键。与 {@code uk_request_id} 配套，重复受理不会冲正两次。 */

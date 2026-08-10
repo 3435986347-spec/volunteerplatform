@@ -1,5 +1,6 @@
 package com.hengde.api.config;
 
+import cn.dev33.satoken.context.SaHolder;
 import cn.dev33.satoken.interceptor.SaInterceptor;
 import cn.dev33.satoken.router.SaRouter;
 import cn.dev33.satoken.stp.StpUtil;
@@ -21,6 +22,12 @@ public class SaTokenConfigure implements WebMvcConfigurer {
 
     private AdminUserMapper adminUserMapper;
     private VolunteerMapper volunteerMapper;
+    private DenyAllUseGate denyAllUseGate;
+
+    @Autowired
+    public void setDenyAllUseGate(DenyAllUseGate denyAllUseGate) {
+        this.denyAllUseGate = denyAllUseGate;
+    }
 
     @Autowired
     public void setAdminUserMapper(AdminUserMapper adminUserMapper) {
@@ -50,6 +57,16 @@ public class SaTokenConfigure implements WebMvcConfigurer {
                         checkVolunteerEnabled();
                     });
 
+            // 处置闸门（Row 73「拒绝其使用本程序」）：挂在整个 /v/** 上，默认全挡，
+            // 放行清单写在 DenyAllUseGate.EXEMPT_PATHS 里（登录、奖惩记录、申诉、处置查看、站内提示）。
+            // 【为什么不逐个 service 补 if】那要求今后每加一个志愿者端接口都记得补一次，
+            // 漏一个没有任何征兆——V32 就是那样让「拒绝使用本程序」退化成了「限制参加活动」。
+            // 【必须排在登录校验之后】它要拿当前登录态；未登录的请求上面那条已经拦下了。
+            SaRouter.match("/v/**")
+                    .notMatch(DenyAllUseGate.EXEMPT_PATHS)
+                    .check(r -> denyAllUseGate.check(
+                            SaHolder.getRequest().getRequestPath(), loggedInVolunteerIdOrNull()));
+
             // 管理端：放行登录 + 忘记密码两步（发验证码/重置密码）；其余用独立的管理端登录态校验，
             // 与志愿者端 StpUtil 隔离，志愿者 token 无法通过此校验。登录态过后再查账号状态，
             // 禁用/注销账号即便 token 未过期也在此被拦下（兜底「停用但 token 仍在」的越权窗口）
@@ -66,6 +83,27 @@ public class SaTokenConfigure implements WebMvcConfigurer {
                     .check(r -> StpUtil.checkLogin());
 
         })).addPathPatterns("/**");
+    }
+
+    /**
+     * 当前登录志愿者 id；<b>未登录返回 null 而不是抛异常</b>。
+     *
+     * <p><b>为什么不用 {@code StpUtil.getLoginIdAsLong()}</b>：那样一来
+     * {@code DenyAllUseGate.check} 里的「未登录直接放行」分支就<b>永远走不到</b>——
+     * 未登录时取 id 会先抛 {@code NotLoginException}。今天不出问题，是因为所有公开的
+     * {@code /v} 路径都在 {@code /v/auth/**} 下、正好被 {@link DenyAllUseGate#EXEMPT_PATHS} 豁免了；
+     * 但那意味着系统的正确性依赖<b>两张分开维护的清单恰好对齐</b>——上面登录校验的
+     * {@code notMatch} 公开列表，与处置闸门的豁免列表。哪天加一个 {@code /v/xxx} 公开端点、
+     * 只写进前者，闸门就会在它上面取登录 id，把一个声明为公开的端点变成 401。</p>
+     *
+     * <p>取 null 之后两张清单就<b>解耦</b>了：闸门只管「已登录的人有没有被拒绝使用」，
+     * 「这个端点要不要登录」完全交给上面那道。</p>
+     *
+     * <p>转换交给 Sa-Token 自己（{@code getLoginIdAsLong}）而不是手写
+     * {@code Long.parseLong(String.valueOf(id))}——loginId 的存取形态是它的实现细节。</p>
+     */
+    private static Long loggedInVolunteerIdOrNull() {
+        return StpUtil.getLoginIdDefaultNull() == null ? null : StpUtil.getLoginIdAsLong();
     }
 
     /**

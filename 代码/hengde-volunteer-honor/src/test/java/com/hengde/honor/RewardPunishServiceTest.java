@@ -15,6 +15,7 @@ import com.hengde.auth.constant.SanctionScope;
 import com.hengde.auth.dao.VolunteerMapper;
 import com.hengde.auth.dao.VolunteerSanctionMapper;
 import com.hengde.auth.entity.Volunteer;
+import com.hengde.auth.entity.VolunteerNotification;
 import com.hengde.auth.entity.VolunteerSanction;
 import com.hengde.auth.service.SanctionQueryService;
 import com.hengde.auth.service.SanctionService;
@@ -86,6 +87,8 @@ class RewardPunishServiceTest {
     private VolunteerSanctionMapper sanctionMapper;
     @Autowired
     private com.hengde.honor.dao.HonorRewardPunishMapper rewardPunishMapper;
+    @Autowired
+    private com.hengde.auth.service.NotificationService notificationService;
     @Autowired
     private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
     @Autowired
@@ -673,6 +676,121 @@ class RewardPunishServiceTest {
         volunteerMapper.updateById(restored);
         rewardPunishService.approve(punishId, ADMIN);
         assertEquals(-10, pointService.summary(vid).getBalance(), "恢复后处罚照常成立");
+    }
+
+    // ---------- ⑤ Row 41 F 的另一半：审核之后志愿者会收到提示 ----------
+
+    /**
+     * 审核通过必须给志愿者留下一条站内提示，且<b>处罚那条要写明申诉截止时刻</b>。
+     *
+     * <p>Row 41 F：「…审核之后，<b>志愿者会收到提示</b>，并有 7 天申诉期」。V32 只做了后半句
+     * （截止时刻落库），提示本身一直缺着——志愿者被罚了，只能靠自己去翻奖惩记录才知道，
+     * 而 7 天在这期间照走。</p>
+     *
+     * <p>只说「您可以申诉」而不说到几号，等于把一个有期限的权利说成了没期限的，
+     * 故正文直接引用落库的 {@code appeal_deadline}，不另算一遍。</p>
+     *
+     * <p>删掉 {@code approve} 末尾那次 {@code notificationService.notify}，本用例必红。</p>
+     */
+    @Test
+    void approve_leavesNotificationWithAppealDeadline() {
+        Long vid = insertVolunteer();
+        Long punishId = rewardPunishService.create(punish(vid, -5), ADMIN);
+        assertEquals(0, notificationService.unreadCount(vid), "审核前不该有任何提示");
+
+        rewardPunishService.approve(punishId, ADMIN);
+
+        // 断言 records 而不是 total：分页插件只注册在 api 模块，honor 的测试上下文没有它，
+        // 无插件时 selectPage 照常返回记录、total 恒为 0（详见 NotificationServiceTest 抬头）
+        var page = notificationService.myNotifications(vid, new PageQuery());
+        assertEquals(1, page.getRecords().size());
+        VolunteerNotification n = page.getRecords().get(0);
+        assertEquals(VolunteerNotification.TYPE_REWARD_PUNISH_APPROVED, n.getType());
+        assertEquals(VolunteerNotification.BIZ_REWARD_PUNISH, n.getBizType());
+        assertEquals(punishId, n.getBizId(), "要能跳回那张单");
+        assertTrue(n.getTitle().contains("处罚"), "实际：" + n.getTitle());
+
+        HonorRewardPunish rp = rewardPunishMapper.selectById(punishId);
+        String deadline = rp.getAppealDeadline()
+                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
+        assertTrue(n.getContent().contains(deadline),
+                "处罚提示必须写明申诉截止到几号，实际：" + n.getContent());
+    }
+
+    /** 奖励也提示，但不提申诉——P109 的奖励卡片只有「查看详情」，没有申诉按钮。 */
+    @Test
+    void approve_rewardNotification_doesNotMentionAppeal() {
+        Long vid = insertVolunteer();
+        Long rewardId = rewardPunishService.create(reward(vid, 20), ADMIN);
+
+        rewardPunishService.approve(rewardId, ADMIN);
+
+        VolunteerNotification n = notificationService.myNotifications(vid, new PageQuery())
+                .getRecords().get(0);
+        assertTrue(n.getTitle().contains("奖励"), "实际：" + n.getTitle());
+        assertFalse(n.getContent().contains("申诉"), "奖励无需申诉，实际：" + n.getContent());
+    }
+
+    /**
+     * 驳回的单<b>不提示</b>——志愿者始终看不到这张单，凭空收到一条「您的某处罚被驳回」
+     * 等于把他本来不该知道的草稿告诉了他。
+     */
+    @Test
+    void reject_leavesNoNotification() {
+        Long vid = insertVolunteer();
+        Long id = rewardPunishService.create(punish(vid, -5), ADMIN);
+
+        rewardPunishService.reject(id, "证据不足", ADMIN);
+
+        assertEquals(0, notificationService.unreadCount(vid));
+    }
+
+    /**
+     * 申诉受理有了结果也提示，<b>成立与驳回都发</b>。
+     *
+     * <p>⚠️ 这一条是<b>推论</b>（见 {@code VolunteerNotification.TYPE_APPEAL_HANDLED}）：
+     * Row 41 F 没写申诉结果要不要提示。只在成立时发则等于用「有没有收到提示」泄露结论，
+     * 而驳回恰恰是更需要把理由送到他眼前的那一种，故正文带上受理说明。</p>
+     */
+    @Test
+    void handleAppeal_notifiesOnBothOutcomes() {
+        Long upheldId = appealedPunish();
+        Long upheldVid = rewardPunishMapper.selectById(upheldId).getVolunteerId();
+        AppealHandleDTO uphold = new AppealHandleDTO();
+        uphold.setUpheld(true);
+        uphold.setResult("经核实确为接家长电话");
+        rewardPunishService.handleAppeal(upheldId, uphold, ADMIN);
+
+        VolunteerNotification ok = latestNotification(upheldVid);
+        assertEquals(VolunteerNotification.TYPE_APPEAL_HANDLED, ok.getType());
+        assertTrue(ok.getTitle().contains("成立"), "实际：" + ok.getTitle());
+        assertTrue(ok.getContent().contains("经核实确为接家长电话"),
+                "受理说明必须原样带给志愿者，实际：" + ok.getContent());
+
+        Long rejectedId = appealedPunish();
+        Long rejectedVid = rewardPunishMapper.selectById(rejectedId).getVolunteerId();
+        AppealHandleDTO reject = new AppealHandleDTO();
+        reject.setUpheld(false);
+        reject.setResult("现场有多人可证");
+        rewardPunishService.handleAppeal(rejectedId, reject, ADMIN);
+
+        VolunteerNotification no = latestNotification(rejectedVid);
+        assertEquals(VolunteerNotification.TYPE_APPEAL_HANDLED, no.getType());
+        assertTrue(no.getContent().contains("现场有多人可证"),
+                "驳回更需要把理由送到他眼前，实际：" + no.getContent());
+    }
+
+    /** 开一张已通过审核并已提交申诉的处罚单，返回单据 id。 */
+    private Long appealedPunish() {
+        Long vid = insertVolunteer();
+        Long id = rewardPunishService.create(punish(vid, -5), ADMIN);
+        rewardPunishService.approve(id, ADMIN);
+        rewardPunishService.appeal(id, vid, appealDto());
+        return id;
+    }
+
+    private VolunteerNotification latestNotification(Long vid) {
+        return notificationService.myNotifications(vid, new PageQuery()).getRecords().get(0);
     }
 
     /** 已注销的账号连开单都不该开：那张单永远审不过，留着只是一条谁也处理不掉的待办。 */
