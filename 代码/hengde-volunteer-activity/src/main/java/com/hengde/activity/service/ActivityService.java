@@ -7,6 +7,7 @@ import com.hengde.activity.dao.ActivityMapper;
 import com.hengde.activity.dao.ActivitySlotMapper;
 import com.hengde.activity.constant.ActivityDisplayStatus;
 import com.hengde.activity.constant.ActivityStatus;
+import com.hengde.activity.constant.EnrollmentStatus;
 import com.hengde.activity.constant.RunStatus;
 import com.hengde.activity.constant.ServiceGuarantee;
 import com.hengde.activity.dto.ActivityCreateDTO;
@@ -22,11 +23,14 @@ import com.hengde.activity.vo.ActivityRegistrantVO;
 import com.hengde.activity.vo.ActivitySlotVO;
 import com.hengde.activity.vo.ActivityVolunteerDetailVO;
 import com.hengde.activity.vo.RecommendActivityVO;
+import com.hengde.auth.service.SmsNotifyService;
 import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
 import com.hengde.common.search.SearchItemVO;
+import com.hengde.common.sms.SmsNotifyTemplate;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -40,10 +44,13 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.stream.Collectors;
 
 /**
  * 活动发布/管理（管理端）。
@@ -53,8 +60,17 @@ import java.util.TreeSet;
  *
  * @author hengde
  */
+@Slf4j
 @Service
 public class ActivityService {
+
+    /**
+     * 取消原因的长度上限：它原样进「活动已取消」短信的正文。
+     *
+     * <p>取 100 不是精确算过分段边界，而是要有个界——中文短信一条 70 字、拼接后每条 67 字，
+     * 加上模板固定文案与活动名，100 字的原因已经会让整批短信变成多条计费。</p>
+     */
+    private static final int MAX_CANCEL_REASON = 100;
 
     /** 已发布 */
     private static final int STATUS_PUBLISHED = ActivityStatus.PUBLISHED;
@@ -85,10 +101,16 @@ public class ActivityService {
     private ActivitySlotMapper activitySlotMapper;
     private ActivityEnrollmentMapper activityEnrollmentMapper;
     private VolunteerQueryService volunteerQueryService;
+    private SmsNotifyService smsNotifyService;
 
     @Autowired
     public void setVolunteerQueryService(VolunteerQueryService volunteerQueryService) {
         this.volunteerQueryService = volunteerQueryService;
+    }
+
+    @Autowired
+    public void setSmsNotifyService(SmsNotifyService smsNotifyService) {
+        this.smsNotifyService = smsNotifyService;
     }
 
     @Autowired
@@ -375,9 +397,23 @@ public class ActivityService {
 
     /**
      * 取消活动：保留报名、时间段与考勤链路，仅将活动置为已取消。
+     *
+     * <p>取消后给<b>全部有效报名者</b>（待审核 + 已通过）发一条短信。已取消/已拒绝的报名不发——
+     * 他们本来就不打算来。通知在事务提交后才真正发出（见 {@code SmsNotifyService}）。</p>
+     *
+     * @param reason 取消原因，进短信正文。<b>可空</b>：现有后台按钮没有这个输入框，
+     *               留空时正文回落到「详情请咨询活动联系人」而不是一个空洞。
+     *               建议后台补上必填的原因输入——几百人收到「原因：」空着的短信只会引来更多询问。
+     *               <b>有长度上限</b>（{@link #MAX_CANCEL_REASON} 字）：它会原样进短信，
+     *               一条几百字的原因会让整批取消短信按长短信计费、甚至被服务商整批拒收，
+     *               而那时只剩一行 ERROR。控制器侧是裸 {@code @RequestParam}（本类没开
+     *               方法级校验），故这道闸门只能落在 service，与拒绝原因等处的兜底同一口径
      */
     @Transactional
-    public void cancel(Long id) {
+    public void cancel(Long id, String reason) {
+        if (reason != null && reason.length() > MAX_CANCEL_REASON) {
+            throw new BusinessException("取消原因不超过 " + MAX_CANCEL_REASON + " 字");
+        }
         Activity activity = activityMapper.selectById(id);
         if (activity == null || isUnderReview(activity)) {
             throw new BusinessException("活动不存在");
@@ -392,6 +428,39 @@ public class ActivityService {
                 .eq(Activity::getId, id)
                 .set(Activity::getStatus, STATUS_CANCELLED)
                 .set(Activity::getUpdateTime, LocalDateTime.now()));
+        notifyCancelled(activity, reason);
+    }
+
+    /**
+     * 通知有效报名者活动已取消。
+     *
+     * <p><b>为什么按志愿者去重</b>：一个人可能报了同一活动的多个场次（slot 制），
+     * 逐行发会让他一次收到三四条内容完全相同的短信。</p>
+     *
+     * <p>失败只记日志：活动已经取消了，这是既成事实，不能因为短信没发出去而回滚——
+     * 那会让活动看起来还在，比少一条通知糟得多。</p>
+     */
+    private void notifyCancelled(Activity activity, String reason) {
+        try {
+            List<ActivityEnrollment> rows = activityEnrollmentMapper.selectList(
+                    Wrappers.<ActivityEnrollment>lambdaQuery()
+                            .select(ActivityEnrollment::getVolunteerId)
+                            .eq(ActivityEnrollment::getActivityId, activity.getId())
+                            .in(ActivityEnrollment::getStatus,
+                                    EnrollmentStatus.PENDING, EnrollmentStatus.APPROVED));
+            Set<Long> volunteerIds = rows.stream()
+                    .map(ActivityEnrollment::getVolunteerId)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+            if (volunteerIds.isEmpty()) {
+                return;
+            }
+            String text = StringUtils.hasText(reason) ? reason : "详情请咨询活动联系人";
+            smsNotifyService.notifyVolunteers(volunteerIds, SmsNotifyTemplate.ACTIVITY_CANCELLED,
+                    SmsNotifyTemplate.ACTIVITY_CANCELLED.params(activity.getTitle(), text));
+        } catch (Exception ex) {
+            log.error("[SMS-NOTIFY] 活动取消通知失败 activityId={}", activity.getId(), ex);
+        }
     }
 
     /** 该活动是否存在报名记录（任意状态，含已取消/已拒绝——它们仍引用 slot 且出现在报名列表/导出）。 */

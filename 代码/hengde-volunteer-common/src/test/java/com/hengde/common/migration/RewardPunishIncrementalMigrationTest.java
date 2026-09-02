@@ -42,7 +42,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *       升级后 {@code repair} 重跑第 1 条再报 {@code ERROR 3822 Duplicate check constraint name}。
  *       （这三步已在 {@code mysql:8.0.16} 容器上实测过。）
  *       把它们拆成两个版本，任一失败都只回到自己那一版的起点。</li>
- *   <li><b>V35 之后驳回不再占位</b>（{@link #rejectedTicketNoLongerHoldsTheViolationKey}）。</li>
+ *   <li><b>V35 之后驳回不再占位</b>（{@link #rejectedTicketNoLongerHoldsTheViolationKey}）、
+ *       <b>V38 之后申诉成立也不再占位</b>（{@link #appealUpheldTicketNoLongerHoldsTheViolationKey}）。
+ *       这两条各自<b>先在旧版本上造出缺陷、再迁移、再断言缺陷消失</b>：
+ *       只在最新 schema 上插数据证明不了 MySQL 在 {@code MODIFY COLUMN} 时
+ *       <b>重算了存量行的 STORED 生成列</b>——而那正是这两版迁移唯一可能悄悄失效的地方。</li>
  * </ol>
  *
  * <p><b>需本机有 Docker。</b>容器版本由 {@link TestcontainersConfig#IMAGE} 钉死。</p>
@@ -182,6 +186,41 @@ class RewardPunishIncrementalMigrationTest {
     }
 
     /**
+     * V38：<b>申诉成立</b>的单不再占住「一条违规最多一张单」的位置。
+     *
+     * <p><b>需求出处</b>：协会 2026-08-11 答复第 8 条「处罚单被驳回或申诉成立后：用户申诉成立
+     * 但觉得不惩罚不行，则可以给他开第二张轻一点的处罚单」。V35 时期刻意让申诉成立的单继续占位，
+     * 那是<b>推论</b>（已记入待确认清单第 9-附 条），本版按裁决改口径。</p>
+     *
+     * <p><b>为什么第一步要先在 V37 上把缺陷造出来</b>：这一版改的是 {@code STORED} 生成列的表达式，
+     * 而存量行的值是<b>已经算好落在盘上的</b>。若 MySQL 在 {@code MODIFY COLUMN} 时不重算存量行，
+     * 那张「申诉成立」的旧单会继续以 {@code active_violation_id = 8802} 占着键，
+     * 重开照样撞 1062——而只在最新 schema 上插数据的写法完全看不见这一点，
+     * 因为那时插进去的行本来就是按新表达式算的。第一步的 {@code assertThrows} 是缺陷本身，
+     * 第三步的成功插入才证明了「存量行被重算过」。</p>
+     *
+     * <p>把 V38 的表达式改回 V35 那版，第三步必红。</p>
+     */
+    @Test
+    void appealUpheldTicketNoLongerHoldsTheViolationKey() throws SQLException {
+        migrateTo("37");
+        // 已通过 + 申诉成立：review_status 仍是 1，变的只是 appeal_status
+        insertPunishForViolation("V38UPHELD", 8802, 1, 2);
+        assertThrows(SQLException.class, () -> insertPunishForViolation("V38BLOCKED", 8802, 0, 0),
+                "V37 及以前：申诉成立的单仍占位，同一条违规开不出第二张——这正是缺陷本身");
+
+        migrateTo("38");
+
+        insertPunishForViolation("V38REOPEN", 8802, 0, 0);   // 申诉成立后重开，不抛即通过
+        assertThrows(SQLException.class, () -> insertPunishForViolation("V38DUP", 8802, 0, 0),
+                "同一条违规仍然只能有一张【未驳回且申诉未成立】的单");
+
+        // 驳回那条释放条件不能因为本次改动而失效——两条是并列的，不是替换
+        insertPunishForViolation("V38REJ", 8803, 2);
+        insertPunishForViolation("V38AFTERREJ", 8803, 0);
+    }
+
+    /**
      * 钉住 {@link TestcontainersConfig#MIN_SUPPORTED} 这个声明：<b>容器实际跑的版本必须够格，
      * 而且够格的理由必须成立</b>。
      *
@@ -231,15 +270,26 @@ class RewardPunishIncrementalMigrationTest {
         }
     }
 
-    /** 关联某条违规的处罚单，{@code reviewStatus} 0待审核/1已通过/2已驳回。 */
+    /** 关联某条违规的处罚单，{@code reviewStatus} 0待审核/1已通过/2已驳回；申诉状态取默认的「未申诉」。 */
     private void insertPunishForViolation(String no, long violationId, int reviewStatus)
             throws SQLException {
+        insertPunishForViolation(no, violationId, reviewStatus, 0);
+    }
+
+    /**
+     * 同上，另外指定申诉状态（0未申诉/1申诉中/2申诉成立/3申诉驳回）。
+     *
+     * <p>V38 之前这个参数无处可用：占位条件里根本没有 {@code appeal_status}。</p>
+     */
+    private void insertPunishForViolation(String no, long violationId, int reviewStatus,
+                                          int appealStatus) throws SQLException {
         try (Connection conn = open();
              Statement st = conn.createStatement()) {
             st.executeUpdate("INSERT INTO honor_reward_punish"
-                    + " (rp_no, volunteer_id, type, category, points_delta, violation_id, review_status)"
-                    + " VALUES ('" + no + "', 960002, 2, 'V35 增量用例', 0, "
-                    + violationId + ", " + reviewStatus + ")");
+                    + " (rp_no, volunteer_id, type, category, points_delta, violation_id,"
+                    + "  review_status, appeal_status)"
+                    + " VALUES ('" + no + "', 960002, 2, 'V35/V38 增量用例', 0, "
+                    + violationId + ", " + reviewStatus + ", " + appealStatus + ")");
         }
     }
 

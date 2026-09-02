@@ -110,6 +110,54 @@ public class VolunteerQueryService {
     }
 
     /**
+     * 批量取<b>可接收通知的</b>手机号（id → 明文手机号），供通知短信统一入口使用。
+     *
+     * <p><b>为什么不复用 {@link #listDisplayByIds}</b>：那是「展示信息」，取多少字段由展示决定；
+     * 这里要的是一个<b>口径</b>——谁还该收到我们发的短信。口径属于账号状态语义，归 auth，
+     * 不该让 activity / honor 各自去判断（判断散开就会有人漏掉，而漏掉没有任何征兆）。</p>
+     *
+     * <p><b>已注销（{@link UserStatus#DELETED}）不发。</b>用户主动注销是要求我们停止打扰他，
+     * 而通知短信正是打扰——他注销前报名的活动被取消、他早先的考勤被补发积分，都可能在注销之后
+     * 触发一条短信。<b>禁用（{@link UserStatus#BANNED}）照常发</b>：协会 2026-08-11 的口径是
+     * 给禁用账号开一个「只能看奖惩、提申诉」的小口子，而 7 天申诉期的起点正是那条通知——
+     * 挡掉它等于把这个小口子又关上了。</p>
+     *
+     * <p>⚠️ 这条口径是<b>我们的推断</b>：协会没有就「注销之后还能不能收到短信」表过态。
+     * 已记入《协会待确认清单》，若协会要求注销后仍告知，去掉这里的 status 过滤即可，一处改动。</p>
+     *
+     * @param volunteerIds 志愿者 id 集合
+     * @return id -> 手机号明文；无手机号、已注销、行不存在的都不在返回值里
+     */
+    public Map<Long, String> listNotifiablePhones(Collection<Long> volunteerIds) {
+        if (volunteerIds == null || volunteerIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Volunteer> list = volunteerMapper.selectList(Wrappers.<Volunteer>lambdaQuery()
+                .select(Volunteer::getId, Volunteer::getPhone, Volunteer::getStatus)
+                .in(Volunteer::getId, volunteerIds));
+        Map<Long, String> result = new HashMap<>();
+        for (Volunteer v : list) {
+            if (UserStatus.DELETED.equals(v.getStatus())) {
+                continue;
+            }
+            // 【hasText 而不是 != null】decrypt(null) 安全返回 null，但 decrypt("") 会走进
+            // new byte[0 - IV_LENGTH] 抛 NegativeArraySizeException，被包成 BusinessException 抛出——
+            // 而通知的调用方一律 try 住不让它影响业务，于是【整批通知静默丢失】：
+            // 一个空字符串手机号就够让几百人的活动取消通知一条都发不出去，只留一行 ERROR。
+            // 这道守卫是从 toDisplay 搬过来时漏掉的（那边一直有）；库里现在不该有 ''
+            // （phone 可空、清空路径写的都是 null），但代价不对称——补一行 vs. 整批静默丢失。
+            if (!StringUtils.hasText(v.getPhone())) {
+                continue;
+            }
+            String phone = cryptoUtil.decrypt(v.getPhone());
+            if (StringUtils.hasText(phone)) {
+                result.put(v.getId(), phone.trim());
+            }
+        }
+        return result;
+    }
+
+    /**
      * 批量取志愿者姓名（id → realName），仅 {@code select} 姓名列、<b>不解密手机号</b>。
      *
      * <p>供公开展示场景（如活动留言列表）只取姓名用，避免 {@link #listDisplayByIds} 把明文手机号

@@ -102,18 +102,26 @@ public class HonorRewardPunish extends BaseEntity {
     private Long createBy;
 
     /**
-     * 只读生成列，由数据库维护：<b>未删除且未被驳回</b>时等于 {@code violationId}，否则为 NULL。
+     * 只读生成列，由数据库维护：<b>未删除、未被驳回、且申诉未成立</b>时等于 {@code violationId}，
+     * 否则为 NULL。
      *
      * <p>{@code uk_active_violation} 建在它上面：一条现场违规同时最多只有一张有效处罚单，
-     * 而软删或<b>被驳回</b>之后应当能重新开单——V35 把「驳回」也加进了释放条件，
-     * 此前驳回会永久占位，而系统没有修改/重提入口，{@code reject} 强制填写的原因也就无处落实。
+     * 而软删、<b>被驳回</b>（V35）或<b>申诉成立</b>（V38）之后应当能重新开单。
      * {@code RewardPunishService.insertWithNewNo} 的预查必须与本表达式同口径。</p>
      *
-     * <p><b>申诉成立的单<u>不</u>释放占位</b>（{@code review_status} 仍是「已通过」，
-     * 变的只是 {@code appeal_status}）：那条违规此后开不出第二张单。⚠️ 这与上面对「驳回」的判断
-     * 方向相反，是<b>刻意的推论</b>——驳回是这张单<b>没有成立过</b>（开单环节的失误，该允许改正重提），
-     * 申诉成立是这张单<b>成立过又被推翻</b>（就同一件事再罚一次等于二次处罚）。
-     * 需求原文没有涉及，已记入《协会待确认清单》第 9-附 条。</p>
+     * <p><b>需求出处</b>：协会 2026-08-11 答复第 8 条「处罚单被驳回或申诉成立后：用户申诉成立
+     * 但觉得不惩罚不行，则可以给他开第二张轻一点的处罚单」。</p>
+     *
+     * <p><b>🔁 V35 时期的相反口径已被推翻</b>。当时刻意让申诉成立的单继续占位，理由是
+     * 「驳回 = 这张单没有成立过（该允许改正重提）；申诉成立 = 成立过又被推翻（再罚一次等于二次处罚）」。
+     * 那个理由本身讲得通，但它是<b>推论</b>，V35 抬头与《协会待确认清单》第 9-附 条都如实标注了。
+     * 协会的口径是：申诉成立只说明<b>这次判罚过重</b>，事实仍在，可按更轻的档重开。
+     * 推论让位于裁决——这正是当初把它标成待确认、而不是当成需求写死的原因。</p>
+     *
+     * <p>⚠️ <b>「第二张必须更轻」没有落成任何机器约束</b>（数据库与 Java 层都没有）：轻重跨类别
+     * 不可比——换一个更贴切的违规类别重开，扣分未必更少，但并非加重。硬拦会挡住合理场景。
+     * 已作为问题 B 发给协会，当前口径是由理事会人工把关、开单页展示原单档位供对照。
+     * 协会若改口要硬拦，加在 {@code RewardPunishService}：那是业务规则，不是数据完整性。</p>
      */
     @TableField(value = "active_violation_id", insertStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.NEVER,
             updateStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.NEVER)

@@ -13,6 +13,7 @@ import com.hengde.activity.entity.ActivitySlot;
 import com.hengde.activity.vo.ActivitySlotVO;
 import com.hengde.activity.vo.EnrollmentAdminVO;
 import com.hengde.activity.vo.EnrollmentExportRow;
+import com.hengde.auth.service.SmsNotifyService;
 import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.auth.vo.VolunteerDisplayView;
 import com.hengde.common.constant.Gender;
@@ -20,6 +21,8 @@ import com.hengde.common.constant.Grade;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
+import com.hengde.common.sms.SmsNotifyTemplate;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -41,6 +44,7 @@ import java.util.stream.Collectors;
  *
  * @author hengde
  */
+@Slf4j
 @Service
 public class EnrollmentAdminService {
 
@@ -56,6 +60,7 @@ public class EnrollmentAdminService {
     private ActivityMapper activityMapper;
     private VolunteerQueryService volunteerQueryService;
     private EnrollmentService enrollmentService;
+    private SmsNotifyService smsNotifyService;
 
     @Autowired
     public void setEnrollmentMapper(ActivityEnrollmentMapper enrollmentMapper) {
@@ -80,6 +85,11 @@ public class EnrollmentAdminService {
     @Autowired
     public void setEnrollmentService(EnrollmentService enrollmentService) {
         this.enrollmentService = enrollmentService;
+    }
+
+    @Autowired
+    public void setSmsNotifyService(SmsNotifyService smsNotifyService) {
+        this.smsNotifyService = smsNotifyService;
     }
 
     /**
@@ -182,6 +192,7 @@ public class EnrollmentAdminService {
         if (rows != 1) {
             throwAuditConflict(enrollmentId);
         }
+        notifyDecision(enrollmentId, true, null);
     }
 
     /**
@@ -200,6 +211,58 @@ public class EnrollmentAdminService {
         if (rows != 1) {
             throwAuditConflict(enrollmentId);
         }
+        notifyDecision(enrollmentId, false, reason);
+    }
+
+    /**
+     * 审核结果短信：通过发 {@code enrollment-approved}，拒绝发 {@code enrollment-rejected}。
+     *
+     * <p><b>只在 CAS 命中之后调</b>——落空的那一次审核什么也没改，更不该通知志愿者。</p>
+     *
+     * <p>时间取<b>本场次</b>的开始时间而非活动整体开始时间：场次是参与的最小单元，
+     * 报了 14:00 那一场的人收到「活动时间：09:00」会白跑一趟。场次缺失（历史数据）时才退回活动起始时间。</p>
+     *
+     * <p><b>整段 try 住并吞掉异常</b>：审核结论已经落库，不能因为短信没发出去就把它翻回去。
+     * 代价是「参数写错」这类编码错误在线上只留下一行 ERROR 和一条没发出的短信，
+     * 因此用例必须真的去断言短信内容——只断言「审核成功」是看不出来的。</p>
+     */
+    private void notifyDecision(Long enrollmentId, boolean approved, String reason) {
+        try {
+            ActivityEnrollment e = enrollmentMapper.selectById(enrollmentId);
+            if (e == null) {
+                return;
+            }
+            Activity activity = activityMapper.selectById(e.getActivityId());
+            if (activity == null) {
+                return;
+            }
+            if (approved) {
+                LocalDateTime start = slotStartOrActivityStart(e.getSlotId(), activity);
+                smsNotifyService.notifyVolunteer(e.getVolunteerId(),
+                        SmsNotifyTemplate.ENROLLMENT_APPROVED,
+                        SmsNotifyTemplate.ENROLLMENT_APPROVED.params(
+                                activity.getTitle(),
+                                start == null ? "" : TIME_FMT.format(start),
+                                activity.getLocation()));
+            } else {
+                smsNotifyService.notifyVolunteer(e.getVolunteerId(),
+                        SmsNotifyTemplate.ENROLLMENT_REJECTED,
+                        SmsNotifyTemplate.ENROLLMENT_REJECTED.params(activity.getTitle(), reason));
+            }
+        } catch (Exception ex) {
+            log.error("[SMS-NOTIFY] 报名审核通知失败 enrollmentId={} approved={}", enrollmentId, approved, ex);
+        }
+    }
+
+    /** 报名所属场次的开始时间；场次不存在（历史数据）时退回活动整体开始时间。 */
+    private LocalDateTime slotStartOrActivityStart(Long slotId, Activity activity) {
+        if (slotId != null) {
+            ActivitySlot slot = activitySlotMapper.selectById(slotId);
+            if (slot != null && slot.getStartTime() != null) {
+                return slot.getStartTime();
+            }
+        }
+        return activity.getStartTime();
     }
 
     /**

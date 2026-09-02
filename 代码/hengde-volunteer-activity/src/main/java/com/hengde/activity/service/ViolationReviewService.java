@@ -9,10 +9,13 @@ import com.hengde.activity.entity.Activity;
 import com.hengde.activity.entity.ActivitySlot;
 import com.hengde.activity.entity.ActivityViolation;
 import com.hengde.activity.vo.ViolationRecordVO;
+import com.hengde.auth.service.SmsNotifyService;
 import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
+import com.hengde.common.sms.SmsNotifyTemplate;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +39,7 @@ import java.util.Objects;
  *
  * @author hengde
  */
+@Slf4j
 @Service
 public class ViolationReviewService {
 
@@ -43,6 +47,7 @@ public class ViolationReviewService {
     private ActivityMapper activityMapper;
     private ActivitySlotMapper slotMapper;
     private VolunteerQueryService volunteerQueryService;
+    private SmsNotifyService smsNotifyService;
 
     @Autowired
     public void setViolationMapper(ActivityViolationMapper violationMapper) {
@@ -62,6 +67,11 @@ public class ViolationReviewService {
     @Autowired
     public void setVolunteerQueryService(VolunteerQueryService volunteerQueryService) {
         this.volunteerQueryService = volunteerQueryService;
+    }
+
+    @Autowired
+    public void setSmsNotifyService(SmsNotifyService smsNotifyService) {
+        this.smsNotifyService = smsNotifyService;
     }
 
     /**
@@ -119,6 +129,35 @@ public class ViolationReviewService {
     @Transactional(rollbackFor = Exception.class)
     public void approve(Long id, Long adminId) {
         decide(id, ActivityViolation.REVIEW_APPROVED, null, adminId);
+        notifyApproved(id);
+    }
+
+    /**
+     * 违规记录审核通过后通知本人（{@code activity-violation}）。
+     *
+     * <p>依据 Row 41 F「各类违规记录…均需组织部同学审核<b>才可显示</b>，审核之后，志愿者会收到提示」——
+     * 审核通过正是这条记录对志愿者可见的那一刻，也是该通知他的那一刻。
+     * <b>放在 {@code decide} 之后</b>：CAS 落空（别人已经审过）时什么都没改，不该发短信。</p>
+     *
+     * <p><b>扣分固定传 0</b>：现场违规记录本身不动积分，扣分是后续处罚单的事（那一步另发一条
+     * {@code reward-punish}）。模板正文写死了「扣除积分${pointsDeducted}分」，只能如实填 0；
+     * 文案读着别扭这件事已写进给协会的问题清单。</p>
+     */
+    private void notifyApproved(Long id) {
+        try {
+            ActivityViolation v = violationMapper.selectById(id);
+            if (v == null) {
+                return;
+            }
+            Activity activity = (v.getActivityId() == null) ? null : activityMapper.selectById(v.getActivityId());
+            smsNotifyService.notifyVolunteer(v.getVolunteerId(), SmsNotifyTemplate.ACTIVITY_VIOLATION,
+                    SmsNotifyTemplate.ACTIVITY_VIOLATION.params(
+                            activity == null ? "" : activity.getTitle(),
+                            ActivityViolation.typeLabel(v.getViolationType()),
+                            "0"));
+        } catch (Exception ex) {
+            log.error("[SMS-NOTIFY] 违规审核通知失败 violationId={}", id, ex);
+        }
     }
 
     /** 驳回：记原因，志愿者仍然看不到这条。 */

@@ -223,11 +223,16 @@ class CertificateServiceTest {
     }
 
     /**
-     * <b>补偿扫描不得触及历史数据。</b>
+     * <b>补偿扫描不得触及回看窗口之外的数据。</b>
      *
-     * <p>没有时间下界会从库里第一条已确认考勤扫起，第一次跑就给**所有历史活动**批量发证——
-     * 而「改造前已结束的活动是否补发证书」协会<b>尚未答复</b>。
-     * 那等于让定时任务替协会把待决问题答了，且证书发出去收不回来。</p>
+     * <p>没有时间下界会从库里第一条已确认考勤扫起：每小时一次全表扫描，
+     * 而且第一次跑就会把窗口之外所有缺证书的考勤一并补发。
+     * 定时补偿要解决的是「刚刚那条事件丢了」，本就只需要覆盖近期。</p>
+     *
+     * <p>协会 2026-08-11 已定：只对系统上线后开展的活动自动发证，历史活动不补发
+     * （现存历史活动全部是测试数据，待确认清单「1-追」已关闭）。
+     * 窗口之外确实需要补的，走
+     * {@link #manualReconcile_scopedToActivity_backfillsBeyondLookbackWindow} 那条人工入口。</p>
      */
     @Test
     void reconcile_doesNotBackfillCertificatesForOldAttendance() {
@@ -827,7 +832,9 @@ class CertificateServiceTest {
      * <b>回看窗口之外的缺失，必须有办法补。</b>
      *
      * <p>定时补偿只看 72 小时内，「事件丢失 + 停机超过窗口」叠加时那张证书永久缺失、
-     * 无人发现。本接口是那个洞的救济，也正是协会答复「历史活动要补发」时的执行工具。</p>
+     * 无人发现。本接口是那个洞的救济。</p>
+     *
+     * <p>⚠️ 它<b>不是</b>「历史活动补发工具」——协会 2026-08-11 已定历史活动不补发。</p>
      */
     @Test
     void manualReconcile_scopedToActivity_backfillsBeyondLookbackWindow() {
@@ -900,7 +907,8 @@ class CertificateServiceTest {
      * <b>不接受「无边界全量补发」。</b>
      *
      * <p>两个范围都不给等于扫全库发证，那正是定时任务被明确禁止做的事——
-     * 换个入口调用不改变它的性质，历史补发口径仍在协会手里。
+     * 换个入口调用不改变它的性质。守的是「补发的范围必须是人显式圈定的」，
+     * 而不是某个具体口径；协会改口径也不该让这条失效。
      */
     @Test
     void manualReconcile_withoutAnyScope_isRejected() {

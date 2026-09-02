@@ -138,11 +138,19 @@ public class ActivityAdminController {
         return Result.ok();
     }
 
+    /**
+     * 取消活动。
+     *
+     * <p>{@code reason} 为可选查询参数，会进「活动已取消」短信的正文发给全体有效报名者。
+     * 设成可选而不是必填，是为了不打断既有前端的调用；<b>但强烈建议后台补一个必填的原因输入框</b>——
+     * 留空时短信只能写「详情请咨询活动联系人」，几百个人收到之后多半会打电话来问。</p>
+     */
     @Operation(summary = "取消活动（已有报名记录时使用，保留报名与考勤数据）")
     @SaCheckPermission(value = PermissionCode.ACTIVITY_DELETE, type = "admin")
     @PostMapping("/{id}/cancel")
-    public Result<Void> cancel(@PathVariable Long id) {
-        activityService.cancel(id);
+    public Result<Void> cancel(@PathVariable Long id,
+                               @RequestParam(required = false) String reason) {
+        activityService.cancel(id, reason);
         return Result.ok();
     }
 

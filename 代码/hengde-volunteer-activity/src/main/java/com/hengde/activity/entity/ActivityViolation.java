@@ -37,6 +37,26 @@ public class ActivityViolation extends BaseEntity {
     /** 类型 1玩手机/2服装不合格/3早退/4长时间交头接耳/5缺席/0其他 */
     private Integer violationType;
 
+    /**
+     * 类型的中文说法，供短信/展示用。
+     *
+     * <p>需求原文见 xlsx Row 32「活动过程中志愿者是否违规（如玩手机，服装不合格，早退，长时间交头接耳）」。
+     * 未知码一律回落到「其他」而不是把数字露出去——短信里出现一个「违规类型：7」比不发还糟。</p>
+     */
+    public static String typeLabel(Integer type) {
+        if (type == null) {
+            return "其他";
+        }
+        return switch (type) {
+            case 1 -> "玩手机";
+            case 2 -> "服装不合格";
+            case 3 -> "早退";
+            case 4 -> "长时间交头接耳";
+            case 5 -> "缺席";
+            default -> "其他";
+        };
+    }
+
     /** 违规说明 */
     private String description;
 

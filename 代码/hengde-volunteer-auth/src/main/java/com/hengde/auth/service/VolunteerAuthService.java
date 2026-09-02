@@ -125,8 +125,12 @@ public class VolunteerAuthService {
             volunteer.setUnionid(unionid);
             volunteer.setStatus(UserStatus.NORMAL);
             volunteerMapper.insert(volunteer);
-        } else if (volunteer.getStatus() != null && volunteer.getStatus().equals(UserStatus.BANNED)) {
-            throw new BusinessException("账号已被禁用");
+        } else {
+            // 收口到 ensureLoginable 一处：此前这里只挡 BANNED，而 smsLogin/passwordLogin 走的是
+            // 「只放 NORMAL」。三条登录路径各写各的判定，改口径时必然漏掉其中一条——
+            // 协会这次要求禁用可登录，正好把三份判定并成一份。
+            // 【顺带修掉一处不一致】此前微信登录不挡已注销账号，自己注销过的人照样能登回来。
+            ensureLoginable(volunteer);
         }
 
         StpUtil.login(volunteer.getId());
@@ -155,8 +159,8 @@ public class VolunteerAuthService {
             volunteer.setOpenid(openid);
             volunteer.setStatus(UserStatus.NORMAL);
             volunteerMapper.insert(volunteer);
-        } else if (volunteer.getStatus() != null && volunteer.getStatus().equals(UserStatus.BANNED)) {
-            throw new BusinessException("账号已被禁用");
+        } else {
+            ensureLoginable(volunteer);
         }
 
         // 造一个可用的「已实名」测试身份：填姓名 + 成年生日 + 性别，避免年龄/性别资格校验取到 null
@@ -214,16 +218,40 @@ public class VolunteerAuthService {
     }
 
     /**
-     * 登录可用性校验：仅 {@code status=NORMAL} 放行；禁用/注销终态一律拒绝，口径与交付一致
-     * （而非只挡 BANNED）。被后台「删除」的账号是逻辑删除 + 唯一字段已释放，selectByPhoneHash 查不到，
-     * 不会走到这里。
+     * 登录可用性校验：<b>正常与禁用都发 token，只有注销拒绝</b>。
+     *
+     * <p><b>需求出处</b>：协会 2026-08-11 答复第 5 条「账号类处罚：由理事会审核后才生效，
+     * <b>只给禁用账号开个小口子、只能看奖惩和提申诉</b>」。</p>
+     *
+     * <p><b>🔁 「禁用一律拒发 token」这条口径已被推翻</b>。它原本是最直觉的写法，
+     * 代价却在别处：禁用账号连登录都进不来，于是一张处罚单审核通过之后，
+     * <b>处罚立即生效、而 7 天申诉期在他够不到的地方流逝</b>；禁用超过 7 天，
+     * 申诉权就在他不知情的状态下过期了。第 6 轮评审当时的对策是「禁用期间一律不批」
+     * （见 {@code RewardPunishService.requireApprovableVolunteer}），
+     * 协会选了另一条路：照常批，但把申诉这条路留着。
+     * <b>那条对策的理由并没有被推翻</b>——要消除的都是「申诉期在够不到的地方流逝」，
+     * 只是手段从「不批」换成了「开口子」。</p>
+     *
+     * <p><b>「登录成功」从此不再意味着「账号可用」</b>：禁用账号拿到 token 之后，
+     * 除 {@code BannedAccountGate.EXEMPT_PATHS} 那几条外，其余 {@code /v/**} 一律 403。
+     * 小程序侧应据此把禁用态引导到奖惩记录与申诉页（属后续增量 UX，不阻塞本改动：
+     * 改动前是登录那一步就报错，改动后是登录进去大部分接口报 403，
+     * 既有的错误提示照常弹出，只是文案不够贴切）。</p>
+     *
+     * <p><b>注销仍然拒绝</b>：账号是用户自己注销的，没有申诉可提，也没有处罚等着他看。</p>
+     *
+     * <p>被后台「删除」的账号是逻辑删除 + 唯一字段已释放，{@code selectByPhoneHash} 查不到，
+     * 不会走到这里。</p>
      */
     private void ensureLoginable(Volunteer volunteer) {
         Integer status = volunteer.getStatus();
-        if (UserStatus.NORMAL.equals(status)) {
+        if (UserStatus.NORMAL.equals(status) || UserStatus.BANNED.equals(status)) {
             return;
         }
-        throw new BusinessException(UserStatus.DELETED.equals(status) ? "账号已注销" : "账号已被禁用");
+        // 【写成白名单而不是「只拦 DELETED」】后者在 status 为 null 或将来多一个取值时会静默放行，
+        // 而这是发 token 的那一步——放错了没有第二道防线。
+        // 与 SaTokenConfigure.checkVolunteerEnabled 的兜底同一形状。
+        throw new BusinessException(UserStatus.DELETED.equals(status) ? "账号已注销" : "账号状态异常");
     }
 
     /**

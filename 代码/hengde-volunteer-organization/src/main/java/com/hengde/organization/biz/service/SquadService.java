@@ -5,12 +5,14 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.hengde.auth.dao.VolunteerMapper;
 import com.hengde.auth.entity.Volunteer;
+import com.hengde.auth.service.SmsNotifyService;
 import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.auth.vo.VolunteerDisplayView;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
 import com.hengde.common.search.SearchItemVO;
+import com.hengde.common.sms.SmsNotifyTemplate;
 import com.hengde.organization.biz.constant.SquadApplyStatus;
 import com.hengde.organization.biz.dao.SquadApplicationMapper;
 import com.hengde.organization.biz.dao.VolunteerSquadMapper;
@@ -21,6 +23,7 @@ import com.hengde.organization.biz.entity.VolunteerSquad;
 import com.hengde.organization.biz.vo.SquadApplicationVO;
 import com.hengde.organization.biz.vo.SquadMemberVO;
 import com.hengde.organization.biz.vo.SquadVO;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +39,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 public class SquadService {
 
@@ -51,6 +55,7 @@ public class SquadService {
     private SquadApplicationMapper applicationMapper;
     private VolunteerMapper volunteerMapper;
     private VolunteerQueryService volunteerQueryService;
+    private SmsNotifyService smsNotifyService;
 
     @Autowired
     public void setSquadMapper(VolunteerSquadMapper squadMapper) {
@@ -70,6 +75,11 @@ public class SquadService {
     @Autowired
     public void setVolunteerQueryService(VolunteerQueryService volunteerQueryService) {
         this.volunteerQueryService = volunteerQueryService;
+    }
+
+    @Autowired
+    public void setSmsNotifyService(SmsNotifyService smsNotifyService) {
+        this.smsNotifyService = smsNotifyService;
     }
 
     public PageResult<SquadVO> list(PageQuery query, boolean admin) {
@@ -301,6 +311,27 @@ public class SquadService {
         if (rows != 1) {
             throw new BusinessException("志愿者已归属分队");
         }
+        notifyApplicationResult(application.getVolunteerId(), squad.getName(), "通过", "");
+    }
+
+    /**
+     * 分队加入申请的审核结果短信（{@code org-join-result}）。
+     *
+     * <p>申请人提交后就在等这个结果，而系统里没有别的地方会告诉他——
+     * 小程序里要自己翻回申请页才看得到。</p>
+     *
+     * <p>通过与拒绝共用一条模板（{@code ${status}} 区分），驳回原因进 {@code ${remark}}；
+     * 没写原因时留空，模板正文末尾本就是一个独立的 {@code ${remark}}，空着不影响句子完整。</p>
+     *
+     * <p>失败只记日志：审核结论已经落库，不能因为短信没发出去而回滚。</p>
+     */
+    private void notifyApplicationResult(Long volunteerId, String squadName, String status, String remark) {
+        try {
+            smsNotifyService.notifyVolunteer(volunteerId, SmsNotifyTemplate.ORG_JOIN_RESULT,
+                    SmsNotifyTemplate.ORG_JOIN_RESULT.params(squadName, status, remark));
+        } catch (Exception ex) {
+            log.error("[SMS-NOTIFY] 分队申请结果通知失败 volunteerId={} squad={}", volunteerId, squadName, ex);
+        }
     }
 
     public void rejectApplication(Long applicationId, String reason) {
@@ -315,6 +346,13 @@ public class SquadService {
                 .eq(SquadApplication::getStatus, APPLY_PENDING));
         if (rows != 1) {
             throwApplicationConflict(applicationId);
+        }
+        // CAS 命中之后再读，只为拿申请人与分队名去发通知；读不到就不发，不影响已落库的结论
+        SquadApplication application = applicationMapper.selectById(applicationId);
+        if (application != null) {
+            VolunteerSquad squad = squadMapper.selectById(application.getSquadId());
+            notifyApplicationResult(application.getVolunteerId(),
+                    squad == null ? "分队" : squad.getName(), "未通过", reason == null ? "" : reason);
         }
     }
 

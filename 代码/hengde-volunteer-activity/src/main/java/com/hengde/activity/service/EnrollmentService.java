@@ -13,27 +13,33 @@ import com.hengde.activity.entity.Activity;
 import com.hengde.activity.entity.ActivityEnrollment;
 import com.hengde.activity.entity.ActivitySlot;
 import com.hengde.activity.vo.MyEnrollmentVO;
+import com.hengde.auth.service.SmsNotifyService;
 import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.auth.vo.VolunteerProfileView;
 import com.hengde.auth.constant.SanctionScope;
 import com.hengde.common.exception.BusinessException;
+import com.hengde.common.sms.SmsNotifyTemplate;
 import com.hengde.common.lock.DistributedLockSupport;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
 import com.hengde.organization.biz.service.GroupQueryService;
 import org.redisson.api.RedissonClient;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.Period;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -50,6 +56,7 @@ import java.util.stream.Collectors;
  *
  * @author hengde
  */
+@Slf4j
 @Service
 public class EnrollmentService {
 
@@ -61,6 +68,9 @@ public class EnrollmentService {
     private static final int ENROLL_APPROVED = EnrollmentStatus.APPROVED;
     /** 报名：已取消 */
     private static final int ENROLL_CANCELLED = EnrollmentStatus.CANCELLED;
+
+    /** 短信里的时间写法，与管理端报名审核那条保持一致 */
+    private static final DateTimeFormatter ENROLL_TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     /** 账号正常状态（com.hengde.common.constant.UserStatus.NORMAL） */
     private static final int USER_STATUS_NORMAL = 0;
@@ -76,6 +86,7 @@ public class EnrollmentService {
     private ActivityEnrollmentMapper enrollmentMapper;
     private ActivityAttendanceMapper attendanceMapper;
     private VolunteerQueryService volunteerQueryService;
+    private SmsNotifyService smsNotifyService;
     private GroupQueryService groupQueryService;
     private RedissonClient redissonClient;
     private TransactionTemplate transactionTemplate;
@@ -103,6 +114,11 @@ public class EnrollmentService {
     @Autowired
     public void setVolunteerQueryService(VolunteerQueryService volunteerQueryService) {
         this.volunteerQueryService = volunteerQueryService;
+    }
+
+    @Autowired
+    public void setSmsNotifyService(SmsNotifyService smsNotifyService) {
+        this.smsNotifyService = smsNotifyService;
     }
 
     @Autowired
@@ -214,6 +230,34 @@ public class EnrollmentService {
     }
 
     /**
+     * 后台补录报名后通知本人（{@code enrollment-approved}）。
+     *
+     * <p><b>与代报名同一个理由</b>：这一笔报名不是他自己点的，管理员在后台加的，他事先并不知情——
+     * 不通知就可能到了活动当天才发现自己在名单上。补录直接落「已通过」，
+     * 故用「报名审核通过」那条模板（正文「您已成功报名…请准时参加」）而不是代报名那条。</p>
+     *
+     * <p>时间取<b>最早的那个场次</b>：补录可以一次录多场，短信只放得下一个时间，
+     * 写最早的那场才是他需要最先到场的时刻。</p>
+     */
+    private void notifyManualEnrolled(Activity activity, List<ActivitySlot> slots, Long volunteerId) {
+        try {
+            LocalDateTime start = slots.stream()
+                    .map(ActivitySlot::getStartTime)
+                    .filter(Objects::nonNull)
+                    .min(LocalDateTime::compareTo)
+                    .orElse(activity.getStartTime());
+            smsNotifyService.notifyVolunteer(volunteerId, SmsNotifyTemplate.ENROLLMENT_APPROVED,
+                    SmsNotifyTemplate.ENROLLMENT_APPROVED.params(
+                            activity.getTitle(),
+                            start == null ? "" : ENROLL_TIME_FMT.format(start),
+                            activity.getLocation()));
+        } catch (Exception ex) {
+            log.error("[SMS-NOTIFY] 后台补录报名通知失败 activityId={} volunteerId={}",
+                    activity.getId(), volunteerId, ex);
+        }
+    }
+
+    /**
      * 管理端手动新增报名（管理员代加志愿者，越权补录）。
      *
      * <p>与志愿者自助报名的差异：跳过资格校验（年龄/年级/性别/次数）与报名截止——补录场景常发生在截止后或
@@ -279,6 +323,7 @@ public class EnrollmentService {
             e.setAuditTime(now);
             enrollmentMapper.insert(e);
         }
+        notifyManualEnrolled(activity, slots, volunteerId);
         return slots.size();
     }
 
@@ -402,8 +447,41 @@ public class EnrollmentService {
                 enrollmentMapper.insert(e);
                 totalInserted++;
             }
+            notifyProxyEnrolled(activity, slots, targetId, initStatus);
         }
         return totalInserted;
+    }
+
+    /**
+     * 告诉被代报名的人「你被报上了」（{@code enrollment-position}）。
+     *
+     * <p><b>为什么只有代报名发、自助报名不发</b>：自己刚点完的事不需要再花一条短信告诉他；
+     * 而代报名<b>是别人替他做的决定</b>，他事先并不知情——不通知就可能到了活动当天才发现，
+     * 或者压根不知道自己占了一个名额。这条模板的 {@code ${message}} 是自由文案，正好用来说清这件事。</p>
+     *
+     * <p><b>一个人一条短信，不是一个场次一条</b>：报了三个场次就连发三条内容雷同的短信，
+     * 只会让人以为系统坏了。多场次时把岗位名拼在一起。</p>
+     *
+     * <p>发在事务与分布式锁之内是安全的：{@code SmsNotifyService} 把真正的发送推迟到提交之后，
+     * 任何一个 target 校验失败导致整批回滚时，一条短信也不会发出去——而这批代报名本就是全成或全败。</p>
+     */
+    private void notifyProxyEnrolled(Activity activity, List<ActivitySlot> slots, Long targetId, int initStatus) {
+        try {
+            String positions = slots.stream()
+                    .map(ActivitySlot::getProjectName)
+                    .filter(StringUtils::hasText)
+                    .collect(Collectors.joining("、"));
+            if (!StringUtils.hasText(positions)) {
+                positions = activity.getTitle();
+            }
+            String message = (initStatus == ENROLL_PENDING)
+                    ? "已由同小组成员代为报名，等待审核"
+                    : "已由同小组成员代为报名成功，请准时参加";
+            smsNotifyService.notifyVolunteer(targetId, SmsNotifyTemplate.ENROLLMENT_POSITION,
+                    SmsNotifyTemplate.ENROLLMENT_POSITION.params(activity.getTitle(), positions, message));
+        } catch (Exception ex) {
+            log.error("[SMS-NOTIFY] 代报名通知失败 activityId={} targetId={}", activity.getId(), targetId, ex);
+        }
     }
 
     /**

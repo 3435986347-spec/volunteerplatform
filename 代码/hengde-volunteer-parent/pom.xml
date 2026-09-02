@@ -444,6 +444,33 @@
 					</systemPropertyVariables>
 				</configuration>
 			</plugin>
+
+			<!--
+				注解处理器路径显式声明。两条须一并记住：
+				① 版本必须走 ${lombok.version}，与 dependencyManagement 里 classpath 上的 lombok 同源——
+				   写死一个版本号会让「处理器」和「依赖」分属两个版本，出问题时症状与版本无关，极难联想。
+				② 一旦声明 annotationProcessorPaths，就【关闭了从 classpath 自动发现处理器】。
+				   当前无害（9 个模块都没有真的引入 mapstruct-processor / configuration-processor），
+				   但 MapStruct 写在技术栈与本 POM 的 dependencyManagement 里——哪天有人按约定加上它，
+				   处理器不会跑，报的是「找不到 XxxMapperImpl」，排查方向完全指错。
+				   到那时要做的是把它也加进下面这个 path 列表，而不是去查 MapStruct 配置。
+			-->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<version>3.14.1</version>
+				<configuration>
+					<source>17</source>
+					<target>17</target>
+					<annotationProcessorPaths>
+						<path>
+							<groupId>org.projectlombok</groupId>
+							<artifactId>lombok</artifactId>
+							<version>${lombok.version}</version>
+						</path>
+					</annotationProcessorPaths>
+				</configuration>
+			</plugin>
 		</plugins>
 	</build>
 

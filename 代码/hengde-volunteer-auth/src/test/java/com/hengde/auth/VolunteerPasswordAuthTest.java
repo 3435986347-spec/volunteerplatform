@@ -17,6 +17,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -116,19 +117,35 @@ class VolunteerPasswordAuthTest {
         assertNull(created.getRegisterTime(), "自动建号为游客态");
     }
 
+    /**
+     * 禁用账号<b>照常发 token</b>——协会 2026-08-11 第 5 条「只给禁用账号开个小口子、
+     * 只能看奖惩和提申诉」。挡在登录这一步，那个口子就无从谈起。
+     *
+     * <p><b>🔁 本用例原先断言的是相反的行为</b>（原名 {@code ..._rejectedBeforeToken}）。
+     * 拿到 token 之后能做什么由 {@code BannedAccountGate.EXEMPT_PATHS} 决定：
+     * <b>「登录成功」从此不再等于「账号可用」</b>。</p>
+     *
+     * <p><b>为什么断言的是「抛的不是 BusinessException」</b>：非 web 上下文里
+     * {@code StpUtil.login} 必然抛错（本类抬头已说明，既有用例都这么绕），拿不到 token 本身。
+     * 但能走到那一步就说明业务校验放行了——若 {@code ensureLoginable} 还在拦，
+     * 抛的会是 {@code BusinessException("账号已被禁用")}，且发生在 {@code StpUtil.login} 之前。</p>
+     */
     @Test
-    void smsLogin_bannedAccount_rejectedBeforeToken() {
+    void smsLogin_bannedAccount_stillGetsToken() {
         String phone = "13700000004";
         insertPhoneVolunteer(phone, UserStatus.BANNED);
         authService.sendSmsCode(phone, SmsScene.LOGIN, null);
         String code = storedCode(SmsScene.LOGIN, phone);
-        BusinessException ex = assertThrows(BusinessException.class, () -> authService.smsLogin(phone, code, null));
-        assertTrue(ex.getMessage().contains("禁用"));
+        Exception ex = assertThrows(Exception.class, () -> authService.smsLogin(phone, code, null));
+        assertFalse(ex instanceof BusinessException,
+                "禁用账号必须走到 StpUtil.login（非 web 上下文才抛的那个错），"
+                        + "而不是在 ensureLoginable 就被拒。实际：" + ex);
     }
 
     @Test
     void smsLogin_cancelledAccount_rejected() {
-        // 注销态(status=2)是终态，也应拒绝（口径：status≠NORMAL 一律拒，不止 BANNED）
+        // 注销态(status=2)仍然拒发 token——协会开的口子只针对「禁用」。
+        // 注销的人已经走了：没有处罚要看，也没有申诉要提。
         String phone = "13700000012";
         insertPhoneVolunteer(phone, UserStatus.DELETED);
         authService.sendSmsCode(phone, SmsScene.LOGIN, null);
@@ -213,17 +230,44 @@ class VolunteerPasswordAuthTest {
         assertTrue(e2.getMessage().contains("手机号或密码错误"));
     }
 
+    /**
+     * 禁用账号 + 正确密码：<b>照常发 token</b>，<b>并且清掉防爆破的失败计数</b>。
+     *
+     * <p>第二件事是本用例真正要钉的。{@code passwordLogin} 里三句的<b>顺序</b>是
+     * {@code ensureLoginable} → {@code onVolunteerLoginSucceeded} → {@code StpUtil.login}：
+     * 禁用账号从前会在第一句被拒，于是计数既不加也不清——那不是一条写下来的口径，
+     * 而是顺序的副产品。现在第一句放行了，副产品也跟着变了，得有用例说明这是对的：
+     * <b>密码对了就是登录成功，计数本就该清</b>。</p>
+     *
+     * <p>怎么观察「清掉了」：阈值是 3（见类上的 {@code login-max-failures=3}）。
+     * 先错 2 次，再用正确密码登录一次，再错 2 次——总共错了 4 次。
+     * 若那一次成功没有清零，第 3 次失败就会把账号锁上，最后一次拿到的会是锁定文案。</p>
+     */
     @Test
-    void passwordLogin_bannedWithCorrectPassword_rejectedBeforeToken() {
+    void passwordLogin_bannedWithCorrectPassword_stillSucceedsAndClearsFailureCount() {
         String phone = "13700000008";
         Volunteer v = insertPhoneVolunteer(phone, UserStatus.NORMAL);
         authService.setOrChangePassword(v.getId(), null, "right-pass-1");
-        // 置禁用
         v.setStatus(UserStatus.BANNED);
         volunteerMapper.updateById(v);
-        BusinessException ex = assertThrows(BusinessException.class,
+
+        for (int i = 0; i < 2; i++) {
+            assertThrows(BusinessException.class,
+                    () -> authService.passwordLogin(phone, "wrong", "10.0.0.3"));
+        }
+
+        Exception ex = assertThrows(Exception.class,
                 () -> authService.passwordLogin(phone, "right-pass-1", "10.0.0.3"));
-        assertTrue(ex.getMessage().contains("禁用"));
+        assertFalse(ex instanceof BusinessException,
+                "禁用账号 + 正确密码必须走到 StpUtil.login，而不是在 ensureLoginable 就被拒。实际：" + ex);
+
+        BusinessException last = null;
+        for (int i = 0; i < 2; i++) {
+            last = assertThrows(BusinessException.class,
+                    () -> authService.passwordLogin(phone, "wrong", "10.0.0.3"));
+        }
+        assertTrue(last.getMessage().contains("手机号或密码错误"),
+                "那次成功登录应已清零失败计数，累计 4 次错误不该触发锁定。实际：" + last.getMessage());
     }
 
     @Test

@@ -16,11 +16,14 @@ import com.hengde.activity.entity.ActivitySlot;
 import com.hengde.activity.event.AttendanceConfirmedEvent;
 import com.hengde.activity.vo.ServiceRecordVO;
 import com.hengde.activity.vo.VolunteerServiceStatsView;
+import com.hengde.auth.service.SmsNotifyService;
 import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.auth.vo.VolunteerDisplayView;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
+import com.hengde.common.sms.SmsNotifyTemplate;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -32,6 +35,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -47,6 +51,7 @@ import java.util.Set;
  *
  * @author hengde
  */
+@Slf4j
 @Service
 public class ServiceRecordService {
 
@@ -68,6 +73,7 @@ public class ServiceRecordService {
     private VolunteerQueryService volunteerQueryService;
     private ActivityLeaderService activityLeaderService;
     private PointService pointService;
+    private SmsNotifyService smsNotifyService;
     private ApplicationEventPublisher eventPublisher;
 
     @Autowired
@@ -88,6 +94,11 @@ public class ServiceRecordService {
     @Autowired
     public void setPointService(PointService pointService) {
         this.pointService = pointService;
+    }
+
+    @Autowired
+    public void setSmsNotifyService(SmsNotifyService smsNotifyService) {
+        this.smsNotifyService = smsNotifyService;
     }
 
     @Autowired
@@ -281,7 +292,32 @@ public class ServiceRecordService {
             pointService.record(att.getVolunteerId(), award, PointSourceType.ACTIVITY, attendanceId,
                     "参加活动「" + activity.getTitle() + "」", PointSourceType.OPERATOR_ADMIN, adminId);
         }
+        notifyCredited(activity, att, award);
         return award;
+    }
+
+    /**
+     * 积分发放后通知本人（{@code service-record-credited}：活动名 + 服务时长 + 奖励积分）。
+     *
+     * <p><b>0 分也发</b>：与账本「0 分不入账」不同——那是账目口径（没有变动就没有流水），
+     * 这是告知口径。志愿者关心的是「我这场算没算数」，请假/缺席/违规不发分的情形<b>更</b>需要让他知道，
+     * 否则他只会以为系统漏了他。时长照实写，积分写 0。</p>
+     *
+     * <p>时长按分钟折算成小时、保留一位小数：模板里是「服务时长${hours}小时」，
+     * 写整数会把 90 分钟说成 1 小时或 2 小时，都不对。</p>
+     */
+    private void notifyCredited(Activity activity, ActivityAttendance att, int award) {
+        try {
+            Integer minutes = att.getServiceMinutes();
+            // Locale.ROOT：不带 Locale 的 format 跟随 JVM 默认区域，在小数点是逗号的区域会发出「服务时长1,5小时」
+            String hours = String.format(Locale.ROOT, "%.1f", (minutes == null ? 0 : minutes) / 60.0);
+            smsNotifyService.notifyVolunteer(att.getVolunteerId(),
+                    SmsNotifyTemplate.SERVICE_RECORD_CREDITED,
+                    SmsNotifyTemplate.SERVICE_RECORD_CREDITED.params(
+                            activity.getTitle(), hours, String.valueOf(award)));
+        } catch (Exception ex) {
+            log.error("[SMS-NOTIFY] 积分发放通知失败 attendanceId={}", att.getId(), ex);
+        }
     }
 
     // ---------- 内部 ----------

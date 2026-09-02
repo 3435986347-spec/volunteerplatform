@@ -10,6 +10,7 @@ import com.hengde.auth.entity.VolunteerNotification;
 import com.hengde.auth.entity.VolunteerSanction;
 import com.hengde.auth.service.NotificationService;
 import com.hengde.auth.service.SanctionService;
+import com.hengde.auth.service.SmsNotifyService;
 import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.auth.vo.VolunteerGrantEligibilityView;
 import com.hengde.auth.vo.VolunteerProfileView;
@@ -17,6 +18,7 @@ import com.hengde.common.constant.UserStatus;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
+import com.hengde.common.sms.SmsNotifyTemplate;
 import com.hengde.honor.config.HonorProperties;
 import com.hengde.honor.dao.HonorRewardPunishMapper;
 import com.hengde.honor.dto.AppealHandleDTO;
@@ -33,6 +35,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
@@ -84,6 +87,7 @@ public class RewardPunishService {
     private PointService pointService;
     private SanctionService sanctionService;
     private NotificationService notificationService;
+    private SmsNotifyService smsNotifyService;
     private HonorProperties honorProperties;
 
     @Autowired
@@ -114,6 +118,11 @@ public class RewardPunishService {
     @Autowired
     public void setNotificationService(NotificationService notificationService) {
         this.notificationService = notificationService;
+    }
+
+    @Autowired
+    public void setSmsNotifyService(SmsNotifyService smsNotifyService) {
+        this.smsNotifyService = smsNotifyService;
     }
 
     @Autowired
@@ -226,16 +235,21 @@ public class RewardPunishService {
      * 换多少个编号都不会变；只有撞 {@code uk_rp_no} 才该重试。两者靠「换号后是否还撞」区分：
      * 先把违规是否已开单查清楚，剩下的撞键就只可能是编号。</p>
      *
-     * <p><b>预查必须与 {@code uk_active_violation} 同口径</b>：V35 起被<b>驳回</b>的单不再占位
-     * （开单人填错了才有改正的余地——{@code reject} 强制填写的那条原因本就是给他看的），
-     * 这里若仍按「有没有任何一张单」判断，Java 层会把库已经放行的重开挡在门外，
-     * 而且报的是一句「请勿重复开单」，看不出真正原因。</p>
+     * <p><b>预查必须与 {@code uk_active_violation} 同口径</b>，否则 Java 层会把库已经放行的重开
+     * 挡在门外，而且报的是一句「请勿重复开单」，看不出真正原因。当前口径为两条释放条件：</p>
+     * <ul>
+     *   <li>V35 起被<b>驳回</b>的单不占位——开单人填错了才有改正的余地，
+     *       {@code reject} 强制填写的那条原因本就是给他看的；</li>
+     *   <li>V38 起<b>申诉成立</b>的单不占位——协会 2026-08-11 第 8 条
+     *       「申诉成立…可以给他开第二张轻一点的处罚单」。</li>
+     * </ul>
      */
     private void insertWithNewNo(HonorRewardPunish rp) {
         if (rp.getViolationId() != null && rewardPunishMapper.selectCount(
                 Wrappers.<HonorRewardPunish>lambdaQuery()
                         .eq(HonorRewardPunish::getViolationId, rp.getViolationId())
-                        .ne(HonorRewardPunish::getReviewStatus, HonorRewardPunish.REVIEW_REJECTED)) > 0) {
+                        .ne(HonorRewardPunish::getReviewStatus, HonorRewardPunish.REVIEW_REJECTED)
+                        .ne(HonorRewardPunish::getAppealStatus, HonorRewardPunish.APPEAL_UPHELD)) > 0) {
             throw new BusinessException("该违规记录已经开过处罚单，请勿重复开单");
         }
         for (int attempt = 0; ; attempt++) {
@@ -280,7 +294,13 @@ public class RewardPunishService {
     public void approve(Long id, Long adminId) {
         HonorRewardPunish rp = requireForUpdate(id);
         requireApprovableVolunteer(rp);
-        LocalDateTime now = LocalDateTime.now();
+        // 【必须截到秒】appeal_deadline 是 DATETIME(fsp=0)，而 MySQL 对小数秒是【四舍五入】不是截断：
+        // 16:35:59.7 落库会变成 16:36:00，而下面那条站内提示是拿内存里这个值格式化的，写着「16:35」。
+        // 于是告知志愿者的截止时刻比实际执行的早一分钟——申诉期是对志愿者的承诺，两个数字必须是同一个。
+        // 【同一个坑的第二处】SanctionService.impose 早就为 effective_time 截过一次
+        // （见 V2规划 第 5 批「一个实测修掉的坑」），当时只修了那一处；本处是漏网的另一处。
+        // 判据：凡是【写进 DATETIME 又要拿内存值对外展示或比较】的时刻，都要先截。
+        LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
         LocalDateTime deadline = now.plusDays(honorProperties.getRewardPunish().getAppealDays());
         // CAS：只有仍待审核的单可以被裁决。两人同时点，后一个必须落空而不是覆盖前一个的结论。
         int rows = rewardPunishMapper.update(null, Wrappers.<HonorRewardPunish>lambdaUpdate()
@@ -313,6 +333,36 @@ public class RewardPunishService {
                 VolunteerNotification.TYPE_REWARD_PUNISH_APPROVED,
                 approvedTitle(rp), approvedContent(rp, deadline),
                 VolunteerNotification.BIZ_REWARD_PUNISH, id);
+        notifyApprovedBySms(rp);
+    }
+
+    /**
+     * 审核通过的短信提示（{@code reward-punish}）。
+     *
+     * <p>Row 41 F 那句「志愿者会收到提示」此前只落了站内一半——要打开小程序才看得见。
+     * 站内那条与本事务同生共死（它可回滚），短信则由 {@code SmsNotifyService} 推迟到<b>提交之后</b>
+     * 才真正发出（它撤不回）。两条走不同时机，是因为「能不能撤回」这个性质不同。</p>
+     *
+     * <p><b>⚠️ 短信里说不出申诉截止日期</b>：协会报备的这条模板只有 {@code type/title/points}
+     * 三个占位，没有放日期的地方。而 Row 41 F 的原话是「并有 7 天申诉期」——
+     * 只说「您有一条处罚记录」不说到几号，等于把有期限的权利说成没期限的。
+     * 站内提示写了准确到秒的截止时刻（{@code approvedContent}），短信只能引导他去看。
+     * 已作为问题发给协会：补报一条带 {@code ${deadline}} 的模板后，把这里换掉即可。</p>
+     *
+     * <p>失败只记日志：审核通过已经落库、积分已入账、处置已施加，不能因短信没发出去而回滚。</p>
+     */
+    private void notifyApprovedBySms(HonorRewardPunish rp) {
+        try {
+            boolean reward = Integer.valueOf(HonorRewardPunish.TYPE_REWARD).equals(rp.getType());
+            Integer delta = rp.getPointsDelta();
+            smsNotifyService.notifyVolunteer(rp.getVolunteerId(), SmsNotifyTemplate.REWARD_PUNISH,
+                    SmsNotifyTemplate.REWARD_PUNISH.params(
+                            reward ? "奖励" : "处罚",
+                            rp.getTitle(),
+                            String.valueOf(delta == null ? 0 : delta)));
+        } catch (Exception ex) {
+            log.error("[SMS-NOTIFY] 奖惩审核通知失败 rewardPunishId={}", rp.getId(), ex);
+        }
     }
 
     /** 提示标题：一眼看出是奖是惩。 */
@@ -357,30 +407,31 @@ public class RewardPunishService {
      *   <li><b>行已不存在</b>（含逻辑删除）→ 拒绝。积分与处置都会落到一个没有主人的 id 上。</li>
      *   <li><b>已注销</b>（{@code status=2}）→ 拒绝。账号是用户自己注销的，
      *       给他加分没有意义，限制他更没有对象；这条正是「非 null 就放行」漏掉的那一格。</li>
-     *   <li><b>已禁用</b>（{@code status=1}）→ <b>拒绝（奖励与处罚都拒）</b>，理由见下。</li>
+     *   <li><b>已禁用</b>（{@code status=1}）→ <b>放行</b>，理由见下。</li>
      * </ul>
      *
-     * <p><b>🔁 「禁用期间放行处罚」这条口径已于第 6 轮评审推翻</b>。原先的推论是
-     * 「封禁不该成为免责——若处罚也拒绝，把人禁用一下就能拦下在途的处罚单」。
-     * 它漏看了执行侧的事实：{@code SaTokenConfigure} 对
-     * {@code status != NORMAL} 的账号拦掉<b>全部</b> {@code /v/**}，其中就包括
+     * <p><b>🔁 这一格来回改过两次，两次的理由都留在这里，因为它们并不互相反驳。</b></p>
+     *
+     * <p><b>第 6 轮评审：改成「禁用期间一律不批」。</b>当时的事实是 {@code SaTokenConfigure}
+     * 对 {@code status != NORMAL} 的账号拦掉<b>全部</b> {@code /v/**}，其中就包括
      * {@code GET /v/honor/reward-punishes} 与 {@code POST /v/honor/reward-punishes/&#123;id&#125;/appeal}。
      * 于是「审核通过 + 7 天申诉期开始计时」这个动作，对一个禁用账号来说是
      * <b>处罚立即生效、而申诉期在他够不到的地方流逝</b>；禁用超过 7 天，申诉权就在不可达状态下过期了。
-     * 这与 {@code SanctionScope#ALL} 那条刻意保留的口径直接冲突——「被罚得最重的人恰恰成了
-     * 唯一无法申诉的人」是本项目明确拒绝的形态（Row 41 F 给的是<b>申诉期</b>，不是一段倒计时）。</p>
+     * 「被罚得最重的人恰恰成了唯一无法申诉的人」是本项目明确拒绝的形态
+     * （Row 41 F 给的是<b>申诉期</b>，不是一段倒计时）。</p>
      *
-     * <p><b>原先那个顾虑并没有落空</b>：拒绝审核<b>不会</b>让处罚单消失——它仍留在待审核队列里，
-     * 账号恢复正常后照常可以通过，而且申诉期从那一刻才开始算，志愿者真的用得上。
-     * 何况「禁用」本身比任何一档处置都重，禁用期间再叠一条「限制参加活动」没有任何增量约束，
-     * 唯一真实生效的只有扣分——而那正是最该给申诉机会的部分。</p>
+     * <p><b>协会 2026-08-11 第 5 条：改回放行，同时开口子。</b>原文「账号类处罚：由理事会审核后
+     * 才生效，<b>只给禁用账号开个小口子、只能看奖惩和提申诉</b>」。
+     * <b>上一段的理由并没有被推翻</b>——要消除的仍然是「申诉期在够不到的地方流逝」，
+     * 只是手段从「不批」换成了「让他够得到」：{@code VolunteerAuthService.ensureLoginable}
+     * 现在给禁用账号发 token，{@code BannedAccountGate.EXEMPT_PATHS} 放行奖惩记录、申诉、
+     * 处置查看与站内提示。<b>是前提变了，结论才跟着变</b>；哪天有人想把这条 {@code if} 加回来，
+     * 先去确认那个前提是不是又变回去了。</p>
      *
-     * <p>⚠️ <b>仍是推论、不是需求原文</b>（Row 41 / Row 73 / P109 都没写被禁用账号的奖惩口径），
-     * 已按新结论重写《协会待确认清单》第 7 条。</p>
-     *
-     * <p>⚠️ <b>本方法关不掉的残留窗口</b>：审核通过之后账号<b>才</b>被禁用，申诉期同样会在
-     * 不可达中流逝。那需要「禁用期间暂停计时」或「解禁时顺延」这类跨模块规则，属协会口径，
-     * 未在本轮实现，已记入待确认清单第 7 条。</p>
+     * <p><b>顺带关掉了一个当时关不掉的窗口</b>：审核通过之后账号<b>才</b>被禁用，申诉期同样会在
+     * 不可达中流逝——那本来需要「禁用期间暂停计时」或「解禁时顺延」这类跨模块规则。
+     * 口子一开，申诉随时可达，这个窗口自动消失，两条规则都不必做
+     * （《协会待确认清单》第 7-② 条已据此关闭）。</p>
      */
     private void requireApprovableVolunteer(HonorRewardPunish rp) {
         VolunteerGrantEligibilityView v =
@@ -390,11 +441,6 @@ public class RewardPunishService {
         }
         if (UserStatus.DELETED.equals(v.status())) {
             throw new BusinessException("该志愿者账号已注销，无法通过审核；请驳回本单");
-        }
-        if (!v.active()) {
-            throw new BusinessException("该志愿者账号当前为「已禁用」，期间无法登录小程序，"
-                    + "通过审核会让 7 天申诉期在他够不到的地方流逝；"
-                    + "请待其恢复正常后再审，或直接驳回");
         }
     }
 

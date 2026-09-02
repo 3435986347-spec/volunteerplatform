@@ -45,8 +45,10 @@ public class SaTokenConfigure implements WebMvcConfigurer {
 
             // 志愿者端：仅放行微信登录/发验证码/企业微信群前置校验；
             // 注册和退出需携带（游客）登录态，其余 /v/** 同样要求已登录。
-            // 登录态过后再查账号状态：禁用/注销账号即便 token 未过期也在此被拦下（与管理端同口径，
-            // 兜底「停用但 token 仍在」的越权窗口，覆盖改资料/换绑手机号/上传等本人写接口）。
+            // 登录态过后再查账号状态：注销账号即便 token 未过期也在此被拦下
+            // （兜底「停用但 token 仍在」的越权窗口，覆盖改资料/换绑手机号/上传等本人写接口）。
+            // 【禁用账号不再一刀切】协会 2026-08-11 第 5 条要求「只给禁用账号开个小口子、
+            // 只能看奖惩和提申诉」，放行清单见 BannedAccountGate.EXEMPT_PATHS。
             // 游客 status=NORMAL 仍放行（可浏览/注册）。
             SaRouter.match("/v/**")
                     .notMatch("/v/auth/login/wechat", "/v/auth/login/dev", "/v/auth/login/sms",
@@ -54,7 +56,7 @@ public class SaTokenConfigure implements WebMvcConfigurer {
                             "/v/auth/wechat/group-membership", "/v/auth/agreement")
                     .check(r -> {
                         StpUtil.checkLogin();
-                        checkVolunteerEnabled();
+                        checkVolunteerEnabled(SaHolder.getRequest().getRequestPath());
                     });
 
             // 处置闸门（Row 73「拒绝其使用本程序」）：挂在整个 /v/** 上，默认全挡，
@@ -120,15 +122,77 @@ public class SaTokenConfigure implements WebMvcConfigurer {
     }
 
     /**
-     * 校验当前志愿者登录账号是否仍处于正常状态（{@link UserStatus#NORMAL}）。
-     * 禁用/注销（或 {@code @TableLogic} 致 selectById 返回 null）则登出并拦截，避免「后台已停用/注销但旧 token
-     * 未过期」继续访问 /v/**（含改资料、换绑手机号、上传等本人写接口）。游客为 NORMAL，照常放行。
+     * 校验当前志愿者登录账号的状态，<b>三分而不是二分</b>。游客为 NORMAL，照常放行。
+     *
+     * <ul>
+     *   <li><b>行不存在</b>（或 {@code @TableLogic} 致 {@code selectById} 返回 null）
+     *       / <b>已注销</b>（{@link UserStatus#DELETED}）→ <b>登出 + 403</b>。
+     *       兜住「后台已注销但旧 token 未过期」的越权窗口。</li>
+     *   <li><b>已禁用</b>（{@link UserStatus#BANNED}）→ 仅放行
+     *       {@link BannedAccountGate#EXEMPT_PATHS}，其余 403。</li>
+     *   <li><b>正常</b> → 放行。</li>
+     * </ul>
+     *
+     * <p><b>禁用态绝不能 {@code logout()}</b>，这是本方法最容易写错的一处：一旦登出，
+     * 他手上的 token 立刻作废，<b>连放行清单里的申诉接口都会变成 401</b>——
+     * 小口子当场被自己关上，而表面上清单还写得好好的。注销那一支必须登出（账号已经没了），
+     * 禁用这一支必须保留登录态（他还要用它去申诉）。两支的差别不是文案，是有没有那一行 {@code logout}。</p>
+     *
+     * <p><b>为什么判定要带上路径</b>：禁用不再是「一律拦掉」，而是「除了这几条都拦掉」，
+     * 那就必须知道当前请求是哪一条。路径取 {@code SaHolder.getRequest().getRequestPath()}，
+     * 与 {@code SaRouter.match} 同源——两处取路径的方式若不一致，
+     * 清单会在某些前缀/编码形态下静默失配。</p>
+     *
+     * @param path 请求路径（不含 contextPath）
      */
-    private void checkVolunteerEnabled() {
+    private void checkVolunteerEnabled(String path) {
         Volunteer volunteer = volunteerMapper.selectById(StpUtil.getLoginIdAsLong());
-        if (volunteer == null || !UserStatus.NORMAL.equals(volunteer.getStatus())) {
-            StpUtil.logout();
-            throw new BusinessException(ResultCode.FORBIDDEN.getCode(), "账号已被禁用，请重新登录");
+        Integer status = volunteer == null ? null : volunteer.getStatus();
+        switch (decide(status, path)) {
+            case PASS -> {
+            }
+            case DENY_KEEP_SESSION -> throw new BusinessException(ResultCode.FORBIDDEN.getCode(),
+                    "账号已被禁用，暂不能使用该功能。可在奖惩记录中查看处罚详情与解除时间，并在申诉期内提交申诉");
+            case DENY_AND_LOGOUT -> {
+                StpUtil.logout();
+                throw new BusinessException(ResultCode.FORBIDDEN.getCode(),
+                        UserStatus.DELETED.equals(status) ? "账号已注销，请重新登录" : "账号状态异常，请重新登录");
+            }
         }
+    }
+
+    /** {@link #decide} 的三种结论。{@code DENY_*} 的区别只在<b>要不要登出</b>，而那一位判反了没有任何征兆。 */
+    enum Access {
+        /** 放行 */
+        PASS,
+        /** 拒绝，<b>但保留登录态</b>——禁用账号还要用这个 token 去申诉 */
+        DENY_KEEP_SESSION,
+        /** 拒绝并登出——账号已经没了（注销），或状态是我们不认识的值 */
+        DENY_AND_LOGOUT
+    }
+
+    /**
+     * 志愿者端访问判定，<b>抽成纯函数只为让它能被测试直接钉住</b>。
+     *
+     * <p>与 {@code DenyAllUseGate.isExempt}、{@code AdminRewardPunishController.assertScopeAllowed}
+     * 同一理由：这里每一位判错都<b>不会抛异常、不会进日志</b>，只会体现在某个被禁用的人身上。
+     * 尤其是 {@link Access#DENY_KEEP_SESSION} 与 {@link Access#DENY_AND_LOGOUT} 的区别——
+     * 禁用那一支若误登出，他手上的 token 立刻作废，<b>连放行清单里的申诉接口都会变成 401</b>，
+     * 小口子当场被自己关上，而清单本身看着还写得好好的。</p>
+     *
+     * <p><b>兜底必须是拒绝而不是放行</b>：写成「只拦 DELETED」的话，将来多一个状态取值
+     * （或某行 {@code status} 为 NULL）就会静默变成放行——这一支是白名单的反面，不是异常分支。</p>
+     *
+     * @param status 当前登录志愿者的账号状态；行不存在时为 {@code null}
+     * @param path   请求路径（不含 contextPath）
+     */
+    static Access decide(Integer status, String path) {
+        if (UserStatus.NORMAL.equals(status)) {
+            return Access.PASS;
+        }
+        if (UserStatus.BANNED.equals(status)) {
+            return BannedAccountGate.isExempt(path) ? Access.PASS : Access.DENY_KEEP_SESSION;
+        }
+        return Access.DENY_AND_LOGOUT;
     }
 }

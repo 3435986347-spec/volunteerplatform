@@ -69,7 +69,7 @@
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
 | POST | /v/auth/sms/codes | 发送短信验证码；body `{phone, scene}`，scene 白名单 `register`(默认)/`login`/`volunteer-password-reset`/`change-phone`，越界拒绝；复用发码限流+错满作废 | 公开 |
-| POST | /v/auth/login/sms | **手机号+验证码登录**（`{phone, smsCode}`，scene=login）；陌生手机号自动建游客账号（之后再实名），禁用/注销拒登 | 公开 |
+| POST | /v/auth/login/sms | **手机号+验证码登录**（`{phone, smsCode}`，scene=login）；陌生手机号自动建游客账号（之后再实名）；**注销拒登，禁用照发 token**（协会 2026-08-11 第 5 条「只给禁用账号开个小口子」，token 拿到后仅 `BannedAccountGate.EXEMPT_PATHS` 五条可用，其余 `/v/**` 一律 403） | 公开 |
 | POST | /v/auth/login/password | **手机号+密码登录**（`{phone, password}`，账号=手机号）；接防爆破（phoneHash/IP 计数），账号不存在/未设密码/密码错统一报错不泄露存在性 | 公开 |
 | PUT | /v/auth/password | **设置/修改登录密码**（`{oldPassword?, newPassword}`）；首次设密码原密码可空，已有密码须校验原密码；账号须已绑手机号 | 需登录 |
 | PUT | /v/auth/password/reset | **忘记密码**：手机号+验证码+新密码重置（`{phone, smsCode, newPassword}`，scene=volunteer-password-reset） | 公开 |
@@ -117,7 +117,7 @@
 | GET | /a/user/volunteers | 志愿者列表（`?keyword=&gender=&squad=&political=&school=&grade=&managerFlag=&page=&size=`；keyword 纯数字按手机号 HMAC 精确，否则姓名/学校模糊；`managerFlag=1` 只出管理团队志愿者[负责人选人用]；仅返回已实名志愿者） | `user:list` |
 | GET | /a/user/volunteers/{id} | 志愿者详情（含明文手机号、身份证尾号；仅已实名） | `user:list` |
 | PUT | /a/user/volunteers/{id} | 修改志愿者全量信息（实名敏感字段，全量 PUT 可清空字段） | **仅超管**（`user:edit`，不入权限点表、不可分配，service 手写 `is_super_admin` 校验） |
-| PATCH | /a/user/volunteers/{id}/status | 暂停/恢复志愿者账号（body: `{"status": 0/1}`，仅 0正常/1禁用） | `user:status` |
+| PATCH | /a/user/volunteers/{id}/status | 暂停/恢复志愿者账号（body: `{"status": 0/1}`，仅 0正常/1禁用）。⚠️ **禁用不再等于「登不进来」**：他仍能登录，但只能访问退出登录 / 奖惩记录 / 申诉 / 处置查看 / 站内提示这五条 | `user:status` |
 | DELETE | /a/user/volunteers/{id} | 删除志愿者（逻辑删除） | `user:delete` |
 | POST | /a/user/volunteers/{id}/password/reset | 重置志愿者密码=**清空** `password`（V20 起有密码列；管理员不设/不知明文，志愿者之后用手机号验证码登录再自设新密码） | `user:pwd-reset` |
 | GET | /a/user/volunteers/export | 批量导出志愿者（Excel，支持与列表相同的筛选参数） | `user:export` |
@@ -229,7 +229,7 @@
 | GET | /a/activity/activities/{id} | 活动详情（回显 `lat`/`lng`/`checkInRadiusM` 等全字段） | 需登录（activity:menu） |
 | PUT | /a/activity/activities/{id} | 修改活动（同发布入参，含 `slots[]` 多场次全量替换、`serviceGuarantees` null=保留原值/[]=清空、`requireMinJoinCount`/`requireMinJoinMinutes` 报名门槛、GPS 坐标 `lat`/`lng`/`checkInRadiusM`，经纬度须同填或同空；待审核/驳回活动不可改） | 需登录（activity:edit） |
 | DELETE | /a/activity/activities/{id} | 删除活动（待审核/驳回活动不可删，属审核侧处置） | 需登录（activity:delete） |
-| POST | /a/activity/activities/{id}/cancel | **取消活动**（已有报名记录时用；保留报名与考勤数据，与删除的区别在于留痕可查） | 需登录（activity:delete） |
+| POST | /a/activity/activities/{id}/cancel | **取消活动**（已有报名记录时用；保留报名与考勤数据，与删除的区别在于留痕可查）。**可选查询参数 `reason`**：会进「活动已取消」短信正文，发给全部有效报名者（待审核+已通过，按人去重）；留空时正文回落到「详情请咨询活动联系人」——建议后台补一个必填的原因输入框 | 需登录（activity:delete） |
 | POST | /a/activity/activities/{id}/copy | 复制活动（**待审核/驳回活动不可复制**，否则绕开审核直接发布同内容） | 需登录（activity:publish） |
 | GET | /a/activity/activities/{id}/enrollments | 报名列表（优先展示管理团队/临时负责人） | 需登录（activity:enroll-view） |
 | GET | /a/activity/enrollments | 全局报名列表（跨活动，可 `?status=` 筛选，按报名时间倒序，每行带 `activityTitle`；概览「待审报名」计数用 `size=1` 取 `total`） | 需登录（activity:enroll-view） |

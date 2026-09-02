@@ -228,7 +228,8 @@ class RewardPunishServiceTest {
      * {@code insertWithNewNo} 的预查改回不排除驳回，本用例都必红（前者报数据库撞键，
      * 后者报「请勿重复开单」）。</p>
      *
-     * <p>⚠️ 「驳回后可重开」是<b>推论</b>，见《协会待确认清单》第 9 条。</p>
+     * <p>✅ 「驳回后可重开」原为推论，已由协会 2026-08-11 答复第 8 条确认
+     * 「处罚单被驳回或申诉成立后…可以给他开第二张」。</p>
      */
     @Test
     void punish_afterRejection_canBeReissuedForTheSameViolation() {
@@ -247,6 +248,49 @@ class RewardPunishServiceTest {
 
         // 但「同时只能有一张未被驳回的单」这条不变量仍在
         assertThrows(BusinessException.class, () -> rewardPunishService.create(dto, ADMIN),
+                "第二张还在待审核，不该再开第三张");
+    }
+
+    /**
+     * <b>申诉成立</b>之后，同一条违规可以重新开单（V38）。
+     *
+     * <p><b>需求出处</b>：协会 2026-08-11 答复第 8 条「处罚单被驳回或申诉成立后：用户申诉成立
+     * 但觉得不惩罚不行，则可以给他开第二张轻一点的处罚单」。V35 时期刻意让申诉成立的单继续占位
+     * （理由是「成立过又被推翻，再罚一次等于二次处罚」），那是<b>推论</b>，本版按裁决改口径。</p>
+     *
+     * <p><b>第二张故意开得更重（-100 vs -50）</b>，不是笔误：协会那句话说的是「轻一点」，
+     * 而系统<b>不判定轻重</b>——轻重跨类别不可比，硬拦会挡住合理场景（换一个更贴切的违规类别重开，
+     * 扣分未必更少，但并非加重）。当前口径是由理事会人工把关，已作为问题 B 发给协会。
+     * 用更轻的第二张来断言，区分不出「没有校验」与「有校验且恰好放行」；用更重的才钉得住。
+     * 哪天协会改口要硬拦，本用例会红——那时它就是提醒你连同这段注释一起改的地方。</p>
+     *
+     * <p>把 V38 的生成列表达式改回 V35 那版，或把 {@code insertWithNewNo} 的预查改回不排除
+     * {@code APPEAL_UPHELD}，本用例都必红（前者报数据库撞键，后者报「请勿重复开单」）。</p>
+     */
+    @Test
+    void punish_afterAppealUpheld_canBeReissuedForTheSameViolation() {
+        Long vid = insertVolunteer();
+        Fixture f = activityWithSlot();
+        Long violationId = insertViolation(f, vid);
+        violationReviewService.approve(violationId, ADMIN);
+
+        RewardPunishSaveDTO dto = punish(vid, -50);
+        dto.setViolationId(violationId);
+        Long first = rewardPunishService.create(dto, ADMIN);
+        rewardPunishService.approve(first, ADMIN);
+        rewardPunishService.appeal(first, vid, appealDto());
+        AppealHandleDTO handle = new AppealHandleDTO();
+        handle.setUpheld(true);
+        handle.setResult("原判罚过重，撤销后另行处理");
+        rewardPunishService.handleAppeal(first, handle, ADMIN);
+
+        RewardPunishSaveDTO reissue = punish(vid, -100);
+        reissue.setViolationId(violationId);
+        Long second = rewardPunishService.create(reissue, ADMIN);
+        assertNotEquals(first, second, "申诉成立之后应当能就同一条违规重新开单");
+
+        // 「同时只能有一张有效单」这条不变量仍在——释放条件多了一种，不是取消了这个键
+        assertThrows(BusinessException.class, () -> rewardPunishService.create(reissue, ADMIN),
                 "第二张还在待审核，不该再开第三张");
     }
 
@@ -629,24 +673,29 @@ class RewardPunishServiceTest {
     }
 
     /**
-     * 被<b>禁用</b>（{@code status=1}）的账号：<b>奖励与处罚都拒绝</b>。
+     * 被<b>禁用</b>（{@code status=1}）的账号：<b>奖励与处罚都照常审核</b>。
      *
-     * <p><b>🔁 这条口径在第 6 轮评审被推翻过一次。</b>原先是「处罚放行」，理由是
-     * 「封禁不该成为免责——不然把人禁用一下就能拦下在途的处罚单」。
-     * 它漏看的是执行侧：{@code SaTokenConfigure} 对 {@code status != NORMAL} 的账号
-     * 拦掉全部 {@code /v/**}，包括奖惩列表与申诉入口。于是通过审核＝
-     * <b>处罚立刻生效、而 7 天申诉期在他够不到的地方流逝</b>，禁用超过 7 天申诉权就没了。
-     * 「被罚得最重的人恰恰成了唯一无法申诉的人」正是 {@code SanctionScope#ALL}
-     * 那条注释明确拒绝的形态（Row 41 F 给的是申诉期，不是倒计时）。</p>
+     * <p><b>需求出处</b>：协会 2026-08-11 答复第 5 条「账号类处罚：由理事会审核后才生效，
+     * <b>只给禁用账号开个小口子、只能看奖惩和提申诉</b>」。</p>
      *
-     * <p>原先的顾虑并没有落空：单子仍在待审核队列里，账号恢复正常后照常可以通过，
-     * 而且申诉期从那时才开始算。</p>
+     * <p><b>🔁 这条口径来回改过两次，两次的理由都不互相反驳。</b>第 6 轮评审改成「一律不批」，
+     * 因为当时 {@code SaTokenConfigure} 对 {@code status != NORMAL} 的账号拦掉全部 {@code /v/**}，
+     * 包括奖惩列表与申诉入口——通过审核等于<b>处罚立刻生效、而 7 天申诉期在他够不到的地方流逝</b>。
+     * 协会选的是另一条路：照常批，但把申诉那条路留着。<b>要消除的东西没变，手段变了</b>
+     * （{@code ensureLoginable} 给禁用账号发 token，{@code BannedAccountGate.EXEMPT_PATHS} 放行申诉）。</p>
      *
-     * <p>⚠️ 仍是<b>推论</b>，不是需求原文——Row 41 / Row 73 / P109 都没写被禁用账号的奖惩口径。
-     * 协会另有口径时改 {@code RewardPunishService.requireApprovableVolunteer} 一处即可。</p>
+     * <p><b>本用例现在钉的是「不再有那条 if」</b>：把
+     * {@code requireApprovableVolunteer} 里的 {@code if (!v.active())} 加回来，本用例必红。
+     * 而<b>申诉够不够得到</b>由 {@code BannedAccountGateTest} 从另一头钉住——
+     * 这两条用例必须同时活着，只留一条就会退回到某一版的半截状态：
+     * 只有本条 = 批得下去但申诉够不到；只有那条 = 口子开着但没有单子会落到禁用账号头上。</p>
+     *
+     * <p><b>口子只对「禁用」开，不含「注销」</b>——注销那一格由
+     * {@link #approve_afterVolunteerDeregistered_isRejected} 钉住，本处不重复。
+     * 差别是实质的：禁用的人还在，有处罚要看、有申诉要提；注销的人已经走了。</p>
      */
     @Test
-    void approve_afterVolunteerBanned_blocksBothRewardAndPunish() {
+    void approve_afterVolunteerBanned_proceedsForBothRewardAndPunish() {
         Long vid = insertVolunteer();
         Long rewardId = rewardPunishService.create(reward(vid, 20), ADMIN);
         RewardPunishSaveDTO punishDto = punish(vid, -10);
@@ -658,25 +707,17 @@ class RewardPunishServiceTest {
         banned.setStatus(UserStatus.BANNED);
         volunteerMapper.updateById(banned);
 
-        BusinessException rewardEx = assertThrows(BusinessException.class,
-                () -> rewardPunishService.approve(rewardId, ADMIN));
-        assertTrue(rewardEx.getMessage().contains("已禁用"), "实际：" + rewardEx.getMessage());
-
-        BusinessException punishEx = assertThrows(BusinessException.class,
-                () -> rewardPunishService.approve(punishId, ADMIN),
-                "禁用期间通过处罚 = 申诉期在志愿者够不到的地方流逝");
-        assertTrue(punishEx.getMessage().contains("已禁用"), "实际：" + punishEx.getMessage());
-        assertEquals(0, pointService.summary(vid).getBalance(), "不得入账");
-        assertFalse(sanctionQueryService.isRestricted(vid, SanctionScope.ACTIVITY), "不得施加处置");
-
-        // 恢复正常后照常可以通过——「拦下在途处罚单」这个顾虑不成立，单子一直在队列里
-        Volunteer restored = new Volunteer();
-        restored.setId(vid);
-        restored.setStatus(UserStatus.NORMAL);
-        volunteerMapper.updateById(restored);
+        rewardPunishService.approve(rewardId, ADMIN);
         rewardPunishService.approve(punishId, ADMIN);
-        assertEquals(-10, pointService.summary(vid).getBalance(), "恢复后处罚照常成立");
+
+        assertEquals(10, pointService.summary(vid).getBalance(), "两张单都该入账：+20 奖励、-10 处罚");
+        assertTrue(sanctionQueryService.isRestricted(vid, SanctionScope.ACTIVITY), "处置照常施加");
+
+        // 申诉期照常起算，而且他真的够得到——够不到那部分由 BannedAccountGateTest 负责
+        HonorRewardPunish approved = rewardPunishMapper.selectById(punishId);
+        assertNotNull(approved.getAppealDeadline(), "申诉截止必须落库，它是那条站内提示的内容来源");
     }
+
 
     // ---------- ⑤ Row 41 F 的另一半：审核之后志愿者会收到提示 ----------
 
@@ -715,6 +756,37 @@ class RewardPunishServiceTest {
                 .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
         assertTrue(n.getContent().contains(deadline),
                 "处罚提示必须写明申诉截止到几号，实际：" + n.getContent());
+    }
+
+    /**
+     * 上一条用例为什么会偶发变红——以及 {@code approve} 里那句 {@code truncatedTo(SECONDS)} 是为谁写的。
+     *
+     * <p><b>MySQL 对 {@code DATETIME(fsp=0)} 的小数秒是「四舍五入」而不是「截断」</b>
+     * （5.6.4 起改的口径）。审核恰好发生在某一分钟的第 59.5 秒之后时，
+     * 落库的 {@code appeal_deadline} 会被进位到下一分钟，而站内提示是拿<b>内存里</b>那个值
+     * 格式化出来的——于是<b>告知志愿者的截止时刻比实际执行的早一分钟</b>。
+     * 申诉期是对志愿者的承诺，这两个数字必须是同一个。</p>
+     *
+     * <p>发生概率约 0.8%（每分钟末尾 0.5 秒），所以它以「上一条用例偶尔红一次」的形式存在了很久，
+     * 而随手重跑一次就绿了。本用例把那个机制<b>确定性地</b>钉下来：不依赖运行时刻。</p>
+     *
+     * <p>把 {@code approve} 里的 {@code truncatedTo(ChronoUnit.SECONDS)} 去掉，
+     * 上一条用例会恢复成偶发红；本条仍然绿——它证明的是数据库行为，不是我们的代码。
+     * 两条合起来才说明白：<b>库会进位，所以我们必须先截。</b></p>
+     */
+    @Test
+    void mysqlRoundsFractionalSecondsUp_whichIsWhyApproveTruncatesToSeconds() {
+        Long vid = insertVolunteer();
+        Long id = rewardPunishService.create(punish(vid, -5), ADMIN);
+
+        HonorRewardPunish patch = new HonorRewardPunish();
+        patch.setId(id);
+        patch.setAppealDeadline(LocalDateTime.of(2026, 8, 18, 16, 35, 59, 700_000_000));
+        rewardPunishMapper.updateById(patch);
+
+        assertEquals(LocalDateTime.of(2026, 8, 18, 16, 36, 0),
+                rewardPunishMapper.selectById(id).getAppealDeadline(),
+                "MySQL 把 16:35:59.7 进位成了 16:36:00——不是截断成 16:35:59");
     }
 
     /** 奖励也提示，但不提申诉——P109 的奖励卡片只有「查看详情」，没有申诉按钮。 */

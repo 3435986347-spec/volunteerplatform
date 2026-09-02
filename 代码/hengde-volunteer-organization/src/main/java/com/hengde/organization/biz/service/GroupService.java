@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.hengde.auth.dao.VolunteerMapper;
 import com.hengde.auth.entity.Volunteer;
+import com.hengde.auth.service.SmsNotifyService;
 import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.auth.vo.VolunteerDisplayView;
 import com.hengde.common.exception.BusinessException;
@@ -14,6 +15,7 @@ import com.hengde.common.lock.DistributedLockSupport;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
 import com.hengde.common.search.SearchItemVO;
+import com.hengde.common.sms.SmsNotifyTemplate;
 import com.hengde.organization.biz.constant.GroupStatus;
 import com.hengde.organization.biz.constant.MemberRole;
 import com.hengde.organization.biz.constant.MemberStatus;
@@ -29,6 +31,7 @@ import com.hengde.organization.biz.vo.GroupLeaderHistoryVO;
 import com.hengde.organization.biz.vo.GroupMemberVO;
 import com.hengde.organization.biz.vo.GroupVO;
 import org.redisson.api.RedissonClient;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -48,6 +51,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 public class GroupService {
 
@@ -82,6 +86,7 @@ public class GroupService {
     private VolunteerGroupLeaderHistoryMapper leaderHistoryMapper;
     private VolunteerMapper volunteerMapper;
     private VolunteerQueryService volunteerQueryService;
+    private SmsNotifyService smsNotifyService;
     private RedissonClient redissonClient;
     private TransactionTemplate transactionTemplate;
 
@@ -108,6 +113,11 @@ public class GroupService {
     @Autowired
     public void setVolunteerQueryService(VolunteerQueryService volunteerQueryService) {
         this.volunteerQueryService = volunteerQueryService;
+    }
+
+    @Autowired
+    public void setSmsNotifyService(SmsNotifyService smsNotifyService) {
+        this.smsNotifyService = smsNotifyService;
     }
 
     @Autowired
@@ -455,11 +465,32 @@ public class GroupService {
 
         // 建组首次任命也算一次组长变更，作为历史起点
         recordLeaderChange(groupId, null, group.getLeaderId(), OP_TYPE_INITIAL, adminId, "建组审批通过首次任命");
+
+        notifyGroupResult(group.getLeaderId(), group.getName(), "已通过");
+    }
+
+    /**
+     * 小组相关审批结果短信（{@code group-join-result}：「您加入“${teamName}”小组的申请${result}」）。
+     *
+     * <p>四个落点共用它：建组审批通过/驳回（通知发起人）、加入申请通过/驳回（通知申请人）。
+     * 建组也套用这条模板，是因为发起人等的同样是「这个小组的申请成了没有」，
+     * 而协会只报备了这一条与小组有关的模板——与其为建组另造一条文案不符的，不如共用。</p>
+     *
+     * <p><b>一律放在 CAS 命中之后</b>：落空的那一次审批什么都没改，通知出去只会让人白高兴一场。
+     * 失败只记日志，审批结论不因短信回滚。</p>
+     */
+    private void notifyGroupResult(Long volunteerId, String groupName, String result) {
+        try {
+            smsNotifyService.notifyVolunteer(volunteerId, SmsNotifyTemplate.GROUP_JOIN_RESULT,
+                    SmsNotifyTemplate.GROUP_JOIN_RESULT.params(groupName, result));
+        } catch (Exception ex) {
+            log.error("[SMS-NOTIFY] 小组审批结果通知失败 volunteerId={} group={}", volunteerId, groupName, ex);
+        }
     }
 
     @Transactional(rollbackFor = Exception.class)
     public void rejectCreate(Long groupId, String reason) {
-        requireGroup(groupId);
+        VolunteerGroup group = requireGroup(groupId);
         LocalDateTime now = LocalDateTime.now();
         // CAS：仅当仍 PENDING 时置 REJECTED；与 approveCreate 互斥，谁先命中谁定终态
         int rows = groupMapper.update(null, Wrappers.<VolunteerGroup>lambdaUpdate()
@@ -479,6 +510,9 @@ public class GroupService {
                 .set(VolunteerGroupMember::getUpdateTime, now)
                 .eq(VolunteerGroupMember::getGroupId, groupId)
                 .eq(VolunteerGroupMember::getStatus, MEMBER_PENDING));
+
+        notifyGroupResult(group.getLeaderId(), group.getName(), "未通过"
+                + (StringUtils.hasText(reason) ? "，原因：" + reason : ""));
     }
 
     public void approveMember(Long groupId, Long memberId) {
@@ -509,6 +543,7 @@ public class GroupService {
         if (rows != 1) {
             throw new BusinessException("成员申请不在待审核状态");
         }
+        notifyGroupResult(member.getVolunteerId(), groupName(groupId), "已通过");
     }
 
     public void rejectMember(Long groupId, Long memberId) {
@@ -537,6 +572,13 @@ public class GroupService {
         if (rows != 1) {
             throw new BusinessException("成员申请不在待审核状态");
         }
+        notifyGroupResult(member.getVolunteerId(), groupName(groupId), "未通过");
+    }
+
+    /** 小组名，取不到时回落到「志愿小组」——短信里出现一个空的书名号比不提名字更糟。 */
+    private String groupName(Long groupId) {
+        VolunteerGroup g = groupMapper.selectById(groupId);
+        return (g == null || g.getName() == null) ? "志愿小组" : g.getName();
     }
 
     @Transactional(rollbackFor = Exception.class)

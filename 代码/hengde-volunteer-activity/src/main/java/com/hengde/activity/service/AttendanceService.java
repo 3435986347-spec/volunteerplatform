@@ -26,10 +26,13 @@ import com.hengde.activity.vo.AttendanceRosterVO;
 import com.hengde.activity.vo.ManagedActivityDetailVO;
 import com.hengde.activity.vo.ManagedActivityVO;
 import com.hengde.activity.vo.ViolationRecordVO;
+import com.hengde.auth.service.SmsNotifyService;
 import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.auth.vo.VolunteerDisplayView;
+import com.hengde.common.sms.SmsNotifyTemplate;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.qrcode.QrCodeUtil;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -40,6 +43,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -58,6 +62,7 @@ import java.util.stream.Collectors;
  *
  * @author hengde
  */
+@Slf4j
 @Service
 public class AttendanceService {
 
@@ -95,6 +100,7 @@ public class AttendanceService {
     private SanctionQueryService sanctionQueryService;
     private ActivityLeaderMapper leaderMapper;
     private VolunteerQueryService volunteerQueryService;
+    private SmsNotifyService smsNotifyService;
     private ActivityProperties activityProperties;
 
     @Autowired
@@ -142,6 +148,11 @@ public class AttendanceService {
         this.volunteerQueryService = volunteerQueryService;
     }
 
+    @Autowired
+    public void setSmsNotifyService(SmsNotifyService smsNotifyService) {
+        this.smsNotifyService = smsNotifyService;
+    }
+
     // ---------- 活动开始 / 结束 ----------
 
     /** 负责人点「活动开始」：未开始 → 进行中。 */
@@ -156,7 +167,7 @@ public class AttendanceService {
         activityMapper.updateById(a);
     }
 
-    /** 负责人点「活动结束」：进行中 → 已结束。 */
+    /** 负责人点「活动结束」：进行中 → 已结束。结束后给到过场的人发一条邀评短信。 */
     @Transactional(rollbackFor = Exception.class)
     public void finishActivity(Long activityId, Long operatorId) {
         Activity a = requirePublished(activityId);
@@ -166,6 +177,37 @@ public class AttendanceService {
         a.setRunStatus(RUN_ENDED);
         a.setActualEndTime(LocalDateTime.now());
         activityMapper.updateById(a);
+        notifyCommentReminder(a);
+    }
+
+    /**
+     * 活动结束后邀请评价（{@code activity-comment-reminder}）。
+     *
+     * <p><b>只发给实际签到过的人</b>：报了名没来的人收到「欢迎评价您参与的活动」只会莫名其妙，
+     * 而且他也确实评不了——{@code submitReview} 本就要求有签到记录才让评。
+     * 判据用 {@code check_in_time} 非空，与那道门槛同一个口径。</p>
+     *
+     * <p>按志愿者去重：一人多场次会有多条考勤行，逐行发等于给同一个人连发几条一样的短信。</p>
+     */
+    private void notifyCommentReminder(Activity activity) {
+        try {
+            List<ActivityAttendance> rows = attendanceMapper.selectList(
+                    Wrappers.<ActivityAttendance>lambdaQuery()
+                            .select(ActivityAttendance::getVolunteerId)
+                            .eq(ActivityAttendance::getActivityId, activity.getId())
+                            .isNotNull(ActivityAttendance::getCheckInTime));
+            Set<Long> volunteerIds = rows.stream()
+                    .map(ActivityAttendance::getVolunteerId)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+            if (volunteerIds.isEmpty()) {
+                return;
+            }
+            smsNotifyService.notifyVolunteers(volunteerIds, SmsNotifyTemplate.ACTIVITY_COMMENT_REMINDER,
+                    SmsNotifyTemplate.ACTIVITY_COMMENT_REMINDER.params(activity.getTitle()));
+        } catch (Exception ex) {
+            log.error("[SMS-NOTIFY] 活动结束邀评通知失败 activityId={}", activity.getId(), ex);
+        }
     }
 
     /**

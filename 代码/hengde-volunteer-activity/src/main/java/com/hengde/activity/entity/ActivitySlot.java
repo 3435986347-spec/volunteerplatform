@@ -33,4 +33,12 @@ public class ActivitySlot extends BaseEntity {
 
     /** 需求人数（0=不限） */
     private Integer needCount;
+
+    /**
+     * 「活动即将开始」提醒短信的发出时刻；NULL = 尚未提醒（V39）。
+     *
+     * <p>定时任务据此保证一场只提醒一次——<b>先 CAS 置上再发</b>，宁可漏发也不重发：
+     * 短信是有成本的，而且同一条提醒连发两遍会让人以为活动改期了。</p>
+     */
+    private LocalDateTime reminderSentTime;
 }

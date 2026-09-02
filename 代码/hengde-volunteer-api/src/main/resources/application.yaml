@@ -69,6 +69,22 @@ hengde:
       volunteer-password-reset: ${SMS_TPL_PWD_RESET:}    # 志愿者忘记密码
       reset-password: ${SMS_TPL_ADMIN_PWD_RESET:}        # 管理端找回密码
       change-phone: ${SMS_TPL_CHANGE_PHONE:}             # 换绑手机号
+      # ---- 通知类模板（协会 2026-08-11 报备）----
+      # 与验证码模板不同，这些各有各的占位变量，变量名与顺序由 SmsNotifyTemplate 枚举统一持有，
+      # 业务侧按声明顺序传值即可（火山的占位名大小写敏感，传错键不报错、只把那一段替换成空）。
+      # 留空 = 该通知不发（启动时会 warn 列出「已接业务却没配」的那几条）。
+      # ⚠️ 只列【已经接到业务事件】的 11 条；另外 9 条对应功能未开发，配了也没人调，故不在此占位。
+      enrollment-approved: ${SMS_TPL_ENROLL_APPROVED:}          # 报名审核通过
+      enrollment-rejected: ${SMS_TPL_ENROLL_REJECTED:}          # 报名审核拒绝
+      enrollment-position: ${SMS_TPL_ENROLL_POSITION:}          # 同小组代报名（被代者事先并不知情）
+      activity-start-reminder: ${SMS_TPL_ACTIVITY_REMINDER:}    # 活动即将开始（定时任务，按场次）
+      activity-cancelled: ${SMS_TPL_ACTIVITY_CANCELLED:}        # 活动取消
+      activity-comment-reminder: ${SMS_TPL_ACTIVITY_COMMENT:}   # 活动结束邀评
+      service-record-credited: ${SMS_TPL_POINTS_CREDITED:}      # 服务时长与积分已发放
+      reward-punish: ${SMS_TPL_REWARD_PUNISH:}                  # 奖惩审核通过（Row 41 F）
+      activity-violation: ${SMS_TPL_ACTIVITY_VIOLATION:}        # 违规记录审核通过
+      org-join-result: ${SMS_TPL_ORG_JOIN_RESULT:}              # 分队加入 / 报名管理团队 审核结果
+      group-join-result: ${SMS_TPL_GROUP_JOIN_RESULT:}          # 志愿小组 建组/加入 审核结果
   oss:
     provider: ${OSS_PROVIDER:aliyun}     # 存储厂商：aliyun / volc（火山引擎 TOS）；恒德实例置 volc
     enabled: ${OSS_ENABLED:false}        # dev/test 默认关，不真上传只打日志返回占位 URL；生产置 true
@@ -116,6 +132,16 @@ hengde:
       snapshot-cron: ${HONOR_RANKING_SNAPSHOT_CRON:0 30 0 * * ?}  # 每天 00:30。每天跑而非「每月 1 日跑」：按月触发一旦当天服务不在线，那个月的快照永久缺失；每天跑 + 幂等可自愈
       freeze-delay-days: ${HONOR_RANKING_FREEZE_DELAY_DAYS:7}   # 周期结束后的冷静期。时长要等秘书部确认、积分要等发放，月末 0 点就冻会把没结算完的数据定死。仅约束定时任务，后台显式补跑不受限
       snapshot-top-n: ${HONOR_RANKING_SNAPSHOT_TOP_N:100}       # 每张榜单快照保留的名次数，比查询默认页（50）大一截，留出将来放宽展示条数的余地
+  activity:
+    # 注：emergency-phone 刻意不在此列占位——部署侧一直用环境变量 HENGDE_ACTIVITY_EMERGENCYPHONE
+    # （宽松绑定到 hengde.activity.emergency-phone）。这里再加一行 ${...:} 占位会变成同一个设置两个开关，
+    # 而环境变量优先级更高，等于新写的那个永远不生效，排查时极易看走眼。
+    reminder:
+      # 「活动即将开始」提醒短信（V39）。按【场次】提醒，一场只发一次（reminder_sent_time 记住）。
+      enabled: ${ACTIVITY_REMINDER_ENABLED:true}
+      cron: ${ACTIVITY_REMINDER_CRON:0 5 * * * ?}   # 每小时第 5 分钟。窗口（24h）远大于间隔，漏跑一两轮下一轮补上
+      lead-hours: ${ACTIVITY_REMINDER_LEAD_HOURS:24}
+      batch-limit: ${ACTIVITY_REMINDER_BATCH_LIMIT:200}  # 单轮封顶，防一次周期发布的几十场把单次执行拖很久；没处理完下一轮继续
 
 springdoc:
   group-configs:

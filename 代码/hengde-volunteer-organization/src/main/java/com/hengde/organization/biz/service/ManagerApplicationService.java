@@ -2,6 +2,7 @@ package com.hengde.organization.biz.service;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.hengde.auth.service.SmsNotifyService;
 import com.hengde.auth.service.VolunteerAdminService;
 import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.auth.vo.VolunteerFlagInfoView;
@@ -9,11 +10,13 @@ import com.hengde.common.exception.BusinessException;
 import com.hengde.common.lock.DistributedLockSupport;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
+import com.hengde.common.sms.SmsNotifyTemplate;
 import com.hengde.organization.biz.dao.ManagerApplicationMapper;
 import com.hengde.organization.biz.dto.ManagerApplyDTO;
 import com.hengde.organization.biz.entity.ManagerApplication;
 import com.hengde.organization.biz.vo.ManagerApplicationVO;
 import org.redisson.api.RedissonClient;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -36,6 +39,7 @@ import java.util.stream.Collectors;
  *
  * @author hengde
  */
+@Slf4j
 @Service
 public class ManagerApplicationService {
 
@@ -49,6 +53,7 @@ public class ManagerApplicationService {
     private ManagerApplicationMapper applicationMapper;
     private VolunteerQueryService volunteerQueryService;
     private VolunteerAdminService volunteerAdminService;
+    private SmsNotifyService smsNotifyService;
     private RedissonClient redissonClient;
     private TransactionTemplate transactionTemplate;
 
@@ -65,6 +70,11 @@ public class ManagerApplicationService {
     @Autowired
     public void setVolunteerAdminService(VolunteerAdminService volunteerAdminService) {
         this.volunteerAdminService = volunteerAdminService;
+    }
+
+    @Autowired
+    public void setSmsNotifyService(SmsNotifyService smsNotifyService) {
+        this.smsNotifyService = smsNotifyService;
     }
 
     @Autowired
@@ -172,6 +182,25 @@ public class ManagerApplicationService {
         if (rows != 1) {
             throw new BusinessException("申请不在待审核状态");
         }
+        notifyResult(app.getVolunteerId(), "通过", "");
+    }
+
+    /**
+     * 报名管理团队的审核结果短信（复用 {@code org-join-result}，{@code orgName} 填「管理团队」）。
+     *
+     * <p>与分队申请共用一条模板：两者都是「申请加入某个组织、由人来批」，
+     * 模板正文「您申请加入${orgName}，审核结果：${status}。${remark}」放进「管理团队」同样通顺，
+     * 不必为它单独报备一条。</p>
+     *
+     * <p>失败只记日志——通过时 {@code manager_flag} 已经置好，不能因短信回滚。</p>
+     */
+    private void notifyResult(Long volunteerId, String status, String remark) {
+        try {
+            smsNotifyService.notifyVolunteer(volunteerId, SmsNotifyTemplate.ORG_JOIN_RESULT,
+                    SmsNotifyTemplate.ORG_JOIN_RESULT.params("管理团队", status, remark));
+        } catch (Exception ex) {
+            log.error("[SMS-NOTIFY] 管理团队申请结果通知失败 volunteerId={}", volunteerId, ex);
+        }
     }
 
     /** 审核驳回：CAS 待审→驳回，记原因。 */
@@ -193,6 +222,11 @@ public class ManagerApplicationService {
                 .eq(ManagerApplication::getStatus, STATUS_PENDING));
         if (rows != 1) {
             throw new BusinessException("申请不在待审核状态");
+        }
+        // CAS 命中之后再读，只为拿申请人 id 发通知
+        ManagerApplication app = applicationMapper.selectById(id);
+        if (app != null) {
+            notifyResult(app.getVolunteerId(), "未通过", reason == null ? "" : reason);
         }
     }
 
