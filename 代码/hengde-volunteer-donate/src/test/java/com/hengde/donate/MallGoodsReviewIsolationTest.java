@@ -4,7 +4,7 @@ import com.hengde.common.exception.BusinessException;
 import com.hengde.common.testsupport.RedisTestcontainersConfig;
 import com.hengde.common.testsupport.TestcontainersConfig;
 import com.hengde.donate.constant.MallGoodsStatus;
-import com.hengde.donate.entity.MallGoods;
+import com.hengde.donate.dto.MallGoodsSaveDTO;
 import com.hengde.donate.service.MallGoodsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -81,7 +81,7 @@ class MallGoodsReviewIsolationTest {
                     "自检失败：快照已能看到对方的提交，本用例就没有覆盖到那个交错");
 
             // ④ 被测方法：快照说「可以改」，而库里此刻是待审核 → 必须被拒
-            MallGoods values = new MallGoods();
+            MallGoodsSaveDTO values = new MallGoodsSaveDTO();
             values.setName("改成别的名字");
             BusinessException e = assertThrows(BusinessException.class,
                     () -> goodsService.update(GOODS_ID, values),
@@ -112,7 +112,7 @@ class MallGoodsReviewIsolationTest {
         jdbcTemplate.update("UPDATE mall_goods SET review_by = 9, review_time = NOW(), "
                 + "reject_reason = '上一次的驳回原因' WHERE id = ?", GOODS_ID);
 
-        MallGoods values = new MallGoods();
+        MallGoodsSaveDTO values = new MallGoodsSaveDTO();
         values.setName("改过的名字");
         goodsService.update(GOODS_ID, values);
 

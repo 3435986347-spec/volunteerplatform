@@ -24,4 +24,24 @@ public final class MallGoodsStatus {
     public static final int DISABLED = 3;
     /** 已驳回：审核不通过，可改后重新提交 */
     public static final int REJECTED = 4;
+
+    /**
+     * 状态中文名，供出参直接展示（前端不必再维护一份映射）。
+     *
+     * @param status 状态码
+     * @return 中文名；未知码返回「其他」而非抛异常——展示层不应因脏数据而整页失败
+     */
+    public static String labelOf(Integer status) {
+        if (status == null) {
+            return "其他";
+        }
+        return switch (status) {
+            case DRAFT -> "草稿";
+            case PENDING -> "待审核";
+            case ON_SALE -> "已上架";
+            case DISABLED -> "已停用";
+            case REJECTED -> "已驳回";
+            default -> "其他";
+        };
+    }
 }

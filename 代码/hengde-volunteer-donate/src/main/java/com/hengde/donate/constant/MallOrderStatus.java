@@ -25,6 +25,26 @@ public final class MallOrderStatus {
     /** 已取消：用户自行取消，退分 + 还库存 */
     public static final int CANCELLED = 4;
 
+    /**
+     * 状态中文名，供出参直接展示。
+     *
+     * @param status 状态码
+     * @return 中文名；未知码返回「其他」
+     */
+    public static String labelOf(Integer status) {
+        if (status == null) {
+            return "其他";
+        }
+        return switch (status) {
+            case PENDING -> "待审核";
+            case READY -> "待领取";
+            case REJECTED -> "已驳回";
+            case PICKED -> "已领取";
+            case CANCELLED -> "已取消";
+            default -> "其他";
+        };
+    }
+
     /** 是否为「已退款」终态——这两种状态下积分与库存都已归还，不得重复归还 */
     public static boolean isRefunded(Integer status) {
         return status != null && (status == REJECTED || status == CANCELLED);

@@ -33,6 +33,7 @@ import java.util.Set;
  *   <tr><td>activity</td><td>activity:publish 或 edit</td><td>图片</td><td>活动封面</td></tr>
  *   <tr><td>summary</td><td>activity:manage</td><td>图片</td><td>活动总结图</td></tr>
  *   <tr><td>medal</td><td>honor:medal</td><td>图片</td><td>勋章图标</td></tr>
+ *   <tr><td>goods</td><td>donate:goods</td><td>图片</td><td>积分商品图片</td></tr>
  *   <tr><td>file</td><td>pub:file</td><td>图片+文档</td><td>文件下载板块</td></tr>
  * </table>
  *
@@ -83,6 +84,7 @@ public class FileUploadController {
             case "activity" -> StpAdminUtil.STP_LOGIC.checkPermissionOr("activity:publish", "activity:edit");
             case "summary" -> StpAdminUtil.STP_LOGIC.checkPermission("activity:manage");
             case "medal" -> StpAdminUtil.STP_LOGIC.checkPermission("honor:medal");
+            case "goods" -> StpAdminUtil.STP_LOGIC.checkPermission("donate:goods");
             default -> throw new BusinessException("不支持的上传目录：" + dir);
         }
     }

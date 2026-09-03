@@ -56,34 +56,36 @@
 
 | Method | URL | 状态 · 说明 | 鉴权 |
 |---|---|---|---|
-| GET | /v/donate/goods | **⬜ 商城批** · 商品列表（仅已上架且未隐藏），`?keyword=&page=&size=` | 需登录 |
-| GET | /v/donate/goods/{id} | **⬜ 商城批** · 商品详情（含规格、赞助方快照、评价摘要） | 需登录 |
-| GET | /v/donate/goods/{id}/reviews | **⬜ 商城批** · 该商品的全部评价 | 需登录 |
-| GET | /v/donate/orders | **⬜ 商城批** · 我的兑换 | 需登录 |
-| POST | /v/donate/orders | **⬜ 商城批** · 下单兑换（**下单即扣分**，见 V3规划 D4/D5/D7(b)） | 需登录 |
-| GET | /v/donate/orders/{id} | **⬜ 商城批** · 我的兑换详情（含取货码） | 需登录 |
-| DELETE | /v/donate/orders/{id} | **⬜ 商城批** · 取消兑换（**退分 + 还库存**，D6） | 需登录 |
-| POST | /v/donate/orders/{id}/reviews | **⬜ 商城批** · 评价（**须真兑换过**——资格闸门，比照 `submitReview`） | 需登录 |
-| GET | /v/donate/reviews/mine | **⬜ 商城批** · 我的评价 | 需登录 |
-| GET | /v/donate/exchange-records | **⬜ 商城批** · 全部兑换记录（**Row 8 C 要求「全部人的」**，隐私待确认 ⑯ 相邻项） | 需登录 |
+| GET | /v/donate/goods | 商品列表（仅已上架且未隐藏），`?keyword=&page=&size=` | 需登录 |
+| GET | /v/donate/goods/{id} | 商品详情（含规格、赞助方快照、评价摘要） | 需登录 |
+| GET | /v/donate/goods/{id}/reviews | 该商品的全部评价 | 需登录 |
+| GET | /v/donate/orders | 我的兑换 | 需登录 |
+| POST | /v/donate/orders | 下单兑换（**下单即扣分**，见 V3规划 D4/D5/D7(b)） | 需登录 |
+| GET | /v/donate/orders/{id} | 我的兑换详情（含取货码） | 需登录 |
+| DELETE | /v/donate/orders/{id} | 取消兑换（**退分 + 还库存**，D6） | 需登录 |
+| POST | /v/donate/orders/{id}/reviews | 评价（**须真兑换过**——资格闸门，比照 `submitReview`） | 需登录 |
+| GET | /v/donate/reviews/mine | 我的评价 | 需登录 |
+| GET | /v/donate/exchange-records | 全部兑换记录（**Row 8 C 要求「全部人的」**，隐私待确认 ⑯ 相邻项） | 需登录 |
 | GET | /v/donate/coupons/mine | **⬜ 卷批** · 我的卷 | 需登录 |
 
 ## 积分商城 —— 管理端 `/a/donate`
 
 | Method | URL | 状态 · 说明 | 鉴权 |
 |---|---|---|---|
-| GET | /a/donate/goods | **⬜ 商城批** · 商品列表（含未上架 / 已隐藏） | 需登录（donate:goods） |
-| POST | /a/donate/goods | **⬜ 商城批** · 新增商品（落草稿） | 需登录（donate:goods） |
-| PUT | /a/donate/goods/{id} | **⬜ 商城批** · 修改商品（**已过审的改完退回待审**，D7(a)） | 需登录（donate:goods） |
-| PATCH | /a/donate/goods/{id}/display | **⬜ 商城批** · 排序 / 隐藏（**纯展示，不触发重审**，D7(a)） | 需登录（donate:goods） |
-| DELETE | /a/donate/goods/{id} | **⬜ 商城批** · 删除商品 | 需登录（donate:goods） |
-| POST | /a/donate/goods/{id}/submit | **⬜ 商城批** · 提交审核 | 需登录（donate:goods） |
-| POST | /a/donate/goods/{id}/approve | **⬜ 商城批** · 审核通过 | 需登录（donate:goods-audit） |
-| POST | /a/donate/goods/{id}/reject | **⬜ 商城批** · 审核驳回 | 需登录（donate:goods-audit） |
-| GET | /a/donate/orders | **⬜ 商城批** · 兑换单列表（`?keyword=` 兑换人姓名 / 电话，Row 8 F） | 需登录（donate:order） |
-| POST | /a/donate/orders/{id}/approve | **⬜ 商城批** · 兑换审核通过 | 需登录（donate:order-audit） |
-| POST | /a/donate/orders/{id}/reject | **⬜ 商城批** · 兑换审核驳回（**退分 + 还库存**） | 需登录（donate:order-audit） |
-| POST | /a/donate/orders/{id}/verify | **⬜ 商城批** · 现场核销取货码（**CAS，一次性**） | 需登录（donate:verify） |
+| GET | /a/donate/goods | 商品列表（含未上架 / 已隐藏） | 需登录（donate:goods **或** donate:goods-audit） |
+| GET | /a/donate/goods/{id} | 商品详情（不限状态，含审核痕迹） | 需登录（donate:goods **或** donate:goods-audit） |
+| POST | /a/donate/goods | 新增商品（落草稿） | 需登录（donate:goods） |
+| PUT | /a/donate/goods/{id} | 修改商品（**已过审的改完退回待审**，D7(a)） | 需登录（donate:goods） |
+| PATCH | /a/donate/goods/{id}/display | 排序 / 隐藏（**纯展示，不触发重审**，D7(a)） | 需登录（donate:goods） |
+| DELETE | /a/donate/goods/{id} | 删除商品 | 需登录（donate:goods） |
+| POST | /a/donate/goods/{id}/submit | 提交审核 | 需登录（donate:goods） |
+| POST | /a/donate/goods/{id}/approve | 审核通过 | 需登录（donate:goods-audit） |
+| POST | /a/donate/goods/{id}/reject | 审核驳回 | 需登录（donate:goods-audit） |
+| DELETE | /a/donate/reviews/{id} | 下架不当评价（逻辑删除，**不新增权限点**，同活动留言下架） | 需登录（donate:goods） |
+| GET | /a/donate/orders | 兑换单列表（`?keyword=` 订单号 / 商品名 / 兑换人姓名或手机号，Row 8 F） | 需登录（donate:order **或** donate:order-audit） |
+| POST | /a/donate/orders/{id}/approve | 兑换审核通过 | 需登录（donate:order-audit） |
+| POST | /a/donate/orders/{id}/reject | 兑换审核驳回（**退分 + 还库存**） | 需登录（donate:order-audit） |
+| POST | /a/donate/orders/verify | 现场核销取货码（**按码不按 id**——扫码扫出来的是码；**CAS，一次性**，返回该发什么） | 需登录（donate:verify） |
 | GET | /a/donate/coupons | **⬜ 卷批** · 卷列表 | 需登录（donate:coupon） |
 | POST | /a/donate/coupons | **⬜ 卷批** · 新建卷 | 需登录（donate:coupon） |
 | POST | /a/donate/coupons/{id}/grants | **⬜ 卷批** · 发卷 / 批量发卷 | 需登录（donate:coupon） |

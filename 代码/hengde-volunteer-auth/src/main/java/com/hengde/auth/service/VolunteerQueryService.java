@@ -1,5 +1,6 @@
 package com.hengde.auth.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.hengde.auth.dao.VolunteerMapper;
 import com.hengde.auth.entity.Volunteer;
@@ -176,6 +177,42 @@ public class VolunteerQueryService {
         return list.stream()
                 .filter(v -> v.getRealName() != null)
                 .collect(Collectors.toMap(Volunteer::getId, Volunteer::getRealName));
+    }
+
+    /**
+     * 按<b>姓名模糊或手机号精确</b>找志愿者 id，供后台列表的「兑换人姓名 / 电话」搜索用。
+     *
+     * <p><b>为什么由 auth 提供</b>：与 {@link #findIdsByPhones} 同一条理由——手机号是密文 +
+     * {@code phone_hash} 索引，只有 auth 持 {@code CryptoUtil}；姓名虽是明文，
+     * 但让下游模块自己 {@code LIKE} 志愿者表就等于把 volunteer 表暴露给了每一个域。
+     * <b>只返回 id，不返回任何 PII。</b></p>
+     *
+     * <p><b>纯数字按手机号精确匹配，否则按姓名模糊</b>——与 {@code AdminVolunteerService}
+     * 的 keyword 口径一致，两处不要各判各的。</p>
+     *
+     * <p>⚠️ <b>结果有上限</b>（{@code limit}）：调用方通常拿它拼 {@code IN (...)}，不封顶会让
+     * 一个字的关键词生成上万个参数。<b>命中数超过上限时是静默截断的</b>——
+     * 调用方应当把这一点告诉用户（「请输入更完整的姓名」），而不是让人以为后面没有了。</p>
+     *
+     * @param keyword 姓名片段或完整手机号
+     * @param limit   最多返回多少个 id（&le;0 时取 200）
+     * @return volunteer.id 集合；keyword 空白时返回空集合
+     */
+    public List<Long> findIdsByNameOrPhone(String keyword, int limit) {
+        if (keyword == null || keyword.isBlank()) {
+            return List.of();
+        }
+        String kw = keyword.trim();
+        int cap = limit <= 0 ? 200 : limit;
+        LambdaQueryWrapper<Volunteer> wrapper = Wrappers.<Volunteer>lambdaQuery()
+                .select(Volunteer::getId)
+                .last("LIMIT " + cap);
+        if (kw.chars().allMatch(Character::isDigit)) {
+            wrapper.eq(Volunteer::getPhoneHash, cryptoUtil.hashPhone(kw));
+        } else {
+            wrapper.like(Volunteer::getRealName, kw);
+        }
+        return volunteerMapper.selectList(wrapper).stream().map(Volunteer::getId).toList();
     }
 
     /**

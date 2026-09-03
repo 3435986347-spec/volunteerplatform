@@ -1,10 +1,16 @@
 package com.hengde.donate.service;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.hengde.activity.constant.PointSourceType;
 import com.hengde.activity.service.PointService;
+import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.lock.DistributedLockSupport;
+import com.hengde.common.page.PageQuery;
+import com.hengde.common.page.PageResult;
+import com.hengde.common.pickup.PickupCodeUtil;
+import com.hengde.donate.config.MallProperties;
 import com.hengde.donate.constant.MallDeliveryType;
 import com.hengde.donate.constant.MallGoodsStatus;
 import com.hengde.donate.constant.MallOrderStatus;
@@ -12,17 +18,29 @@ import com.hengde.donate.dao.MallGoodsMapper;
 import com.hengde.donate.dao.MallGoodsSpecMapper;
 import com.hengde.donate.dao.MallOrderMapper;
 import com.hengde.donate.entity.MallGoods;
+import com.hengde.donate.dao.MallGoodsReviewMapper;
+import com.hengde.donate.entity.MallGoodsReview;
 import com.hengde.donate.entity.MallGoodsSpec;
 import com.hengde.donate.entity.MallOrder;
+import com.hengde.donate.vo.ExchangeRecordVO;
+import com.hengde.donate.vo.MallOrderVO;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
 
 /**
  * 积分兑换单（Row 8）。
@@ -44,12 +62,33 @@ public class MallOrderService {
 
     private static final DateTimeFormatter NO_FMT = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
 
+    /** 取货码撞唯一键时的换号重试上限。 */
+    private static final int CODE_RETRY = 5;
+
     private MallOrderMapper orderMapper;
     private MallGoodsMapper goodsMapper;
     private MallGoodsSpecMapper specMapper;
+    private MallGoodsReviewMapper reviewMapper;
     private PointService pointService;
+    private VolunteerQueryService volunteerQueryService;
+    private MallProperties mallProperties;
     private RedissonClient redissonClient;
     private TransactionTemplate transactionTemplate;
+
+    @Autowired
+    public void setReviewMapper(MallGoodsReviewMapper reviewMapper) {
+        this.reviewMapper = reviewMapper;
+    }
+
+    @Autowired
+    public void setVolunteerQueryService(VolunteerQueryService volunteerQueryService) {
+        this.volunteerQueryService = volunteerQueryService;
+    }
+
+    @Autowired
+    public void setMallProperties(MallProperties mallProperties) {
+        this.mallProperties = mallProperties;
+    }
 
     @Autowired
     public void setOrderMapper(MallOrderMapper orderMapper) {
@@ -233,6 +272,244 @@ public class MallOrderService {
                 PointSourceType.MALL_REFUND_REQUEST_PREFIX + orderId,
                 "兑换退回 " + order.getGoodsName() + "（" + order.getSpecName() + "）",
                 PointSourceType.OPERATOR_SYSTEM, null);
+    }
+
+    /**
+     * 审核通过 → 待领取，<b>同一条语句里生成取货码并快照自提点</b>。
+     *
+     * <p><b>为什么取货码必须与状态迁移同语句</b>：分成两步的话，中间崩一次就会留下一张
+     * 「已通过待领取、但没有取货码」的单——志愿者点开是空白，柜台也无从核销，
+     * 而系统里看它一切正常。合成一条 UPDATE 之后这个中间态根本不存在。</p>
+     *
+     * <p><b>自提点在这一刻快照进三列文本</b>（不是下单时）：审核通过才是「去哪儿领」这件事
+     * 被确定下来的时刻。配置只有一个当前值，协会换了办公地点，历史单据仍要还原得出当时的领取点——
+     * 与商品名 / 规格名 / 积分三项快照同一条理由。</p>
+     *
+     * <p>撞 {@code uk_pickup_code} 时换一个码重试（上限 5）。2^50 的空间下这几乎不会发生，
+     * 但唯一键是<b>唯一性的来源</b>，重试是它的配套动作——同证书编号那条路。</p>
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void approve(Long orderId, Long adminId) {
+        if (orderId == null) {
+            throw new BusinessException("兑换单不存在");
+        }
+        if (adminId == null) {
+            throw new BusinessException("操作人不能为空");
+        }
+        MallProperties.PickupSite site = mallProperties.getPickupSite();
+        for (int attempt = 0; attempt < CODE_RETRY; attempt++) {
+            String code = PickupCodeUtil.generate(PickupCodeUtil.DOMAIN_MALL);
+            try {
+                int rows = orderMapper.update(null, Wrappers.<MallOrder>lambdaUpdate()
+                        .eq(MallOrder::getId, orderId)
+                        .eq(MallOrder::getStatus, MallOrderStatus.PENDING)
+                        .set(MallOrder::getStatus, MallOrderStatus.READY)
+                        .set(MallOrder::getPickupCode, code)
+                        .set(MallOrder::getPickupSiteName, site.getName())
+                        .set(MallOrder::getPickupSiteAddr, site.getAddress())
+                        .set(MallOrder::getPickupSitePhone, site.getPhone())
+                        .set(MallOrder::getReviewBy, adminId)
+                        .set(MallOrder::getReviewTime, LocalDateTime.now())
+                        .set(MallOrder::getUpdateTime, LocalDateTime.now()));
+                if (rows != 1) {
+                    throw new BusinessException("该兑换单当前状态不可审核");
+                }
+                return;
+            } catch (DuplicateKeyException e) {
+                // 撞的一定是 uk_pickup_code——这条语句只写这一个唯一列
+                log.warn("取货码碰撞，换一个重试（第 {} 次）", attempt + 1);
+            }
+        }
+        throw new BusinessException("取货码生成失败，请重试");
+    }
+
+    /**
+     * 现场核销：<b>按取货码，不按订单 id</b>。
+     *
+     * <p>扫码枪扫出来的是码；做成「先按码查 id、再按 id 核销」会多一次往返，
+     * 还把一个本可原子的动作拆成两步。</p>
+     *
+     * <p><b>一次性由 CAS 保证</b>（{@code status = 待领取} 写进 WHERE）：同一个码连扫两次、
+     * 两个窗口同时扫，都只会有一次成功。</p>
+     *
+     * <p>失败时要说得准：码不存在 / 已核销过（带时间）/ 单子状态不对，是三件不同的事。
+     * 一律报「核销失败」会让柜台前的人不知道该不该把东西给出去。</p>
+     *
+     * @return 核销掉的那张单，供柜台核对该发什么
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public MallOrderVO verify(String rawCode, Long adminId) {
+        if (adminId == null) {
+            throw new BusinessException("操作人不能为空");
+        }
+        String code = PickupCodeUtil.normalize(rawCode);
+        if (!PickupCodeUtil.isValid(code, PickupCodeUtil.DOMAIN_MALL)) {
+            // 域标记不符也走这里：拿着证书的取货码到商城柜台，当场就该被拒，不必去表里查一趟
+            throw new BusinessException("取货码无效");
+        }
+        int rows = orderMapper.update(null, Wrappers.<MallOrder>lambdaUpdate()
+                .eq(MallOrder::getPickupCode, code)
+                .eq(MallOrder::getStatus, MallOrderStatus.READY)
+                .set(MallOrder::getStatus, MallOrderStatus.PICKED)
+                .set(MallOrder::getPickupTime, LocalDateTime.now())
+                .set(MallOrder::getPickupOperator, adminId)
+                .set(MallOrder::getUpdateTime, LocalDateTime.now()));
+        MallOrder order = orderMapper.selectOne(Wrappers.<MallOrder>lambdaQuery()
+                .eq(MallOrder::getPickupCode, code));
+        if (rows != 1) {
+            if (order == null) {
+                throw new BusinessException("取货码无效");
+            }
+            if (order.getStatus() != null && order.getStatus() == MallOrderStatus.PICKED) {
+                throw new BusinessException("该取货码已于 " + order.getPickupTime() + " 核销过");
+            }
+            throw new BusinessException("该兑换单当前不可领取（"
+                    + MallOrderStatus.labelOf(order.getStatus()) + "）");
+        }
+        MallOrderVO vo = toVO(order, true, false);
+        vo.setVolunteerName(volunteerQueryService.listNamesByIds(List.of(order.getVolunteerId()))
+                .get(order.getVolunteerId()));
+        return vo;
+    }
+
+    // ---------------- 查询 ----------------
+
+    /** 我的兑换（Row 8 C），可按状态筛选。 */
+    public PageResult<MallOrderVO> listMine(Long volunteerId, PageQuery query, Integer status) {
+        IPage<MallOrder> page = orderMapper.selectPage(query.toPage(),
+                Wrappers.<MallOrder>lambdaQuery()
+                        .eq(MallOrder::getVolunteerId, volunteerId)
+                        .eq(status != null, MallOrder::getStatus, status)
+                        .orderByDesc(MallOrder::getId));
+        PageResult<MallOrderVO> result = PageResult.of(page.convert(o -> toVO(o, false, false)));
+        markReviewed(result.getRecords());
+        return result;
+    }
+
+    /**
+     * 我的兑换详情，<b>带取货码条码图</b>。
+     *
+     * <p>归属校验与「不存在」返回同一句话，防按 id 枚举别人的单——同证书下载那条口径。</p>
+     */
+    public MallOrderVO detailMine(Long orderId, Long volunteerId) {
+        MallOrder order = orderId == null ? null : orderMapper.selectById(orderId);
+        if (order == null || !order.getVolunteerId().equals(volunteerId)) {
+            throw new BusinessException("兑换单不存在");
+        }
+        MallOrderVO vo = toVO(order, false, true);
+        markReviewed(List.of(vo));
+        return vo;
+    }
+
+    /**
+     * 后台兑换单列表。keyword 同时试三处：订单号、商品名、兑换人（姓名模糊 / 手机号精确）。
+     *
+     * <p>⚠️ 兑换人那一路经 {@code VolunteerQueryService.findIdsByNameOrPhone} 换 id，
+     * <b>有条数上限且是静默截断的</b>——关键词太短时应提示用户填得更完整。
+     * donate 不直连 volunteer 表：手机号是密文，姓名 LIKE 也该留在 auth 一处。</p>
+     */
+    public PageResult<MallOrderVO> listForAdmin(PageQuery query, Integer status, String keyword) {
+        List<Long> volunteerIds = (keyword == null || keyword.isBlank())
+                ? List.of() : volunteerQueryService.findIdsByNameOrPhone(keyword, 200);
+        IPage<MallOrder> page = orderMapper.selectPage(query.toPage(),
+                Wrappers.<MallOrder>lambdaQuery()
+                        .eq(status != null, MallOrder::getStatus, status)
+                        .and(keyword != null && !keyword.isBlank(), w -> {
+                            w.like(MallOrder::getOrderNo, keyword)
+                                    .or().like(MallOrder::getGoodsName, keyword);
+                            if (!volunteerIds.isEmpty()) {
+                                w.or().in(MallOrder::getVolunteerId, volunteerIds);
+                            }
+                        })
+                        .orderByDesc(MallOrder::getId));
+        PageResult<MallOrderVO> result = PageResult.of(page.convert(o -> toVO(o, true, false)));
+        fillNames(result.getRecords());
+        markReviewed(result.getRecords());
+        return result;
+    }
+
+    /**
+     * 「全部兑换记录」——Row 8 C 明写要展示<b>全部人的</b>兑换记录。
+     *
+     * <p>只放「谁 · 兑换了什么 · 什么时候」，<b>不含订单编号与取货码</b>：
+     * 取货码是柜台上的持有者凭据，在人人可见的列表里出现一次，就等于把东西送给任何看见的人。
+     * 「公开到什么程度」本身待协会确认。</p>
+     *
+     * <p>只列已通过审核之后的单（待领取 / 已领取）——待审核与已驳回是过程态，
+     * 公开出去会让人以为「他兑到了」。</p>
+     */
+    public PageResult<ExchangeRecordVO> listExchangeRecords(PageQuery query) {
+        IPage<MallOrder> page = orderMapper.selectPage(query.toPage(),
+                Wrappers.<MallOrder>lambdaQuery()
+                        .in(MallOrder::getStatus, MallOrderStatus.READY, MallOrderStatus.PICKED)
+                        .orderByDesc(MallOrder::getId));
+        Map<Long, String> names = volunteerQueryService.listNamesByIds(
+                page.getRecords().stream().map(MallOrder::getVolunteerId).collect(Collectors.toSet()));
+        return PageResult.of(page.convert(o -> {
+            ExchangeRecordVO vo = new ExchangeRecordVO();
+            vo.setVolunteerName(names.get(o.getVolunteerId()));
+            vo.setGoodsName(o.getGoodsName());
+            vo.setSpecName(o.getSpecName());
+            vo.setCreateTime(o.getCreateTime());
+            return vo;
+        }));
+    }
+
+    /** 一次查出这批单里哪些已评价，避免逐条查（Row 8 C「我的兑换」要显示评价状态）。 */
+    private void markReviewed(List<MallOrderVO> records) {
+        if (records == null || records.isEmpty()) {
+            return;
+        }
+        List<Long> ids = records.stream().map(MallOrderVO::getId).toList();
+        Set<Long> reviewed = reviewMapper.selectList(Wrappers.<MallGoodsReview>lambdaQuery()
+                        .select(MallGoodsReview::getOrderId)
+                        .in(MallGoodsReview::getOrderId, ids))
+                .stream().map(MallGoodsReview::getOrderId).collect(Collectors.toCollection(HashSet::new));
+        records.forEach(vo -> vo.setReviewed(reviewed.contains(vo.getId())));
+    }
+
+    private void fillNames(List<MallOrderVO> records) {
+        if (records == null || records.isEmpty()) {
+            return;
+        }
+        Map<Long, String> names = volunteerQueryService.listNamesByIds(
+                records.stream().map(MallOrderVO::getVolunteerId).collect(Collectors.toSet()));
+        records.forEach(vo -> vo.setVolunteerName(names.get(vo.getVolunteerId())));
+    }
+
+    /**
+     * @param forAdmin  管理端才带兑换人 id
+     * @param withCode  详情才给条码图（列表页给一堆 base64 图会把响应撑爆）
+     */
+    private MallOrderVO toVO(MallOrder o, boolean forAdmin, boolean withCode) {
+        MallOrderVO vo = new MallOrderVO();
+        vo.setId(o.getId());
+        vo.setOrderNo(o.getOrderNo());
+        vo.setGoodsId(o.getGoodsId());
+        vo.setGoodsName(o.getGoodsName());
+        vo.setSpecName(o.getSpecName());
+        vo.setPoints(o.getPoints());
+        vo.setStatus(o.getStatus());
+        vo.setStatusLabel(MallOrderStatus.labelOf(o.getStatus()));
+        vo.setDeliveryType(o.getDeliveryType());
+        vo.setPickupSiteName(o.getPickupSiteName());
+        vo.setPickupSiteAddr(o.getPickupSiteAddr());
+        vo.setPickupSitePhone(o.getPickupSitePhone());
+        vo.setPickupTime(o.getPickupTime());
+        vo.setRejectReason(o.getRejectReason());
+        vo.setCreateTime(o.getCreateTime());
+        if (forAdmin) {
+            vo.setVolunteerId(o.getVolunteerId());
+        }
+        // 取货码只在「待领取」时下发：已领取的再给出去没有用途，只是多一次泄露面
+        boolean ready = o.getStatus() != null && o.getStatus() == MallOrderStatus.READY;
+        if (ready) {
+            vo.setPickupCode(o.getPickupCode());
+            if (withCode && o.getPickupCode() != null) {
+                vo.setPickupBarcode(PickupCodeUtil.toBarcodeDataUrl(o.getPickupCode()));
+            }
+        }
+        return vo;
     }
 
     /**
