@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""接口契约校验：让 `文档/v2/url文档v2.md` 与 `代码/` 里的 Controller 保持一致。
+"""接口契约校验：让**各版本的 url 文档**与 `代码/` 里的 Controller 保持一致。
+
+读取 `DOC_PATHS` 列出的全部文档并**合并成一张表**再与代码比对——V3 起文档按版本分文件
+（`url文档v2.md` + `url文档v3.md`），只读其中一份会让另一份的端点整片变成「代码有而文档无」，
+或者更糟：新版本的端点根本不受检。
 
 由两份一次性 scratch 脚本合并而来，作为**仓库内的常驻工具**——脚本留在临时目录里，
 下一个人无从复现，评审结论也就退化成一句「我当时跑过」。
@@ -355,6 +359,14 @@ _EXEMPT_MARKER = re.compile(r'不入权限点表')
 # **必须有人显式改这里**，等于强制一次人工复核。
 #
 # 登记条件：该端点的守卫必须真实存在于 service 层（已逐个人工核实）。
+# 参与校验的 url 文档，**按版本分文件、全部读入后合并**。
+# ⚠️ `文档/v1/url文档v1.md` 刻意不在此列——它已冻结为 V1/V1.1 的历史快照、不再随代码更新，
+#    读进来只会凭空产出一堆「文档有、代码无」。加新版本文档时往这里追加一行即可。
+DOC_PATHS = [
+    "文档/v2/url文档v2.md",
+    "文档/v3/url文档v3.md",
+]
+
 EXEMPT_ALLOWLIST = {
     # AdminVolunteerService.updateBy 开头 requireSuperAdmin(operatorAdminId)；
     # user:edit 是 V2 迁移抬头列明的两个「不入权限表、写死仅超管」高危点之一
@@ -362,12 +374,15 @@ EXEMPT_ALLOWLIST = {
 }
 
 
-def parse_doc(doc: Path, consts: dict) -> tuple:
-    """→ ({Endpoint: Perm}, duplicates, unimplemented_set)"""
+def parse_doc_text(text: str, consts: dict, label: str) -> tuple:
+    """解析单份文档的文本 → ({Endpoint: (Perm, location)}, unimplemented_set)。
+
+    **只吃文本、不碰文件系统**，这样 selftest 可以用内存字符串驱动，与本脚本其余用例同一风格。
+    重复行的判定放在 `parse_docs`——**跨文档的重复也要抓**，见那里的说明。
+    """
     rows: dict = {}
-    dups: list = []
     unimplemented: set = set()
-    for lineno, line in enumerate(doc.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
+    for lineno, line in enumerate(text.splitlines(), 1):
         m = _DOC_ROW.match(line)
         if not m:
             continue
@@ -375,12 +390,38 @@ def parse_doc(doc: Path, consts: dict) -> tuple:
         # 一行写多个方法（如 `GET·DELETE`）视为未拆分，按第一个方法记，并在差集里自然暴露
         ep = Endpoint(verb.upper(), normalize_path(raw_path))
         if ep in rows:
-            dups.append((ep, lineno))
+            # 同一份文档内的重复：位置里带上前一次出现的行号，便于直接跳过去
+            rows[ep] = (rows[ep][0], rows[ep][1], f"{label}:{lineno}")
             continue
         if _UNIMPLEMENTED.search(middle) or _UNIMPLEMENTED.search(perm_cell):
             unimplemented.add(ep)
-        rows[ep] = _doc_perm(perm_cell, consts)
-    return rows, dups, unimplemented
+        rows[ep] = (_doc_perm(perm_cell, consts), f"{label}:{lineno}", None)
+    return rows, unimplemented
+
+
+def parse_docs(docs: list, consts: dict) -> tuple:
+    """合并多份文档 → ({Endpoint: Perm}, duplicates, unimplemented_set)。
+
+    ⚠️ **跨文档的重复必须抓出来**，而且它比同一份文档内的重复更可能发生：
+    新版本文档往往是照着上一版的表格改出来的，一行没删干净，两份就同时声明了同一个端点。
+    此时若两边权限写得不一样，比对结果取决于读取顺序——**那是最难查的一类不一致**，
+    所以这里直接报重复、不做「后者覆盖前者」。
+    """
+    rows: dict = {}
+    dups: list = []
+    unimplemented: set = set()
+    for path in docs:
+        label = path.name
+        one, unimpl = parse_doc_text(path.read_text(encoding="utf-8", errors="ignore"), consts, label)
+        unimplemented |= unimpl
+        for ep, (perm, loc, dup_loc) in one.items():
+            if dup_loc:                      # 同一份文档内的重复
+                dups.append((ep, dup_loc))
+            if ep in rows:                   # 跨文档的重复
+                dups.append((ep, f"{loc}（与 {rows[ep][1]} 重复）"))
+                continue
+            rows[ep] = (perm, loc)
+    return {ep: perm for ep, (perm, _) in rows.items()}, dups, unimplemented
 
 
 def _doc_perm(cell: str, consts: dict) -> Perm:
@@ -635,6 +676,47 @@ public class DocController {
     check("⑯ 且归类到 unexpected_exempt", len(f8.unexpected_exempt), 1)
     check("⑯ 不混进已登记豁免列表", len(f8.exempted), 0)
 
+    print("\n多文档合并回归用例（V3 起文档按版本分文件）：")
+    doc_v2 = """
+| GET | /a/demo/items | 列表 | 需登录（`demo:read`） |
+| POST | /a/demo/items | 新增 | 需登录（`demo:write`） |
+"""
+    doc_v3 = """
+| GET | /a/donate/goods | 商品列表 | 需登录（`donate:goods`） | ⬜ 未实现 |
+"""
+    rows_v2, _ = parse_doc_text(doc_v2, {}, "url文档v2.md")
+    rows_v3, unimpl_v3 = parse_doc_text(doc_v3, {}, "url文档v3.md")
+    check("⑰ 单份文档解析条数正确", (len(rows_v2), len(rows_v3)), (2, 1))
+    check("⑰ 位置带文件名（重复行报告要指得到是哪一份）",
+          rows_v3[Endpoint("GET", "/a/donate/goods")][1].startswith("url文档v3.md:"), True)
+    check("⑰ ⬜ 未实现标记跨文档仍然生效",
+          Endpoint("GET", "/a/donate/goods") in unimpl_v3, True)
+
+    # ⑱ **本次改动真正要防住的那件事**：两份文档同时声明同一个端点。
+    #    新版文档常是照着上一版表格改出来的，一行没删干净就会这样；
+    #    若两边权限写得不一致，比对结果取决于读取顺序——那是最难查的一类不一致。
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        a = Path(td) / "url文档v2.md"
+        b = Path(td) / "url文档v3.md"
+        a.write_text(doc_v2, encoding="utf-8")
+        b.write_text(doc_v2 + doc_v3, encoding="utf-8")   # b 里混进了 a 的两行
+        merged, dups, unimpl = parse_docs([a, b], {})
+        check("⑱ 合并后端点去重", len(merged), 3)
+        check("⑱ 跨文档重复被抓出（2 条）", len(dups), 2)
+        check("⑱ 重复报告指得出两处位置",
+              all("重复" in loc for _, loc in dups), True)
+        f9 = compare({}, merged, dups, unimpl)
+        check("⑱ 跨文档重复计入总数（非 0 退出）", f9.total() >= 2, True)
+
+    # ⑲ 缺文档要报错退出，而不是当成「那一版没有端点」静默通过
+    with tempfile.TemporaryDirectory() as td:
+        only = Path(td) / "url文档v2.md"
+        only.write_text(doc_v2, encoding="utf-8")
+        check("⑲ DOC_PATHS 至少列出两份（v2 + v3）", len(DOC_PATHS) >= 2, True)
+        check("⑲ 且不含已冻结的 v1 快照",
+              any("v1" in d for d in DOC_PATHS), False)
+
     print("\n自检" + ("通过" if ok else "失败"))
     return 0 if ok else 1
 
@@ -642,7 +724,7 @@ public class DocController {
 # ---------------------------------------------------------------- 主流程
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="接口契约校验（代码 ↔ url文档v2.md）")
+    ap = argparse.ArgumentParser(description="接口契约校验（代码 ↔ DOC_PATHS 列出的各版本 url 文档）")
     ap.add_argument("--root", default=".", help="仓库根，默认当前目录")
     ap.add_argument("--verbose", action="store_true", help="打印逐条明细")
     ap.add_argument("--selftest", action="store_true", help="只跑解析器回归用例")
@@ -653,21 +735,22 @@ def main() -> int:
 
     root = Path(args.root).resolve()
     code_root = root / "代码"
-    doc = root / "文档" / "v2" / "url文档v2.md"
-    if not code_root.is_dir() or not doc.is_file():
-        print(f"找不到 代码/ 或 文档/v2/url文档v2.md（--root={root}）", file=sys.stderr)
+    docs = [root / rel for rel in DOC_PATHS]
+    missing = [str(d.relative_to(root)) for d in docs if not d.is_file()]
+    if not code_root.is_dir() or missing:
+        print(f"找不到 代码/ 或以下文档（--root={root}）：{'、'.join(missing)}", file=sys.stderr)
         return 2
 
     consts = load_permission_constants(code_root)
     code = parse_controllers(code_root, consts)
-    docmap, dups, unimplemented = parse_doc(doc, consts)
+    docmap, dups, unimplemented = parse_docs(docs, consts)
     f = compare(code, docmap, dups, unimplemented)
 
     # 区分两个数：`unimplemented` 是**所有**带「未实现/占位」标记的文档行（多数端点其实有实现，
     # 只是某个子功能标了占位）；真正被豁免出差集的只有「文档独有 **且** 已标注」的那部分。
     # 早先把前者印成「文档独有且已标注未实现」，数字与 --verbose 明细对不上（3 vs 1）。
     doc_only_unimplemented = sorted((set(docmap) - set(code)) & unimplemented, key=str)
-    print(f"代码端点 {len(code)}　文档端点 {len(docmap)}　"
+    print(f"代码端点 {len(code)}　文档端点 {len(docmap)}（{len(docs)} 份文档）　"
           f"文档独有且已标注未实现 {len(doc_only_unimplemented)}"
           f"（全文档「未实现」标记行 {len(unimplemented)}）　权限常量 {len(consts)}")
 
@@ -685,8 +768,8 @@ def main() -> int:
             print(f"    {ep}\n        代码 {a}\n        文档 {b}")
     if f.duplicate_doc:
         print(f"\n✗ 文档重复行（{len(f.duplicate_doc)}）：")
-        for ep, lineno in f.duplicate_doc:
-            print(f"    {ep}　第 {lineno} 行")
+        for ep, loc in f.duplicate_doc:
+            print(f"    {ep}　{loc}")
 
     if f.unexpected_exempt:
         print(f"\n✗ 未登记的人工守卫豁免（{len(f.unexpected_exempt)}）——"
