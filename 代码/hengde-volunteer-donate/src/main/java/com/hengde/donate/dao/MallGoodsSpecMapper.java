@@ -3,6 +3,7 @@ package com.hengde.donate.dao;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.hengde.donate.entity.MallGoodsSpec;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 /**
@@ -39,6 +40,10 @@ public interface MallGoodsSpecMapper extends BaseMapper<MallGoodsSpec> {
      * 商品未上架 / 已隐藏 / 商品已删）。调用方应再补一次只读查询给出准确文案，
      * 见 {@code MallOrderService.explainDeductFailure}。</p>
      *
+     * <p><b>数量写死为 1</b>（Row 8 的兑换没有数量控件）——这是显式取舍，理由记在
+     * {@code 文档/v3/V3规划.md} 的「商城批」。要支持数量，改的不止这里：
+     * 订单表、快照的「花了多少分」、退分金额都得跟着走。</p>
+     *
      * @param specId    规格 id
      * @param onSaleStatus 「已上架」的状态码，由调用方传入以免 SQL 里写死魔法数
      * @return 影响行数，1=扣减成功
@@ -50,7 +55,7 @@ public interface MallGoodsSpecMapper extends BaseMapper<MallGoodsSpec> {
     int deductStock(@Param("specId") Long specId, @Param("onSaleStatus") int onSaleStatus);
 
     /**
-     * 归还一件库存。用于驳回 / 取消。
+     * 归还一件库存。用于驳回 / 取消。影响行数 1=已归还，0=没归还（两种原因，见下）。
      *
      * <p><b>幂等不靠这条语句，靠调用方的订单状态 CAS</b>：只有把订单从「待审核」
      * 原子地改成「已驳回/已取消」成功的那一次才会走到这里，双击驳回与回调重投都只会成功一次。
@@ -58,10 +63,36 @@ public interface MallGoodsSpecMapper extends BaseMapper<MallGoodsSpec> {
      *
      * <p>这里<b>不校验商品状态</b>：商品可能在下单之后被下架，但那不该妨碍把库存还回去。</p>
      *
+     * <p><b>{@code is_deleted = 0} 那一条会让影响行数变成 0，这是有意为之</b>：
+     * 规格已被软删时，库存字段本身已无消费方（下单侧的 {@code deductStock} 同样带
+     * {@code s.is_deleted = 0}，永远扣不到它），把数字加回去没有任何意义，
+     * 反而会在「删了又恢复」的场景里留下一个来路不明的余量。</p>
+     *
+     * <p><b>但影响行数不能就这么丢掉</b>——0 行有两种原因，性质完全不同：规格<b>已软删</b>
+     * 是正常运营（照上一段，不还就对了）；规格<b>根本不存在</b>是数据完整性问题
+     * （订单挂着一个不存在的 specId，本表没有外键，落库时也没人拦）。两者都无声，
+     * 后者就永远没人知道。故调用方拿到 0 必须记 warn，并用
+     * {@link #selectDeletedFlag} 区分是哪一种——见 {@code MallOrderService.refundOrder}。
+     * <b>不抛异常</b>：抛了会连退分一起回滚，志愿者会因为管理员删过一个规格而永远取消不了单，
+     * 那比少还一件库存严重得多。</p>
+     *
      * @param specId 规格 id
-     * @return 影响行数
+     * @return 影响行数，1=已归还
      */
     @Update("UPDATE mall_goods_spec SET stock = stock + 1, update_time = NOW() "
             + "WHERE id = #{specId} AND is_deleted = 0")
     int restoreStock(@Param("specId") Long specId);
+
+    /**
+     * 读软删标记，<b>不受 {@code @TableLogic} 过滤</b>——纯诊断用。
+     *
+     * <p>{@code selectById} 会把软删行当作不存在（返回 null），所以它区分不了
+     * 「已软删」与「根本不存在」；而 {@link #restoreStock} 返回 0 时，恰恰只有这两种可能。
+     * 手写 {@code @Select} 是唯一能看见软删行的读法。</p>
+     *
+     * @param specId 规格 id
+     * @return 1=已软删，0=在（那就是并发把它删了又恢复之类的怪事），null=该行根本不存在
+     */
+    @Select("SELECT is_deleted FROM mall_goods_spec WHERE id = #{specId}")
+    Integer selectDeletedFlag(@Param("specId") Long specId);
 }

@@ -168,6 +168,41 @@ class MallOrderServiceTest {
         assertEquals("该商品已下架", e.getMessage());
     }
 
+    /**
+     * 规格在下单之后被软删——<b>取消仍须办得成</b>：退分、置已取消，只是库存不还。
+     *
+     * <p>软删后 {@code deductStock} 永远扣不到这一行，库存数字已无消费方，不还就对了。
+     * <b>这条用例真正钉住的是「不抛异常」</b>：把 {@code restoreStockOrWarn} 改成
+     * 影响行数为 0 就抛，本用例必红——那样志愿者会因为管理员删过一个规格而永远取消不了单，
+     * 比少还一件库存严重得多。</p>
+     */
+    @Test
+    void cancelStillSucceedsWhenSpecWasSoftDeleted() {
+        MallOrder order = orderService.placeOrder(VOLUNTEER_ID, SPEC_ID);
+        jdbcTemplate.update("UPDATE mall_goods_spec SET is_deleted = 1 WHERE id = ?", SPEC_ID);
+
+        orderService.cancel(order.getId(), VOLUNTEER_ID);
+
+        assertEquals(100, pointService.balanceOf(VOLUNTEER_ID), "分照退");
+        assertEquals(MallOrderStatus.CANCELLED, statusOf(order.getId()), "单照取消");
+        assertEquals(2, stock(), "软删的规格不还库存——它已无消费方，加回去只会留下来路不明的余量");
+    }
+
+    /**
+     * 规格行<b>整个消失</b>（本表无外键，订单可以挂着一个不存在的 specId）——
+     * 取消同样必须办得成，差别只在日志：这一种记 warn，软删那一种记 info。
+     */
+    @Test
+    void cancelStillSucceedsWhenSpecRowVanished() {
+        MallOrder order = orderService.placeOrder(VOLUNTEER_ID, SPEC_ID);
+        jdbcTemplate.update("DELETE FROM mall_goods_spec WHERE id = ?", SPEC_ID);
+
+        orderService.cancel(order.getId(), VOLUNTEER_ID);
+
+        assertEquals(100, pointService.balanceOf(VOLUNTEER_ID), "分照退");
+        assertEquals(MallOrderStatus.CANCELLED, statusOf(order.getId()), "单照取消");
+    }
+
     // ---------- helpers ----------
 
     private void givePoints(int amount) {

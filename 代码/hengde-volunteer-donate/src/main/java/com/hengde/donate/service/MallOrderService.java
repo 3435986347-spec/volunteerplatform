@@ -14,6 +14,7 @@ import com.hengde.donate.dao.MallOrderMapper;
 import com.hengde.donate.entity.MallGoods;
 import com.hengde.donate.entity.MallGoodsSpec;
 import com.hengde.donate.entity.MallOrder;
+import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -30,8 +31,14 @@ import java.util.concurrent.ThreadLocalRandom;
  * 那里是罚，这里是用户主动消费，积分与库存都必须在下单那一刻占位，
  * 否则同一笔积分能下十张待审单。<b>这条差异是有意的，日后不要为了「统一」而改掉。</b></p>
  *
+ * <p><b>一单一件（数量恒为 1）</b>是本批的显式取舍，不是漏做——理由与影响见
+ * {@code 文档/v3/V3规划.md} 的「商城批」一节。要加数量时，库存 CAS 的
+ * {@code stock - 1}/{@code stock + 1}、订单表、D8 的快照、退分金额<b>四处必须同时改</b>，
+ * 而只有 SQL 里那个 {@code 1} 会在改的时候撞到眼前。</p>
+ *
  * @author hengde
  */
+@Slf4j
 @Service
 public class MallOrderService {
 
@@ -221,11 +228,40 @@ public class MallOrderService {
         if (rows != 1) {
             throw new BusinessException("该兑换单当前状态不可取消或驳回");
         }
-        specMapper.restoreStock(order.getSpecId());
+        restoreStockOrWarn(order.getSpecId(), orderId);
         pointService.record(volunteerId, order.getPoints(), PointSourceType.EXCHANGE, null,
                 PointSourceType.MALL_REFUND_REQUEST_PREFIX + orderId,
                 "兑换退回 " + order.getGoodsName() + "（" + order.getSpecName() + "）",
                 PointSourceType.OPERATOR_SYSTEM, null);
+    }
+
+    /**
+     * 还库存，并把「没还成」这件事记下来。<b>不抛异常</b>。
+     *
+     * <p>0 行只有两种可能，性质完全不同：</p>
+     * <ul>
+     *   <li><b>规格已软删</b>——正常运营。软删后 {@code deductStock} 再也扣不到它，
+     *       库存数字已无消费方，不还是对的；记一行 info 只为让日志能对上账。</li>
+     *   <li><b>规格根本不存在</b>——数据完整性问题。本表无外键，订单可以挂着一个不存在的
+     *       specId 落库而无人拦阻。<b>这一种必须响亮</b>，否则永远没人知道。</li>
+     * </ul>
+     *
+     * <p><b>为什么不抛</b>：抛出会连同退分一起回滚，志愿者就会因为管理员删过一个规格而
+     * 永远取消不了这张单——比少还一件库存严重得多。这与
+     * {@code SmsNotifyService}「通知失败绝不影响业务」是同一条取舍：
+     * <b>代价是它在线上只留一行日志，所以那行日志必须说得清是哪一种。</b></p>
+     */
+    private void restoreStockOrWarn(Long specId, Long orderId) {
+        if (specMapper.restoreStock(specId) == 1) {
+            return;
+        }
+        Integer deleted = specMapper.selectDeletedFlag(specId);
+        if (deleted == null) {
+            log.warn("还库存失败：兑换单 {} 的规格 {} 在库中不存在，订单已退分但库存无处归还，请核对数据",
+                    orderId, specId);
+        } else {
+            log.info("规格 {} 已软删，兑换单 {} 不归还库存（软删后该库存已无消费方）", specId, orderId);
+        }
     }
 
     /** 单号：时间戳 + 6 位随机。与证书编号同形态。 */
