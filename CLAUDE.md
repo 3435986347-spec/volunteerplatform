@@ -88,7 +88,7 @@ cd hengde-volunteer-parent
 # 1) 安装父 POM 到本地仓库（改了父 POM 的版本/依赖管理后必须重跑）
 ./mvnw install -N
 
-# 2) 构建并安装单个模块到本地仓库（按依赖顺序：common → auth → organization → activity → publicity → api）
+# 2) 构建并安装单个模块到本地仓库（按依赖顺序：common → auth → organization → publicity → activity → trade → donate → user → data → honor → api，与父 POM <modules> 一致）
 ./mvnw clean install -DskipTests -f ../hengde-volunteer-common/pom.xml
 
 # 3) 运行某模块全部测试（JUnit 5 + Testcontainers MySQL/Redis，需本机 Docker）

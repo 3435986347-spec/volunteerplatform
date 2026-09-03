@@ -65,6 +65,23 @@ public final class PointSourceType {
      */
     public static final String REVERT_REQUEST_PREFIX = "sys:rp-revert:";
 
+    /**
+     * V3 积分商城<b>退分</b>那笔流水的 {@code request_id} 前缀，<b>系统保留</b>。
+     *
+     * <p><b>为什么退分复用 {@link #EXCHANGE} 而不是新分配一个来源码</b>——注意本类开头写着
+     * 「新增来源必须分配新码，不要复用」，这里是<b>刻意的例外，理由是口径不是键</b>：</p>
+     *
+     * <p>退分若用一个新的<b>非消费类</b>来源码，{@code totalSpent} 会停在原值、
+     * {@code totalEarned} 反而被这笔正数抬高——「已使用积分」与「累计获得」<b>同时算错</b>，
+     * 而排行榜排的正是累计获得，也跟着错。用 EXCHANGE 记一笔正数，净额自动归零，
+     * 两个口径都还原到没买过的状态。</p>
+     *
+     * <p>复用来源码就不能再靠 {@code uk_source} 保幂等（{@code (4, orderId)} 已被下单那笔占住），
+     * 所以走 {@code uk_request_id}，形态与 {@link #REVERT_REQUEST_PREFIX} 完全一致：
+     * 前缀系统保留，{@code PointService} 对非兑换来源拒绝使用。</p>
+     */
+    public static final String MALL_REFUND_REQUEST_PREFIX = "sys:mall-refund:";
+
     /** 操作方：系统自动 */
     public static final int OPERATOR_SYSTEM = 0;
     /** 操作方：管理员 */

@@ -70,7 +70,14 @@ import java.util.Objects;
 public class PointService {
 
     /** 志愿者维度锁前缀，与 enroll/group 的前缀并列，互不抢占 */
-    private static final String LOCK_KEY_PREFIX = "lock:point:volunteer:";
+    /**
+     * 志愿者维度的积分锁键前缀。
+     *
+     * <p><b>公开是为了让别的域用同一把锁</b>（V3 商城的兑换扣分）。手工扣分与兑换扣分
+     * 必须互斥——两者都要「先看余额、再扣」，用不同前缀就等于各锁各的，
+     * 余额检查会同时通过、把余额扣成负数。<b>换前缀 = 悄悄废掉这条不变式。</b></p>
+     */
+    public static final String LOCK_KEY_PREFIX = "lock:point:volunteer:";
 
     /** {@code point_record.remark} 的列宽（字符数），超长在此截断而非让 DB 抛错 */
     private static final int REMARK_MAX_LENGTH = 512;
@@ -175,6 +182,12 @@ public class PointService {
                     PointSourceType.REVERT_REQUEST_PREFIX.length())
                     && sourceType != PointSourceType.REWARD_PUNISH) {
                 throw new BusinessException("幂等键前缀 " + PointSourceType.REVERT_REQUEST_PREFIX + " 为系统保留");
+            }
+            // 同理挡住商城退分的前缀：它占的是 uk_request_id，被别人抢先占住会让那张单退不了分。
+            if (key.regionMatches(true, 0, PointSourceType.MALL_REFUND_REQUEST_PREFIX, 0,
+                    PointSourceType.MALL_REFUND_REQUEST_PREFIX.length())
+                    && sourceType != PointSourceType.EXCHANGE) {
+                throw new BusinessException("幂等键前缀 " + PointSourceType.MALL_REFUND_REQUEST_PREFIX + " 为系统保留");
             }
         }
         // 统一在此截断：remark 列 512，而上游拼进来的活动名、修正理由等长度不受本服务控制，
@@ -337,6 +350,30 @@ public class PointService {
      * @param adminId 操作管理员 id，非空
      * @return 调整后余额
      */
+    /**
+     * 扣分前的余额检查：扣完不得为负。<b>调用方必须已持有
+     * {@link #LOCK_KEY_PREFIX} + volunteerId 这把锁</b>，否则两个并发扣减会同时通过检查。
+     *
+     * <p><b>「余额不得为负」是有意的不对称</b>：只约束<b>主观决策</b>的扣减
+     * （管理员手工扣分、V3 兑换消费）——余额不够就该让人重新判断；
+     * <b>不约束积分修正</b>（那是在更正既成事实，拒绝会让账本长期停在错误值上）。
+     * 所以本方法只在手工扣分与兑换两条路径上调用，{@code record} 本身不查余额。</p>
+     *
+     * <p>正数（入账）直接放行——入账不会把余额变负。</p>
+     *
+     * @param volunteerId 志愿者 id
+     * @param changeAmount 变动值，负=扣减
+     */
+    public void assertDeductible(Long volunteerId, int changeAmount) {
+        if (changeAmount >= 0) {
+            return;
+        }
+        int balance = pointRecordMapper.sumBalance(volunteerId);
+        if (balance + changeAmount < 0) {
+            throw new BusinessException("扣减后余额将为负数，当前余额 " + balance);
+        }
+    }
+
     public int adjust(PointAdjustDTO dto, Long adminId) {
         if (adminId == null) {
             throw new BusinessException("操作人不能为空");
@@ -358,13 +395,7 @@ public class PointService {
                 return record(dto.getVolunteerId(), dto.getChangeAmount(), PointSourceType.MANUAL, null,
                         dto.getRequestId(), dto.getReason(), PointSourceType.OPERATOR_ADMIN, adminId);
             }
-            // 扣分不得把余额扣成负数——手工扣分是主观决策，余额不足应让管理员重新判断（修正类流水不受此限，见上）
-            if (dto.getChangeAmount() < 0) {
-                int balance = pointRecordMapper.sumBalance(dto.getVolunteerId());
-                if (balance + dto.getChangeAmount() < 0) {
-                    throw new BusinessException("扣减后余额将为负数，当前余额 " + balance);
-                }
-            }
+            assertDeductible(dto.getVolunteerId(), dto.getChangeAmount());
             return record(dto.getVolunteerId(), dto.getChangeAmount(), PointSourceType.MANUAL, null,
                     dto.getRequestId(), dto.getReason(), PointSourceType.OPERATOR_ADMIN, adminId);
         });
