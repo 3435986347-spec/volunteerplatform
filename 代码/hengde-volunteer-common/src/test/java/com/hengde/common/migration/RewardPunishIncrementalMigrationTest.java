@@ -293,6 +293,66 @@ class RewardPunishIncrementalMigrationTest {
         }
     }
 
+    // ---------------- V39 → V40：两级审核 ----------------
+
+    /**
+     * <b>存量待审的「奖励」必须被推到「待终审」，「处罚」必须留在原地。</b>
+     *
+     * <p>协会 2026-09-02 之后奖励不经组织部（「各部门都可以提出奖励申请，理事会审核」）。
+     * 不回填的话，改造前开出的待审奖励会卡在一个「等组织部审」的状态里，
+     * 而按新规矩组织部根本不该审它——那张单会成为<b>谁也处理不掉的待办</b>：
+     * 组织部的队列里有它、点初审却与新口径矛盾，理事会的队列里又看不到它。</p>
+     *
+     * <p><b>这条只有走真实升级路径才测得到</b>：空库一路迁到最新时
+     * {@code honor_reward_punish} 里一行都没有，那条 UPDATE 影响 0 行也照样「成功」。
+     * 把迁移末尾那条 UPDATE 删掉，本用例必红。</p>
+     */
+    @Test
+    void v39ToV40_pendingRewardsMoveToCouncilQueueWhilePunishmentsStay() throws SQLException {
+        migrateTo("39");
+        insertRewardPunish("V40R1", 1, 0);   // 待审的奖励
+        insertRewardPunish("V40P1", 2, 0);   // 待审的处罚
+        insertRewardPunish("V40R2", 1, 2);   // 已驳回的奖励——不该被动
+
+        migrateTo("40");
+
+        assertEquals(3, reviewStatusOf("V40R1"),
+                "待审的奖励要推到「待终审」——新模型下组织部不审奖励，留在 0 就是一条无人能处理的待办");
+        assertEquals(0, reviewStatusOf("V40P1"),
+                "待审的处罚留在原地：从下往上的处罚本就该先由组织部初审");
+        assertEquals(2, reviewStatusOf("V40R2"), "已驳回的单不该被回填碰到");
+    }
+
+    /**
+     * V40 的两列与新权限点确实建上了；<b>已通过的存量行原样不动</b>。
+     *
+     * <p>⚠️ 顺带钉住一处<b>刻意保留的历史模糊</b>：改造前一级审核通过的行，
+     * 其 {@code reviewed_by} 是<b>组织部</b>的人，而 V40 之后这一列的含义是「终审人」。
+     * 迁移<b>不去改写它</b>——把它复制一份到 {@code first_review_by} 会造出
+     * 「同一个人既初审又终审」的假记录，比留着含义漂移更糟。
+     * 所以「{@code first_review_by} 为空且已通过 ⇒ 走了理事会快捷通道」这条推导，
+     * <b>只对 V40 之后新建的行成立</b>。（实践中这批数据不存在：第 5 批从未合入 main。）</p>
+     */
+    @Test
+    void v39ToV40_addsColumnsAndPermissionWithoutRewritingHistory() throws SQLException {
+        migrateTo("39");
+        insertRewardPunishApproved("V40A1", 2, 777L);
+
+        migrateTo("40");
+
+        assertTrue(columnExists("honor_reward_punish", "first_review_by"));
+        assertTrue(columnExists("honor_reward_punish", "first_review_time"));
+        assertTrue(permissionExists("honor:reward-punish-final"),
+                "终审权限点没建上的话，理事会那一步在线上根本没人能做");
+
+        assertEquals(1, reviewStatusOf("V40A1"), "已通过的行不动");
+        assertEquals(777L, longOf("SELECT reviewed_by FROM honor_reward_punish WHERE rp_no = 'V40A1'"),
+                "原审核人原样保留——不改写历史");
+        assertEquals(0, count("SELECT COUNT(*) FROM honor_reward_punish"
+                        + " WHERE rp_no = 'V40A1' AND first_review_by IS NOT NULL"),
+                "不得把原审核人复制成初审人：那会造出「同一个人既初审又终审」的假记录");
+    }
+
     /**
      * V31 形态的现场违规行：那时还没有审核四列。
      *
@@ -309,6 +369,48 @@ class RewardPunishIncrementalMigrationTest {
                     + " VALUES (" + activityId + ", " + (activityId + 500) + ", 960003, 1,"
                     + " 'V32 增量用例', 900, NOW())");
         }
+    }
+
+    /** V39 形态的奖惩单（那时还没有 first_review_* 两列）。 */
+    private void insertRewardPunish(String no, int type, int reviewStatus) throws SQLException {
+        try (Connection conn = open();
+             Statement st = conn.createStatement()) {
+            st.executeUpdate("INSERT INTO honor_reward_punish"
+                    + " (rp_no, volunteer_id, type, category, points_delta, review_status, appeal_status)"
+                    + " VALUES ('" + no + "', 960004, " + type + ", 'V40 增量用例', 0, "
+                    + reviewStatus + ", 0)");
+        }
+    }
+
+    /** 已通过的存量行，带一个「改造前的审核人」。 */
+    private void insertRewardPunishApproved(String no, int type, long reviewedBy) throws SQLException {
+        try (Connection conn = open();
+             Statement st = conn.createStatement()) {
+            st.executeUpdate("INSERT INTO honor_reward_punish"
+                    + " (rp_no, volunteer_id, type, category, points_delta, review_status,"
+                    + "  appeal_status, reviewed_by, review_time)"
+                    + " VALUES ('" + no + "', 960004, " + type + ", 'V40 增量用例', 0, 1, 0, "
+                    + reviewedBy + ", NOW())");
+        }
+    }
+
+    private int reviewStatusOf(String no) throws SQLException {
+        return count("SELECT review_status FROM honor_reward_punish WHERE rp_no = '" + no + "'");
+    }
+
+    private long longOf(String sql) throws SQLException {
+        try (Connection conn = open();
+             Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery(sql)) {
+            rs.next();
+            return rs.getLong(1);
+        }
+    }
+
+    private boolean columnExists(String table, String column) throws SQLException {
+        return count("SELECT COUNT(*) FROM information_schema.COLUMNS"
+                + " WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '" + table + "'"
+                + " AND COLUMN_NAME = '" + column + "'") > 0;
     }
 
     private boolean indexExists(String table, String index) throws SQLException {

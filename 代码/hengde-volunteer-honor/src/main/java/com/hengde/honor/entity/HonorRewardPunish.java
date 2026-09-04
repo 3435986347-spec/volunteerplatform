@@ -98,6 +98,12 @@ public class HonorRewardPunish extends BaseEntity {
      * <p>为 NULL 有两种情形，靠 {@code type} 区分：奖励本就不经初审；
      * 处罚为 NULL 且已通过，说明走的是<b>理事会直接开单</b>那条快捷通道。
      * 「是否自动通过」因此不另存一列——多一列冗余就多一处可能与事实不一致。</p>
+     *
+     * <p>⚠️ <b>上面那条推导只对 V40 之后新建的行成立。</b> 改造前按一级审核通过的行，
+     * 其 {@code reviewedBy} 是<b>组织部</b>的人，而本列为空——照上面读会被误判成「走了快捷通道」。
+     * 迁移<b>刻意不回填</b>：把原审核人复制一份到本列会造出「同一个人既初审又终审」的假记录，
+     * 比留着一处含义漂移更糟。实践中这批数据不存在（第 5 批从未合入 main），
+     * 这条限制由 {@code RewardPunishIncrementalMigrationTest} 明写着，别当成可以忽略的边角。</p>
      */
     private Long firstReviewBy;
 
