@@ -34,6 +34,18 @@ public class HonorRewardPunish extends BaseEntity {
     /** 已驳回 */
     public static final int REVIEW_REJECTED = 2;
 
+    /**
+     * 已初审、待理事会终审（协会 2026-09-02 答复问题二）。
+     *
+     * <p><b>这一档对志愿者不可见</b>——「理事会没审完，志愿者不会看到处罚」。
+     * 可见性判定一律是 {@code == REVIEW_APPROVED}，故新增这一档天然不外泄，
+     * 但<b>新增判定时不要写成 {@code != REVIEW_PENDING}</b>，那会把待终审的单当成已生效。</p>
+     *
+     * <p>处罚从 {@link #REVIEW_PENDING} 经组织部初审到这里；<b>奖励开单即落在这里</b>
+     * （「各部门都可以提出奖励申请，理事会审核」——奖励不经组织部）。</p>
+     */
+    public static final int REVIEW_FIRST_PASSED = 3;
+
     /** 未申诉 */
     public static final int APPEAL_NONE = 0;
     /** 申诉中（待受理） */
@@ -79,6 +91,18 @@ public class HonorRewardPunish extends BaseEntity {
     private Integer reviewStatus;
 
     private Long reviewedBy;
+
+    /**
+     * 初审人（组织部）。<b>{@link #reviewedBy} 此后专指终审人。</b>
+     *
+     * <p>为 NULL 有两种情形，靠 {@code type} 区分：奖励本就不经初审；
+     * 处罚为 NULL 且已通过，说明走的是<b>理事会直接开单</b>那条快捷通道。
+     * 「是否自动通过」因此不另存一列——多一列冗余就多一处可能与事实不一致。</p>
+     */
+    private Long firstReviewBy;
+
+    /** 初审时间。 */
+    private LocalDateTime firstReviewTime;
 
     private LocalDateTime reviewTime;
 

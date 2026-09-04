@@ -133,13 +133,29 @@ public class RewardPunishService {
     // ---------- ① 开单 ----------
 
     /**
-     * 后台开一张奖惩单，落「待审核」。
+     * 后台开一张奖惩单。<b>落在哪一档取决于开单人有没有终审权、以及这是奖还是惩</b>
+     * （协会 2026-09-02 答复问题二）。
+     *
+     * <table>
+     *   <tr><th>场景</th><th>落档</th></tr>
+     *   <tr><td>处罚 · 从下往上</td><td>{@code 0 待初审}（组织部）→ 之后 {@code 3} → {@code 1}</td></tr>
+     *   <tr><td>处罚 · 理事会开单（紧急）</td><td><b>{@code 1} 直接通过</b>，效力即刻</td></tr>
+     *   <tr><td>奖励 · 部门提出</td><td>{@code 3 待终审}——<b>不经组织部</b></td></tr>
+     *   <tr><td>奖励 · 理事会发起</td><td><b>{@code 1} 直接通过</b></td></tr>
+     * </table>
+     *
+     * <p><b>{@code createdByFinalApprover} 必须由调用方按「开单人是否持有终审权」传入，
+     * 不能是请求体里的一个开关</b>——做成开关的话，任何有开单权的人都能给自己开一条免审通道，
+     * 两级审核就成了自愿参加的。判定落在控制器，与 {@code assertScopeAllowed} 同一形状：
+     * 能不能这么做是<b>授权</b>问题，而 {@code @SaCheckPermission} 表达不了「取决于开单人是谁」。</p>
      *
      * <p><b>处罚可由一条现场违规转来</b>（{@code violationId}），但那条违规<b>必须已通过组织部审核</b>——
      * 未经核实的现场记录只是负责人的一面之词，不够格作为处罚依据（Row 41 F / Row 59）。</p>
+     *
+     * @param createdByFinalApprover 开单人是否持有 {@code honor:reward-punish-final}
      */
     @Transactional(rollbackFor = Exception.class)
-    public Long create(RewardPunishSaveDTO dto, Long adminId) {
+    public Long create(RewardPunishSaveDTO dto, Long adminId, boolean createdByFinalApprover) {
         int type = dto.getType();
         if (type != HonorRewardPunish.TYPE_REWARD && type != HonorRewardPunish.TYPE_PUNISH) {
             throw new BusinessException("奖惩类型只能是 1奖励 或 2处罚");
@@ -221,11 +237,32 @@ public class RewardPunishService {
         rp.setViolationId(dto.getViolationId());
         rp.setSanctionScope(dto.getSanctionScope());
         rp.setSanctionDays(dto.getSanctionDays());
-        rp.setReviewStatus(HonorRewardPunish.REVIEW_PENDING);
+        rp.setReviewStatus(initialReviewStatus(type, createdByFinalApprover));
         rp.setAppealStatus(HonorRewardPunish.APPEAL_NONE);
         rp.setCreateBy(adminId);
         insertWithNewNo(rp);
+        // 理事会自己开的单「开即通过」——效力（积分/处置/提示/申诉期）在这一刻就要全部落地，
+        // 而不是留一张 status=1 却什么也没发生的单。走的是与终审完全相同的那一段。
+        if (rp.getReviewStatus() == HonorRewardPunish.REVIEW_APPROVED) {
+            requireApprovableVolunteer(rp);
+            applyApproval(rp, adminId, LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
+        }
         return rp.getId();
+    }
+
+    /**
+     * 开单落在哪一档。<b>奖与惩不对称，这是协会答复的原文口径，不是简化。</b>
+     *
+     * <p>奖励不经组织部（「各部门都可以提出奖励申请，理事会审核」），故部门提出的奖励
+     * 直落待终审；处罚从下往上要先由组织部初审。两者的终点都是理事会。</p>
+     */
+    public static int initialReviewStatus(int type, boolean createdByFinalApprover) {
+        if (createdByFinalApprover) {
+            return HonorRewardPunish.REVIEW_APPROVED;
+        }
+        return type == HonorRewardPunish.TYPE_REWARD
+                ? HonorRewardPunish.REVIEW_FIRST_PASSED
+                : HonorRewardPunish.REVIEW_PENDING;
     }
 
     /**
@@ -288,10 +325,38 @@ public class RewardPunishService {
     // ---------- ② 审核 ----------
 
     /**
-     * 审核通过：此刻起对志愿者可见、积分入账、处置生效、7 天申诉期开始计时。
+     * <b>初审</b>（组织部）：{@code 0 待初审 → 3 待终审}。<b>不产生任何效力。</b>
+     *
+     * <p>协会 2026-09-02：「从下往上反馈的，由组织部的同学审核了，则到理事会审核」，
+     * 且「理事会没审完，志愿者不会看到处罚」。所以这一步<b>只是往前推一格</b>——
+     * 积分不入账、处置不施加、不发提示、申诉期也还没开始计时。
+     * <b>把任何一件放到这里，都等于让处罚在理事会点头之前就生效了。</b></p>
      */
     @Transactional(rollbackFor = Exception.class)
-    public void approve(Long id, Long adminId) {
+    public void firstApprove(Long id, Long adminId) {
+        LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
+        int rows = rewardPunishMapper.update(null, Wrappers.<HonorRewardPunish>lambdaUpdate()
+                .set(HonorRewardPunish::getReviewStatus, HonorRewardPunish.REVIEW_FIRST_PASSED)
+                .set(HonorRewardPunish::getFirstReviewBy, adminId)
+                .set(HonorRewardPunish::getFirstReviewTime, now)
+                .set(HonorRewardPunish::getUpdateTime, now)
+                .eq(HonorRewardPunish::getId, id)
+                .eq(HonorRewardPunish::getReviewStatus, HonorRewardPunish.REVIEW_PENDING));
+        if (rows != 1) {
+            throw new BusinessException("该奖惩单不存在或已初审");
+        }
+    }
+
+    /**
+     * <b>终审</b>（理事会）：{@code 3 待终审 → 1 已通过}。
+     * 此刻起对志愿者可见、积分入账、处置生效、7 天申诉期开始计时。
+     *
+     * <p><b>五件效力全在这一刻</b>，与理事会直接开单那条快捷通道走同一段代码
+     * （{@link #applyApproval}）——两条路产生的结果必须逐字相同，
+     * 分成两份实现迟早会漂开一件。</p>
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void finalApprove(Long id, Long adminId) {
         HonorRewardPunish rp = requireForUpdate(id);
         requireApprovableVolunteer(rp);
         // 【必须截到秒】appeal_deadline 是 DATETIME(fsp=0)，而 MySQL 对小数秒是【四舍五入】不是截断：
@@ -301,20 +366,41 @@ public class RewardPunishService {
         // （见 V2规划 第 5 批「一个实测修掉的坑」），当时只修了那一处；本处是漏网的另一处。
         // 判据：凡是【写进 DATETIME 又要拿内存值对外展示或比较】的时刻，都要先截。
         LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
-        LocalDateTime deadline = now.plusDays(honorProperties.getRewardPunish().getAppealDays());
-        // CAS：只有仍待审核的单可以被裁决。两人同时点，后一个必须落空而不是覆盖前一个的结论。
+        // CAS：只有【已初审待终审】的单可以被终审。两人同时点，后一个必须落空而不是覆盖前一个的结论。
+        // ⚠️ 这里必须是 eq(REVIEW_FIRST_PASSED) 而不是 ne(REVIEW_APPROVED)——
+        // 后者会让一张【还没初审】的处罚单被理事会一步批掉，绕过组织部那一关。
         int rows = rewardPunishMapper.update(null, Wrappers.<HonorRewardPunish>lambdaUpdate()
                 .set(HonorRewardPunish::getReviewStatus, HonorRewardPunish.REVIEW_APPROVED)
-                .set(HonorRewardPunish::getReviewedBy, adminId)
-                .set(HonorRewardPunish::getReviewTime, now)
-                // 申诉截止【落库定死】：现算意味着哪天把 7 改成 3，在途的申诉权会被追溯性缩短
-                .set(HonorRewardPunish::getAppealDeadline, deadline)
                 .set(HonorRewardPunish::getUpdateTime, now)
                 .eq(HonorRewardPunish::getId, id)
-                .eq(HonorRewardPunish::getReviewStatus, HonorRewardPunish.REVIEW_PENDING));
+                .eq(HonorRewardPunish::getReviewStatus, HonorRewardPunish.REVIEW_FIRST_PASSED));
         if (rows != 1) {
-            throw new BusinessException("该奖惩单不存在或已被审核");
+            throw new BusinessException("该奖惩单不存在，或尚未初审、已被终审");
         }
+        applyApproval(rp, adminId, now);
+    }
+
+    /**
+     * 「通过」这一刻的全部效力，<b>终审与理事会直接开单共用这一段</b>。
+     *
+     * <p>调用方必须已经把 {@code review_status} CAS 成 {@link HonorRewardPunish#REVIEW_APPROVED}
+     * （或在开单时直接落在该档），本方法只负责随之而来的五件事：
+     * 写终审痕迹与申诉截止、积分入账、处置生效、站内提示、短信。</p>
+     *
+     * <p><b>{@code now} 由调用方传入而不是各自取一次</b>：申诉截止、终审时间、站内提示里印的时刻
+     * 必须是同一个值。各取各的会让「告知的截止时刻」与「实际执行的截止时刻」差上几毫秒到一秒——
+     * 而 DATETIME(fsp=0) 是四舍五入不是截断，那点差可以变成整整一分钟。</p>
+     */
+    private void applyApproval(HonorRewardPunish rp, Long adminId, LocalDateTime now) {
+        Long id = rp.getId();
+        LocalDateTime deadline = now.plusDays(honorProperties.getRewardPunish().getAppealDays());
+        // 申诉截止【落库定死】：现算意味着哪天把 7 改成 3，在途的申诉权会被追溯性缩短
+        rewardPunishMapper.update(null, Wrappers.<HonorRewardPunish>lambdaUpdate()
+                .set(HonorRewardPunish::getReviewedBy, adminId)
+                .set(HonorRewardPunish::getReviewTime, now)
+                .set(HonorRewardPunish::getAppealDeadline, deadline)
+                .set(HonorRewardPunish::getUpdateTime, now)
+                .eq(HonorRewardPunish::getId, id));
         // 积分：审核通过才入账。source_id = 单据 id，uk_source(6, id) 保幂等（重复审核已被上面的 CAS 挡住）
         if (rp.getPointsDelta() != null && rp.getPointsDelta() != 0) {
             pointService.record(rp.getVolunteerId(), rp.getPointsDelta(),
@@ -384,9 +470,9 @@ public class RewardPunishService {
         String what = (rp.getCategory() == null ? "" : rp.getCategory())
                 + (rp.getTitle() == null || rp.getTitle().isBlank() ? "" : "（" + rp.getTitle() + "）");
         if (Integer.valueOf(HonorRewardPunish.TYPE_REWARD).equals(rp.getType())) {
-            return "奖励「" + what + "」已通过组织部审核，可在奖惩记录中查看详情。";
+            return "奖励「" + what + "」已通过理事会审核，可在奖惩记录中查看详情。";
         }
-        return "处罚「" + what + "」已通过组织部审核并即时生效，可在奖惩记录中查看详情。"
+        return "处罚「" + what + "」已通过理事会审核并即时生效，可在奖惩记录中查看详情。"
                 + "如有异议，请在 " + deadline.format(DEADLINE_FMT) + " 前提交申诉。";
     }
 
@@ -450,14 +536,19 @@ public class RewardPunishService {
         if (reason == null || reason.isBlank()) {
             throw new BusinessException("驳回必须填写原因");
         }
+        LocalDateTime now = LocalDateTime.now();
+        // 【两档都可驳回】组织部在初审时可以驳，理事会在终审时同样可以驳——
+        // 只允许 0 驳回的话，一张已初审的单到了理事会手上就只剩「批」这一条路。
+        // 已通过（1）与已驳回（2）不在此列：前者要走申诉，后者已是终态。
         int rows = rewardPunishMapper.update(null, Wrappers.<HonorRewardPunish>lambdaUpdate()
                 .set(HonorRewardPunish::getReviewStatus, HonorRewardPunish.REVIEW_REJECTED)
                 .set(HonorRewardPunish::getReviewedBy, adminId)
-                .set(HonorRewardPunish::getReviewTime, LocalDateTime.now())
+                .set(HonorRewardPunish::getReviewTime, now)
                 .set(HonorRewardPunish::getRejectReason, reason)
-                .set(HonorRewardPunish::getUpdateTime, LocalDateTime.now())
+                .set(HonorRewardPunish::getUpdateTime, now)
                 .eq(HonorRewardPunish::getId, id)
-                .eq(HonorRewardPunish::getReviewStatus, HonorRewardPunish.REVIEW_PENDING));
+                .in(HonorRewardPunish::getReviewStatus,
+                        HonorRewardPunish.REVIEW_PENDING, HonorRewardPunish.REVIEW_FIRST_PASSED));
         if (rows != 1) {
             throw new BusinessException("该奖惩单不存在或已被审核");
         }

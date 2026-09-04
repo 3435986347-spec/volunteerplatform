@@ -48,7 +48,7 @@ class OrganizationRbacTest {
 
     @Test
     void permissionsSeeded() {
-        assertEquals(51L, permissionMapper.selectCount(null),
+        assertEquals(52L, permissionMapper.selectCount(null),
                 "可分配权限点：V2 23 + V4 enroll-view + V10 活动 6 + V12 manager-flag + V16 补录 2 "
                         + "+ V19 发布审核 1 + V24 积分 2（points-view/points-adjust）"
                         + "+ V25 排行榜 2（ranking-view/ranking-snapshot）"
@@ -56,7 +56,8 @@ class OrganizationRbacTest {
                         + "+ V31 证书 3（certificate/certificate-delete/certificate-template）"
                         + "+ V32 奖惩 4（activity:violation-review / honor:reward-punish / "
                         + "reward-punish-appeal / sanction）"
-                        + "+ V36 honor:sanction-all（Row 73「监察部拥有全部限制能力」）= 51。"
+                        + "+ V36 honor:sanction-all（Row 73「监察部拥有全部限制能力」）"
+                        + "+ V40 honor:reward-punish-final（理事会终审，协会 2026-09-02 答复问题二）= 52。"
                         + "🛑 纸质的 honor:paper-apply / honor:paper-apply-pii 随纸质路径冻结，不在此列");
     }
 
