@@ -48,7 +48,7 @@ class OrganizationRbacTest {
 
     @Test
     void permissionsSeeded() {
-        assertEquals(56L, permissionMapper.selectCount(null),
+        assertEquals(57L, permissionMapper.selectCount(null),
                 "可分配权限点：V2 23 + V4 enroll-view + V10 活动 6 + V12 manager-flag + V16 补录 2 "
                         + "+ V19 发布审核 1 + V24 积分 2（points-view/points-adjust）"
                         + "+ V25 排行榜 2（ranking-view/ranking-snapshot）"
@@ -57,9 +57,11 @@ class OrganizationRbacTest {
                         + "+ V32 奖惩 4（activity:violation-review / honor:reward-punish / "
                         + "reward-punish-appeal / sanction）"
                         + "+ V36 honor:sanction-all（Row 73「监察部拥有全部限制能力」）"
-                        + "+ V41 商城 5（donate:goods / goods-audit / order / order-audit / verify）= 56。"
-                        + "⚠️ V2 第 5 批合入后会再多一个 honor:reward-punish-final（V40），届时本断言应为 57——它红了不是坏事，正是这条哨兵该起的作用。"
-                        + "⚠️ V3 全部落地后应为 63，各批各自加点时都要改这里——"
+                        + "+ V40 honor:reward-punish-final（理事会终审，协会 2026-09-02 答复问题二）"
+                        + "+ V41 商城 5（donate:goods / goods-audit / order / order-audit / verify）= 57。"
+                        + "⚠️ 这个 57 是 V2 合入时由本断言自己报出来的——合入前 v3-planning 上写的是 56，"
+                        + "并预告了「合入后应为 57」。它按预告变红，正是这条哨兵该起的作用。"
+                        + "⚠️ V3 全部落地后应为 64，各批各自加点时都要改这里——"
                         + "分批加点最容易漏的就是这条断言，而它正是防漏改的哨兵。"
                         + "🛑 纸质的 honor:paper-apply / honor:paper-apply-pii 随纸质路径冻结，不在此列");
     }

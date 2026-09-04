@@ -100,14 +100,14 @@ class RewardPunishServiceTest {
     @Test
     void pendingRecord_isInvisibleToVolunteer_untilApproved() {
         Long vid = insertVolunteer();
-        Long id = rewardPunishService.create(reward(vid, 200), ADMIN);
+        Long id = rewardPunishService.create(reward(vid, 200), ADMIN, false);
 
         assertTrue(rewardPunishService.myRecords(vid).isEmpty(),
                 "Row 41 F：审核才可显示——待审核的不该让志愿者看到");
         assertEquals(1, rewardPunishService.adminList(new PageQuery(), vid, null, null, null, false)
                 .getRecords().size(), "后台仍要看得到，否则没法审");
 
-        rewardPunishService.approve(id, ADMIN);
+        approveFully(id, ADMIN);
         List<RewardPunishVO> mine = rewardPunishService.myRecords(vid);
         assertEquals(1, mine.size(), "通过后才显示");
         assertEquals(200, mine.get(0).getPointsDelta());
@@ -117,12 +117,12 @@ class RewardPunishServiceTest {
     @Test
     void rejectedRecord_neverVisible_andNoPoints() {
         Long vid = insertVolunteer();
-        Long id = rewardPunishService.create(reward(vid, 50), ADMIN);
+        Long id = rewardPunishService.create(reward(vid, 50), ADMIN, false);
         rewardPunishService.reject(id, "证据不足", ADMIN);
 
         assertTrue(rewardPunishService.myRecords(vid).isEmpty());
         assertEquals(0, pointService.summary(vid).getBalance(), "驳回不入账");
-        assertThrows(BusinessException.class, () -> rewardPunishService.approve(id, ADMIN),
+        assertThrows(BusinessException.class, () -> approveFully(id, ADMIN),
                 "已裁决的单不能再审一次");
     }
 
@@ -136,12 +136,12 @@ class RewardPunishServiceTest {
         RewardPunishSaveDTO dto = punish(vid, 0);
         dto.setViolationId(violationId);
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> rewardPunishService.create(dto, ADMIN));
+                () -> rewardPunishService.create(dto, ADMIN, false));
         assertTrue(ex.getMessage().contains("尚未通过"), "实际：" + ex.getMessage());
 
         // 审过之后就可以了，且归属以违规记录为准
         violationReviewService.approve(violationId, ADMIN);
-        Long id = rewardPunishService.create(dto, ADMIN);
+        Long id = rewardPunishService.create(dto, ADMIN, false);
         HonorRewardPunish rp = rewardPunishMapper.selectById(id);
         assertEquals(vid, rp.getVolunteerId());
         assertEquals(f.activityId, rp.getActivityId(), "活动归属应从违规记录带出");
@@ -158,8 +158,8 @@ class RewardPunishServiceTest {
 
         RewardPunishSaveDTO dto = punish(vid, 0);
         dto.setViolationId(violationId);
-        rewardPunishService.create(dto, ADMIN);
-        assertThrows(BusinessException.class, () -> rewardPunishService.create(dto, ADMIN));
+        rewardPunishService.create(dto, ADMIN, false);
+        assertThrows(BusinessException.class, () -> rewardPunishService.create(dto, ADMIN, false));
     }
 
     /**
@@ -199,14 +199,14 @@ class RewardPunishServiceTest {
             assertEquals(0, countByViolation(violationId), "前置：这条违规还没开过单");
 
             // 另一条连接抢先开出第一张并提交
-            commitInOtherThread(() -> rewardPunishService.create(dto, ADMIN));
+            commitInOtherThread(() -> rewardPunishService.create(dto, ADMIN, false));
 
             assertEquals(0, countByViolation(violationId),
                     "RR 快照应仍读不到刚提交的那张单，否则本用例覆盖不到目标窗口"
                             + "（预查若能看见，走的就是那句友好报错的另一条分支）");
 
             BusinessException ex = assertThrows(BusinessException.class,
-                    () -> rewardPunishService.create(dto, ADMIN),
+                    () -> rewardPunishService.create(dto, ADMIN, false),
                     "撞 uk_active_violation 必须被翻译成业务冲突，而不是漏成数据库异常");
             assertTrue(ex.getMessage().contains("请勿重复开单"), "实际：" + ex.getMessage());
 
@@ -240,14 +240,14 @@ class RewardPunishServiceTest {
 
         RewardPunishSaveDTO dto = punish(vid, 0);
         dto.setViolationId(violationId);
-        Long first = rewardPunishService.create(dto, ADMIN);
+        Long first = rewardPunishService.create(dto, ADMIN, false);
         rewardPunishService.reject(first, "类别填错了，请重开", ADMIN);
 
-        Long second = rewardPunishService.create(dto, ADMIN);
+        Long second = rewardPunishService.create(dto, ADMIN, false);
         assertNotEquals(first, second, "驳回之后应当能就同一条违规重新开单");
 
         // 但「同时只能有一张未被驳回的单」这条不变量仍在
-        assertThrows(BusinessException.class, () -> rewardPunishService.create(dto, ADMIN),
+        assertThrows(BusinessException.class, () -> rewardPunishService.create(dto, ADMIN, false),
                 "第二张还在待审核，不该再开第三张");
     }
 
@@ -276,8 +276,8 @@ class RewardPunishServiceTest {
 
         RewardPunishSaveDTO dto = punish(vid, -50);
         dto.setViolationId(violationId);
-        Long first = rewardPunishService.create(dto, ADMIN);
-        rewardPunishService.approve(first, ADMIN);
+        Long first = rewardPunishService.create(dto, ADMIN, false);
+        approveFully(first, ADMIN);
         rewardPunishService.appeal(first, vid, appealDto());
         AppealHandleDTO handle = new AppealHandleDTO();
         handle.setUpheld(true);
@@ -286,11 +286,11 @@ class RewardPunishServiceTest {
 
         RewardPunishSaveDTO reissue = punish(vid, -100);
         reissue.setViolationId(violationId);
-        Long second = rewardPunishService.create(reissue, ADMIN);
+        Long second = rewardPunishService.create(reissue, ADMIN, false);
         assertNotEquals(first, second, "申诉成立之后应当能就同一条违规重新开单");
 
         // 「同时只能有一张有效单」这条不变量仍在——释放条件多了一种，不是取消了这个键
-        assertThrows(BusinessException.class, () -> rewardPunishService.create(reissue, ADMIN),
+        assertThrows(BusinessException.class, () -> rewardPunishService.create(reissue, ADMIN, false),
                 "第二张还在待审核，不该再开第三张");
     }
 
@@ -300,15 +300,15 @@ class RewardPunishServiceTest {
         Long vid = insertVolunteer();
         RewardPunishSaveDTO dto = reward(vid, 100);
         dto.setSanctionScope(SanctionScope.ACTIVITY);
-        assertThrows(BusinessException.class, () -> rewardPunishService.create(dto, ADMIN));
+        assertThrows(BusinessException.class, () -> rewardPunishService.create(dto, ADMIN, false));
     }
 
     /** 符号写反会让「处罚」给人加分，而列表上仍显示为处罚。 */
     @Test
     void pointsDelta_signMustMatchType() {
         Long vid = insertVolunteer();
-        assertThrows(BusinessException.class, () -> rewardPunishService.create(reward(vid, -10), ADMIN));
-        assertThrows(BusinessException.class, () -> rewardPunishService.create(punish(vid, 10), ADMIN));
+        assertThrows(BusinessException.class, () -> rewardPunishService.create(reward(vid, -10), ADMIN, false));
+        assertThrows(BusinessException.class, () -> rewardPunishService.create(punish(vid, 10), ADMIN, false));
     }
 
     // ---------- ② 处置的执行与到期 ----------
@@ -322,12 +322,12 @@ class RewardPunishServiceTest {
         RewardPunishSaveDTO dto = punish(vid, 0);
         dto.setSanctionScope(SanctionScope.ACTIVITY);
         dto.setSanctionDays(7);
-        Long id = rewardPunishService.create(dto, ADMIN);
+        Long id = rewardPunishService.create(dto, ADMIN, false);
 
         assertFalse(sanctionQueryService.isRestricted(vid, SanctionScope.ACTIVITY),
                 "审核通过前处置不得生效——待审核期间它只是一张草稿");
 
-        rewardPunishService.approve(id, ADMIN);
+        approveFully(id, ADMIN);
         assertTrue(sanctionQueryService.isRestricted(vid, SanctionScope.ACTIVITY));
 
         Fixture f = activityWithSlot();
@@ -350,8 +350,8 @@ class RewardPunishServiceTest {
         RewardPunishSaveDTO dto = punish(vid, 0);
         dto.setSanctionScope(SanctionScope.ACTIVITY);
         dto.setSanctionDays(7);
-        Long id = rewardPunishService.create(dto, ADMIN);
-        rewardPunishService.approve(id, ADMIN);
+        Long id = rewardPunishService.create(dto, ADMIN, false);
+        approveFully(id, ADMIN);
         assertTrue(sanctionQueryService.isRestricted(vid, SanctionScope.ACTIVITY));
 
         VolunteerSanction s = sanctionMapper.selectOne(Wrappers.<VolunteerSanction>lambdaQuery()
@@ -373,8 +373,8 @@ class RewardPunishServiceTest {
         Long vid = insertVolunteer();
         RewardPunishSaveDTO dto = punish(vid, 0);
         dto.setSanctionScope(SanctionScope.ALL);
-        Long id = rewardPunishService.create(dto, ADMIN);
-        rewardPunishService.approve(id, ADMIN);
+        Long id = rewardPunishService.create(dto, ADMIN, false);
+        approveFully(id, ADMIN);
 
         assertTrue(sanctionQueryService.isRestricted(vid, SanctionScope.ACTIVITY));
         assertTrue(sanctionQueryService.isRestricted(vid, SanctionScope.COMMUNITY));
@@ -392,8 +392,8 @@ class RewardPunishServiceTest {
     @Test
     void reward_cannotBeAppealed() {
         Long vid = insertVolunteer();
-        Long id = rewardPunishService.create(reward(vid, 100), ADMIN);
-        rewardPunishService.approve(id, ADMIN);
+        Long id = rewardPunishService.create(reward(vid, 100), ADMIN, false);
+        approveFully(id, ADMIN);
 
         assertFalse(rewardPunishService.myRecords(vid).get(0).getAppealable());
         BusinessException ex = assertThrows(BusinessException.class,
@@ -405,8 +405,8 @@ class RewardPunishServiceTest {
     @Test
     void appeal_afterDeadline_isRejected() {
         Long vid = insertVolunteer();
-        Long id = rewardPunishService.create(punish(vid, 0), ADMIN);
-        rewardPunishService.approve(id, ADMIN);
+        Long id = rewardPunishService.create(punish(vid, 0), ADMIN, false);
+        approveFully(id, ADMIN);
 
         HonorRewardPunish rp = rewardPunishMapper.selectById(id);
         assertNotNull(rp.getAppealDeadline(), "审核通过时必须把截止时刻写死");
@@ -429,8 +429,8 @@ class RewardPunishServiceTest {
     void appeal_othersRecord_isRejected() {
         Long vid = insertVolunteer();
         Long intruder = insertVolunteer();
-        Long id = rewardPunishService.create(punish(vid, 0), ADMIN);
-        rewardPunishService.approve(id, ADMIN);
+        Long id = rewardPunishService.create(punish(vid, 0), ADMIN, false);
+        approveFully(id, ADMIN);
 
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> rewardPunishService.appeal(id, intruder, appealDto()));
@@ -441,8 +441,8 @@ class RewardPunishServiceTest {
     @Test
     void appeal_twice_isRejected() {
         Long vid = insertVolunteer();
-        Long id = rewardPunishService.create(punish(vid, 0), ADMIN);
-        rewardPunishService.approve(id, ADMIN);
+        Long id = rewardPunishService.create(punish(vid, 0), ADMIN, false);
+        approveFully(id, ADMIN);
         rewardPunishService.appeal(id, vid, appealDto());
 
         assertThrows(BusinessException.class, () -> rewardPunishService.appeal(id, vid, appealDto()));
@@ -461,8 +461,8 @@ class RewardPunishServiceTest {
         RewardPunishSaveDTO dto = punish(vid, -50);
         dto.setSanctionScope(SanctionScope.ACTIVITY);
         dto.setSanctionDays(7);
-        Long id = rewardPunishService.create(dto, ADMIN);
-        rewardPunishService.approve(id, ADMIN);
+        Long id = rewardPunishService.create(dto, ADMIN, false);
+        approveFully(id, ADMIN);
 
         assertEquals(-50, pointService.summary(vid).getBalance(), "审核通过即扣分");
         assertTrue(sanctionQueryService.isRestricted(vid, SanctionScope.ACTIVITY));
@@ -497,8 +497,8 @@ class RewardPunishServiceTest {
         RewardPunishSaveDTO dto = punish(vid, -30);
         dto.setSanctionScope(SanctionScope.ACTIVITY);
         dto.setSanctionDays(3);
-        Long id = rewardPunishService.create(dto, ADMIN);
-        rewardPunishService.approve(id, ADMIN);
+        Long id = rewardPunishService.create(dto, ADMIN, false);
+        approveFully(id, ADMIN);
         rewardPunishService.appeal(id, vid, appealDto());
 
         AppealHandleDTO handle = new AppealHandleDTO();
@@ -552,7 +552,7 @@ class RewardPunishServiceTest {
         RewardPunishSaveDTO dto = punish(vid, 0);
         dto.setSanctionScope(SanctionScope.ACTIVITY);
         dto.setSanctionDays(7);
-        rewardPunishService.approve(rewardPunishService.create(dto, ADMIN), ADMIN);
+        approveFully(rewardPunishService.create(dto, ADMIN, false), ADMIN);
 
         Fixture f = activityWithSlot();
         BusinessException ex = assertThrows(BusinessException.class,
@@ -565,7 +565,7 @@ class RewardPunishServiceTest {
     @Test
     void create_forNonexistentVolunteer_isRejected() {
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> rewardPunishService.create(reward(999_999_999L, 10), ADMIN));
+                () -> rewardPunishService.create(reward(999_999_999L, 10), ADMIN, false));
         assertTrue(ex.getMessage().contains("不存在"), "实际：" + ex.getMessage());
     }
 
@@ -574,9 +574,9 @@ class RewardPunishServiceTest {
     void create_withUnboundedPoints_isRejected() {
         Long vid = insertVolunteer();
         assertThrows(BusinessException.class,
-                () -> rewardPunishService.create(punish(vid, Integer.MIN_VALUE), ADMIN));
+                () -> rewardPunishService.create(punish(vid, Integer.MIN_VALUE), ADMIN, false));
         assertThrows(BusinessException.class,
-                () -> rewardPunishService.create(reward(vid, Integer.MAX_VALUE), ADMIN));
+                () -> rewardPunishService.create(reward(vid, Integer.MAX_VALUE), ADMIN, false));
     }
 
     /** 只填天数不填范围 = 一条「有期限但什么也不限制」的单；天数也必须有上限。 */
@@ -585,12 +585,12 @@ class RewardPunishServiceTest {
         Long vid = insertVolunteer();
         RewardPunishSaveDTO noScope = punish(vid, 0);
         noScope.setSanctionDays(7);
-        assertThrows(BusinessException.class, () -> rewardPunishService.create(noScope, ADMIN));
+        assertThrows(BusinessException.class, () -> rewardPunishService.create(noScope, ADMIN, false));
 
         RewardPunishSaveDTO tooLong = punish(vid, 0);
         tooLong.setSanctionScope(SanctionScope.ACTIVITY);
         tooLong.setSanctionDays(Integer.MAX_VALUE);
-        assertThrows(BusinessException.class, () -> rewardPunishService.create(tooLong, ADMIN),
+        assertThrows(BusinessException.class, () -> rewardPunishService.create(tooLong, ADMIN, false),
                 "now.plusDays(Integer.MAX_VALUE) 会直接抛 DateTimeException");
     }
 
@@ -638,11 +638,11 @@ class RewardPunishServiceTest {
     @Test
     void approve_afterVolunteerGone_isRejected() {
         Long vid = insertVolunteer();
-        Long id = rewardPunishService.create(punish(vid, -10), ADMIN);
+        Long id = rewardPunishService.create(punish(vid, -10), ADMIN, false);
         volunteerMapper.deleteById(vid);
 
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> rewardPunishService.approve(id, ADMIN));
+                () -> approveFully(id, ADMIN));
         assertTrue(ex.getMessage().contains("已不存在"), "实际：" + ex.getMessage());
     }
 
@@ -659,14 +659,14 @@ class RewardPunishServiceTest {
         RewardPunishSaveDTO dto = punish(vid, -10);
         dto.setSanctionScope(SanctionScope.ACTIVITY);
         dto.setSanctionDays(7);
-        Long id = rewardPunishService.create(dto, ADMIN);
+        Long id = rewardPunishService.create(dto, ADMIN, false);
         Volunteer gone = new Volunteer();
         gone.setId(vid);
         gone.setStatus(UserStatus.DELETED);
         volunteerMapper.updateById(gone);
 
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> rewardPunishService.approve(id, ADMIN));
+                () -> approveFully(id, ADMIN));
         assertTrue(ex.getMessage().contains("已注销"), "实际：" + ex.getMessage());
         assertEquals(0, pointService.summary(vid).getBalance(), "不得入账");
         assertFalse(sanctionQueryService.isRestricted(vid, SanctionScope.ACTIVITY), "不得施加处置");
@@ -697,18 +697,18 @@ class RewardPunishServiceTest {
     @Test
     void approve_afterVolunteerBanned_proceedsForBothRewardAndPunish() {
         Long vid = insertVolunteer();
-        Long rewardId = rewardPunishService.create(reward(vid, 20), ADMIN);
+        Long rewardId = rewardPunishService.create(reward(vid, 20), ADMIN, false);
         RewardPunishSaveDTO punishDto = punish(vid, -10);
         punishDto.setSanctionScope(SanctionScope.ACTIVITY);
         punishDto.setSanctionDays(7);
-        Long punishId = rewardPunishService.create(punishDto, ADMIN);
+        Long punishId = rewardPunishService.create(punishDto, ADMIN, false);
         Volunteer banned = new Volunteer();
         banned.setId(vid);
         banned.setStatus(UserStatus.BANNED);
         volunteerMapper.updateById(banned);
 
-        rewardPunishService.approve(rewardId, ADMIN);
-        rewardPunishService.approve(punishId, ADMIN);
+        approveFully(rewardId, ADMIN);
+        approveFully(punishId, ADMIN);
 
         assertEquals(10, pointService.summary(vid).getBalance(), "两张单都该入账：+20 奖励、-10 处罚");
         assertTrue(sanctionQueryService.isRestricted(vid, SanctionScope.ACTIVITY), "处置照常施加");
@@ -736,10 +736,10 @@ class RewardPunishServiceTest {
     @Test
     void approve_leavesNotificationWithAppealDeadline() {
         Long vid = insertVolunteer();
-        Long punishId = rewardPunishService.create(punish(vid, -5), ADMIN);
+        Long punishId = rewardPunishService.create(punish(vid, -5), ADMIN, false);
         assertEquals(0, notificationService.unreadCount(vid), "审核前不该有任何提示");
 
-        rewardPunishService.approve(punishId, ADMIN);
+        approveFully(punishId, ADMIN);
 
         // 断言 records 而不是 total：分页插件只注册在 api 模块，honor 的测试上下文没有它，
         // 无插件时 selectPage 照常返回记录、total 恒为 0（详见 NotificationServiceTest 抬头）
@@ -777,7 +777,7 @@ class RewardPunishServiceTest {
     @Test
     void mysqlRoundsFractionalSecondsUp_whichIsWhyApproveTruncatesToSeconds() {
         Long vid = insertVolunteer();
-        Long id = rewardPunishService.create(punish(vid, -5), ADMIN);
+        Long id = rewardPunishService.create(punish(vid, -5), ADMIN, false);
 
         HonorRewardPunish patch = new HonorRewardPunish();
         patch.setId(id);
@@ -793,9 +793,9 @@ class RewardPunishServiceTest {
     @Test
     void approve_rewardNotification_doesNotMentionAppeal() {
         Long vid = insertVolunteer();
-        Long rewardId = rewardPunishService.create(reward(vid, 20), ADMIN);
+        Long rewardId = rewardPunishService.create(reward(vid, 20), ADMIN, false);
 
-        rewardPunishService.approve(rewardId, ADMIN);
+        approveFully(rewardId, ADMIN);
 
         VolunteerNotification n = notificationService.myNotifications(vid, new PageQuery())
                 .getRecords().get(0);
@@ -810,7 +810,7 @@ class RewardPunishServiceTest {
     @Test
     void reject_leavesNoNotification() {
         Long vid = insertVolunteer();
-        Long id = rewardPunishService.create(punish(vid, -5), ADMIN);
+        Long id = rewardPunishService.create(punish(vid, -5), ADMIN, false);
 
         rewardPunishService.reject(id, "证据不足", ADMIN);
 
@@ -853,10 +853,33 @@ class RewardPunishServiceTest {
     }
 
     /** 开一张已通过审核并已提交申诉的处罚单，返回单据 id。 */
+    // ---------- 两级审核的测试助手（协会 2026-09-02 答复问题二） ----------
+
+    /**
+     * 把一张单一路推到「已通过」。
+     *
+     * <p>改造前 {@code approve} 一步到位，本类几十处用例都建立在那之上。改造后它成了两步，
+     * 但那些用例断言的是<b>「通过之后应当怎样」</b>——积分入账、处置生效、提示送达——
+     * 这些性质没有改变，只是发生的时刻从初审挪到了终审。故用本助手把两步合起来，
+     * 让原有断言继续覆盖它们原本要覆盖的东西。</p>
+     *
+     * <p><b>两级审核本身由 {@link RewardPunishTwoStageTest} 单独钉住</b>，不靠这些用例——
+     * 它们要是能顺带证明两级，说明本助手写得不对。</p>
+     *
+     * <p>按当前状态决定要不要先初审：处罚从 0 起步，奖励开单即落 3（不经组织部）。</p>
+     */
+    private void approveFully(Long id, Long adminId) {
+        HonorRewardPunish rp = rewardPunishMapper.selectById(id);
+        if (rp != null && Integer.valueOf(HonorRewardPunish.REVIEW_PENDING).equals(rp.getReviewStatus())) {
+            rewardPunishService.firstApprove(id, adminId);
+        }
+        rewardPunishService.finalApprove(id, adminId);
+    }
+
     private Long appealedPunish() {
         Long vid = insertVolunteer();
-        Long id = rewardPunishService.create(punish(vid, -5), ADMIN);
-        rewardPunishService.approve(id, ADMIN);
+        Long id = rewardPunishService.create(punish(vid, -5), ADMIN, false);
+        approveFully(id, ADMIN);
         rewardPunishService.appeal(id, vid, appealDto());
         return id;
     }
@@ -875,7 +898,7 @@ class RewardPunishServiceTest {
         volunteerMapper.updateById(gone);
 
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> rewardPunishService.create(punish(vid, -10), ADMIN));
+                () -> rewardPunishService.create(punish(vid, -10), ADMIN, false));
         assertTrue(ex.getMessage().contains("已注销"), "实际：" + ex.getMessage());
     }
 
@@ -906,9 +929,9 @@ class RewardPunishServiceTest {
     @Test
     void appealOnlyViewer_seesOnlyAppealedOrders() {
         Long vid = insertVolunteer();
-        Long draft = rewardPunishService.create(punish(vid, 0), ADMIN);
-        Long appealed = rewardPunishService.create(punish(vid, 0), ADMIN);
-        rewardPunishService.approve(appealed, ADMIN);
+        Long draft = rewardPunishService.create(punish(vid, 0), ADMIN, false);
+        Long appealed = rewardPunishService.create(punish(vid, 0), ADMIN, false);
+        approveFully(appealed, ADMIN);
         rewardPunishService.appeal(appealed, vid, appealDto());
 
         var full = rewardPunishService.adminList(new PageQuery(), vid, null, null, null, false);

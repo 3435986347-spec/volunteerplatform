@@ -75,8 +75,8 @@ public class AdminRewardPunishController {
      * 第一次改这条时只做了放宽、忘了收窄。</p>
      */
     @Operation(summary = "奖惩单列表（可按志愿者/类型/审核状态/申诉状态筛）")
-    @SaCheckPermission(value = {PermissionCode.HONOR_REWARD_PUNISH, PermissionCode.HONOR_REWARD_PUNISH_APPEAL},
-            mode = SaMode.OR, type = "admin")
+    @SaCheckPermission(value = {PermissionCode.HONOR_REWARD_PUNISH, PermissionCode.HONOR_REWARD_PUNISH_APPEAL,
+            PermissionCode.HONOR_REWARD_PUNISH_FINAL}, mode = SaMode.OR, type = "admin")
     @GetMapping("/reward-punishes")
     public Result<PageResult<RewardPunishVO>> list(PageQuery query,
                                                    @Parameter(description = "志愿者 id") @RequestParam(required = false) Long volunteerId,
@@ -116,7 +116,13 @@ public class AdminRewardPunishController {
     public Result<Long> create(@RequestBody @Valid RewardPunishSaveDTO dto) {
         assertScopeAllowed(dto.getSanctionScope(),
                 StpAdminUtil.STP_LOGIC.hasPermission(PermissionCode.HONOR_SANCTION_ALL));
-        return Result.ok(rewardPunishService.create(dto, StpAdminUtil.getLoginIdAsLong()));
+        // 【快捷通道的判据是开单人的权限，不是请求体里的开关】持终审权 = 理事会开单 = 开即通过。
+        // 做成开关的话，任何有开单权的人都能给自己开一条免审通道，两级审核就成了自愿参加的。
+        // 与 assertScopeAllowed 同一形状：能不能这么做是【授权】问题，
+        // 而 @SaCheckPermission 表达不了「取决于开单人是谁」。
+        boolean byFinalApprover =
+                StpAdminUtil.STP_LOGIC.hasPermission(PermissionCode.HONOR_REWARD_PUNISH_FINAL);
+        return Result.ok(rewardPunishService.create(dto, StpAdminUtil.getLoginIdAsLong(), byFinalApprover));
     }
 
     /**
@@ -147,16 +153,44 @@ public class AdminRewardPunishController {
         }
     }
 
-    @Operation(summary = "审核通过（此刻起对志愿者可见、积分入账、处置生效、申诉期开始计时）")
+    /**
+     * <b>初审</b>（组织部）：待初审 → 待终审。<b>不产生任何效力。</b>
+     *
+     * <p>协会 2026-09-02：「从下往上反馈的，由组织部的同学审核了，则到理事会审核」，
+     * 且「理事会没审完，志愿者不会看到处罚」——所以这一步只是往前推一格，
+     * 积分、处置、提示、申诉期计时全都还没开始。</p>
+     */
+    @Operation(summary = "初审通过（组织部；仅推进到待终审，不产生任何效力）")
     @SaCheckPermission(value = PermissionCode.HONOR_REWARD_PUNISH, type = "admin")
     @PostMapping("/reward-punishes/{id}/approve")
-    public Result<Void> approve(@PathVariable Long id) {
-        rewardPunishService.approve(id, StpAdminUtil.getLoginIdAsLong());
+    public Result<Void> firstApprove(@PathVariable Long id) {
+        rewardPunishService.firstApprove(id, StpAdminUtil.getLoginIdAsLong());
         return Result.ok();
     }
 
-    @Operation(summary = "审核驳回（须填原因；志愿者始终看不到这张单）")
-    @SaCheckPermission(value = PermissionCode.HONOR_REWARD_PUNISH, type = "admin")
+    /**
+     * <b>终审</b>（理事会）：待终审 → 已通过。效力在这一刻全部落地。
+     *
+     * <p>持有本权限的人开单时会走「开即通过」的快捷通道（见 {@link #create}），
+     * 那条路与本接口产生的结果逐字相同。</p>
+     */
+    @Operation(summary = "终审通过（理事会；此刻起对志愿者可见、积分入账、处置生效、申诉期开始计时）")
+    @SaCheckPermission(value = PermissionCode.HONOR_REWARD_PUNISH_FINAL, type = "admin")
+    @PostMapping("/reward-punishes/{id}/final-approve")
+    public Result<Void> finalApprove(@PathVariable Long id) {
+        rewardPunishService.finalApprove(id, StpAdminUtil.getLoginIdAsLong());
+        return Result.ok();
+    }
+
+    /**
+     * 驳回：<b>初审与终审两档都可以驳</b>。
+     *
+     * <p>只让初审驳的话，一张已初审的单到了理事会手上就只剩「批」这一条路。
+     * 权限上兼容两方：持开单/初审权或终审权都可驳回。</p>
+     */
+    @Operation(summary = "审核驳回（初审、终审均可；须填原因；志愿者始终看不到这张单）")
+    @SaCheckPermission(value = {PermissionCode.HONOR_REWARD_PUNISH, PermissionCode.HONOR_REWARD_PUNISH_FINAL},
+            mode = SaMode.OR, type = "admin")
     @PostMapping("/reward-punishes/{id}/reject")
     public Result<Void> reject(@PathVariable Long id, @RequestBody @Valid RejectReasonDTO dto) {
         rewardPunishService.reject(id, dto.getReason(), StpAdminUtil.getLoginIdAsLong());

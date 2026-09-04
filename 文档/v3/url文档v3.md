@@ -177,4 +177,4 @@
 | `trade:refund` | 退款 | trade 批 |
 
 > ⚠️ **每加一个都必须同步 `OrganizationRbacTest.permissionsSeeded` 的总数断言**（当前 51）——
-> 那条断言就是防漏改的哨兵。V3 全部落地后应为 **63**。
+> 那条断言就是防漏改的哨兵。V2 第 5 批合入后基线已是 **57**（多了 `honor:reward-punish-final`），**V3 全部落地后应为 64**。

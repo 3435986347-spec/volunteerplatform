@@ -81,6 +81,29 @@ public final class PermissionCode {
      */
     public static final String HONOR_REWARD_PUNISH_APPEAL = "honor:reward-punish-appeal";
 
+    /**
+     * 奖惩<b>理事会终审</b>（协会 2026-09-02 答复问题二）。
+     *
+     * <p>协会答复合起来是<b>两级审核 + 一条快捷通道，且奖与惩不对称</b>：</p>
+     * <ul>
+     *   <li>处罚 · 从下往上：{@link #HONOR_REWARD_PUNISH} 初审 → 本点终审；</li>
+     *   <li>处罚 · 理事会开单（紧急）：开即通过；</li>
+     *   <li>奖励 · 部门提出：直落待终审，<b>不经组织部</b>；</li>
+     *   <li>奖励 · 理事会发起：开即通过。</li>
+     * </ul>
+     *
+     * <p><b>本点同时是「快捷通道」的判据</b>：开单人持有它 ⇒ 视为理事会开单 ⇒ 开即通过。
+     * 所以授予本点等于同时授予「免审开单」的能力，<b>授权时要当成一件事看</b>。</p>
+     *
+     * <p><b>为什么判据是权限而不是请求体里的一个开关</b>：做成开关的话，
+     * 任何有开单权的人都能给自己开一条免审通道，两级审核就成了自愿参加的。
+     * 与 {@link #HONOR_SANCTION_ALL} 同一形状——能不能这么做是<b>授权</b>问题。</p>
+     *
+     * <p>⚠️ 具体授给哪些账号是<b>上线前的授权工作</b>：现有权限点里没有「理事会」这一层
+     * （五部门并成三部门之后，理事会在三部门之上）。见《协会待确认清单》回执三的新问题 G。</p>
+     */
+    public static final String HONOR_REWARD_PUNISH_FINAL = "honor:reward-punish-final";
+
     /** 处置措施解除（第 5 批；管理员主动撤销限制。申诉成立时由系统自动解除，不走这个点） */
     public static final String HONOR_SANCTION = "honor:sanction";
 

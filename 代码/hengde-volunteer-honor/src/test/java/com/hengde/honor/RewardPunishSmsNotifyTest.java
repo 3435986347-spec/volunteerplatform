@@ -46,6 +46,8 @@ class RewardPunishSmsNotifyTest {
     @Autowired
     private RewardPunishService rewardPunishService;
     @Autowired
+    private com.hengde.honor.dao.HonorRewardPunishMapper rewardPunishMapper;
+    @Autowired
     private RecordingSmsService sms;
     @Autowired
     private VolunteerMapper volunteerMapper;
@@ -60,7 +62,7 @@ class RewardPunishSmsNotifyTest {
     @Test
     void pendingReview_sendsNothing() {
         Long vid = insertVolunteer("13933330001");
-        rewardPunishService.create(punish(vid, "活动期间玩手机", -20), ADMIN);
+        rewardPunishService.create(punish(vid, "活动期间玩手机", -20), ADMIN, false);
 
         assertTrue(sms.all().isEmpty(),
                 "Row 41 F 是「审核之后才可显示」——待审核期间它对志愿者根本不存在，更不该发短信");
@@ -69,10 +71,10 @@ class RewardPunishSmsNotifyTest {
     @Test
     void approvedPunish_sendsWithTypeTitleAndPoints() {
         Long vid = insertVolunteer("13933330002");
-        Long id = rewardPunishService.create(punish(vid, "活动期间玩手机", -20), ADMIN);
+        Long id = rewardPunishService.create(punish(vid, "活动期间玩手机", -20), ADMIN, false);
         sms.clear();
 
-        rewardPunishService.approve(id, ADMIN);
+        approveFully(id, ADMIN);
 
         List<RecordingSmsService.Sent> sent = sms.byTemplateId("T-REWARD-PUNISH");
         assertEquals(1, sent.size());
@@ -91,10 +93,10 @@ class RewardPunishSmsNotifyTest {
         dto.setCategory("积极参加活动");
         dto.setTitle("推荐评选优秀志愿者");
         dto.setPointsDelta(200);
-        Long id = rewardPunishService.create(dto, ADMIN);
+        Long id = rewardPunishService.create(dto, ADMIN, false);
         sms.clear();
 
-        rewardPunishService.approve(id, ADMIN);
+        approveFully(id, ADMIN);
 
         List<RecordingSmsService.Sent> sent = sms.byTemplateId("T-REWARD-PUNISH");
         assertEquals(1, sent.size());
@@ -105,10 +107,10 @@ class RewardPunishSmsNotifyTest {
     @Test
     void approvedPunish_smsCannotCarryAppealDeadline_knownGap() {
         Long vid = insertVolunteer("13933330004");
-        Long id = rewardPunishService.create(punish(vid, "早退", 0), ADMIN);
+        Long id = rewardPunishService.create(punish(vid, "早退", 0), ADMIN, false);
         sms.clear();
 
-        rewardPunishService.approve(id, ADMIN);
+        approveFully(id, ADMIN);
 
         // 【这是缺口不是行为】协会报备的模板正文只有 type/title/points 三个占位，
         // 没有地方写「几号之前可以申诉」。而 Row 41 F 把「收到提示」和「7 天申诉期」写在同一句话里。
@@ -141,4 +143,20 @@ class RewardPunishSmsNotifyTest {
         volunteerMapper.insert(v);
         return v.getId();
     }
+
+    /**
+     * 推到「已通过」。两级审核改造后效力全在<b>终审</b>那一刻，
+     * 本类断言的是「通过之后发了什么短信」，故把两步合起来。
+     * 两级审核本身由 {@link RewardPunishTwoStageTest} 钉住。
+     */
+    private void approveFully(Long id, Long adminId) {
+        // 只有处罚才从「待初审」起步；奖励开单即落「待终审」（不经组织部），
+        // 对它调 firstApprove 会正确地报「已初审」——那是新模型在起作用，不是用例写错了。
+        if (Integer.valueOf(HonorRewardPunish.REVIEW_PENDING)
+                .equals(rewardPunishMapper.selectById(id).getReviewStatus())) {
+            rewardPunishService.firstApprove(id, adminId);
+        }
+        rewardPunishService.finalApprove(id, adminId);
+    }
+
 }
