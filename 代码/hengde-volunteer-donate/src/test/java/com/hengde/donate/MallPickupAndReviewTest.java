@@ -26,6 +26,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -195,7 +196,33 @@ class MallPickupAndReviewTest {
 
     @Test
     void verifyRequiresOperator() {
-        assertThrows(BusinessException.class, () -> orderService.verify("PUM23456789A", null));
+        assertThrows(BusinessException.class, () -> orderService.verify("PUM23456789AB", null));
+    }
+
+    /**
+     * 「抄错了一位」与「没这单」必须分得开。
+     *
+     * <p>柜台前的人拿到「取货码无效」时无从判断该让志愿者重抄一遍、还是去查订单出了什么问题。
+     * <b>区分在这里是安全的</b>：码长与字母表印在志愿者自己的条码上，本就是公开信息。</p>
+     *
+     * <p>⚠️ 但<b>只分这一刀</b>：形态合法却不属于商城域的码，仍与「查无此单」共用一句
+     * （见 {@link #certificateDomainCodeIsRejectedEvenWhenSuchAnOrderExists}）——
+     * 分开报等于告诉持码人「你这码是真的，只是走错了窗口」。</p>
+     */
+    @Test
+    void malformedCodeIsDistinguishedFromUnknownCode() {
+        BusinessException malformed = assertThrows(BusinessException.class,
+                () -> orderService.verify("PUM0O1IABCDEF", ADMIN_ID), "含 0/1/I/O 的一定是抄错的");
+        BusinessException unknown = assertThrows(BusinessException.class,
+                () -> orderService.verify(PickupCodeUtil.generate(PickupCodeUtil.DOMAIN_MALL), ADMIN_ID),
+                "形态合法但库里没有");
+
+        assertTrue(malformed.getMessage().contains("格式"),
+                "抄错了要说是格式问题：" + malformed.getMessage());
+        assertFalse(unknown.getMessage().contains("格式"),
+                "查无此单不能报成格式问题：" + unknown.getMessage());
+        assertNotEquals(malformed.getMessage(), unknown.getMessage(),
+                "两种失败合用一句话，柜台就分不清该重抄还是该查单");
     }
 
     // ---------------- 评价的资格闸门 ----------------

@@ -8,10 +8,13 @@ import com.hengde.common.page.PageResult;
 import com.hengde.common.result.Result;
 import com.hengde.donate.constant.PermissionCode;
 import com.hengde.donate.dto.GoodsDisplayDTO;
+import com.hengde.donate.dto.ExchangeRuleSaveDTO;
 import com.hengde.donate.dto.MallGoodsSaveDTO;
 import com.hengde.donate.dto.RejectReasonDTO;
+import com.hengde.donate.service.MallExchangeRuleService;
 import com.hengde.donate.service.MallGoodsService;
 import com.hengde.donate.service.MallReviewService;
+import com.hengde.donate.vo.ExchangeRuleVO;
 import com.hengde.donate.vo.MallGoodsVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -44,6 +47,12 @@ public class AdminMallGoodsController {
 
     private MallGoodsService goodsService;
     private MallReviewService reviewService;
+    private MallExchangeRuleService exchangeRuleService;
+
+    @Autowired
+    public void setExchangeRuleService(MallExchangeRuleService exchangeRuleService) {
+        this.exchangeRuleService = exchangeRuleService;
+    }
 
     @Autowired
     public void setGoodsService(MallGoodsService goodsService) {
@@ -130,6 +139,28 @@ public class AdminMallGoodsController {
     @PostMapping("/goods/{id}/reject")
     public Result<Void> reject(@PathVariable Long id, @Valid @RequestBody RejectReasonDTO dto) {
         goodsService.reject(id, dto.getReason(), StpAdminUtil.getLoginIdAsLong());
+        return Result.ok();
+    }
+
+    /**
+     * 兑换规则读写<b>复用 {@code donate:goods}，不新增权限点</b>。
+     *
+     * <p>拆权限要有「谁能改 A 但不能改 B」的现实需求，这里没有——
+     * {@code user:export} 那次拆开是因为导出的数据敏感度不同，不是同一回事。
+     * 记在这里，免得下次有人觉得该拆。</p>
+     */
+    @Operation(summary = "兑换规则（当前值；与志愿者端同一份）")
+    @SaCheckPermission(value = PermissionCode.DONATE_GOODS, type = "admin")
+    @GetMapping("/exchange-rules")
+    public Result<ExchangeRuleVO> exchangeRules() {
+        return Result.ok(exchangeRuleService.get());
+    }
+
+    @Operation(summary = "保存兑换规则（覆盖式，无版本；图片走 /a/files/upload?dir=exchange-rule）")
+    @SaCheckPermission(value = PermissionCode.DONATE_GOODS, type = "admin")
+    @PutMapping("/exchange-rules")
+    public Result<Void> saveExchangeRules(@Valid @RequestBody ExchangeRuleSaveDTO dto) {
+        exchangeRuleService.save(dto, StpAdminUtil.getLoginIdAsLong());
         return Result.ok();
     }
 

@@ -65,6 +65,7 @@
 | DELETE | /v/donate/orders/{id} | 取消兑换（**退分 + 还库存**，D6） | 需登录 |
 | POST | /v/donate/orders/{id}/reviews | 评价（**须真兑换过**——资格闸门，比照 `submitReview`） | 需登录 |
 | GET | /v/donate/reviews/mine | 我的评价 | 需登录 |
+| GET | /v/donate/exchange-rules | 兑换规则（文字 + 图片，Row 8 C）；**单行、无版本**，未填写时返回空内容而非报错 | 需登录 |
 | GET | /v/donate/exchange-records | 全部兑换记录（**Row 8 C 要求「全部人的」**，隐私待确认 ⑯ 相邻项） | 需登录 |
 | GET | /v/donate/coupons/mine | **⬜ 卷批** · 我的卷 | 需登录 |
 
@@ -81,6 +82,8 @@
 | POST | /a/donate/goods/{id}/submit | 提交审核 | 需登录（donate:goods） |
 | POST | /a/donate/goods/{id}/approve | 审核通过 | 需登录（donate:goods-audit） |
 | POST | /a/donate/goods/{id}/reject | 审核驳回 | 需登录（donate:goods-audit） |
+| GET | /a/donate/exchange-rules | 兑换规则当前值（与志愿者端同一份，无内部字段） | 需登录（donate:goods） |
+| PUT | /a/donate/exchange-rules | 保存兑换规则（**覆盖式、无版本**；图片走 `/a/files/upload?dir=exchange-rule`） | 需登录（donate:goods） |
 | DELETE | /a/donate/reviews/{id} | 下架不当评价（逻辑删除，**不新增权限点**，同活动留言下架） | 需登录（donate:goods） |
 | GET | /a/donate/orders | 兑换单列表（`?keyword=` 订单号 / 商品名 / 兑换人姓名或手机号，Row 8 F） | 需登录（donate:order **或** donate:order-audit） |
 | POST | /a/donate/orders/{id}/approve | 兑换审核通过 | 需登录（donate:order-audit） |

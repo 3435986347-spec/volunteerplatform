@@ -21,7 +21,14 @@ public final class PermissionCode {
     private PermissionCode() {
     }
 
-    /** 积分商品管理（增删改、排序隐藏、提交审核；图片走 {@code /a/files/upload?dir=goods}） */
+    /**
+     * 积分商品管理（增删改、排序隐藏、提交审核；图片走 {@code /a/files/upload?dir=goods}）。
+     *
+     * <p><b>兑换规则（Row 8 C 的文字 + 图片）读写也用这个点，刻意不新增。</b>
+     * 拆权限要有「谁能改 A 但不能改 B」的现实需求，这里没有——能维护商品的人本来就该能维护
+     * 兑换规则。{@code user:export} 那次拆开，是因为导出带走的是志愿者个人数据、
+     * 敏感度与列表查看不同，不是同一回事。记在这里，免得下次有人凭「看着该拆」就拆。</p>
+     */
     public static final String DONATE_GOODS = "donate:goods";
 
     /**

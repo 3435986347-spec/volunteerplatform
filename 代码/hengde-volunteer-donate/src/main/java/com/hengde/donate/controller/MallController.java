@@ -6,10 +6,12 @@ import com.hengde.common.page.PageResult;
 import com.hengde.common.result.Result;
 import com.hengde.donate.dto.MallOrderPlaceDTO;
 import com.hengde.donate.dto.MallReviewDTO;
+import com.hengde.donate.service.MallExchangeRuleService;
 import com.hengde.donate.service.MallGoodsService;
 import com.hengde.donate.service.MallOrderService;
 import com.hengde.donate.service.MallReviewService;
 import com.hengde.donate.vo.ExchangeRecordVO;
+import com.hengde.donate.vo.ExchangeRuleVO;
 import com.hengde.donate.vo.MallGoodsVO;
 import com.hengde.donate.vo.MallOrderVO;
 import com.hengde.donate.vo.MallReviewVO;
@@ -45,6 +47,12 @@ public class MallController {
     private MallGoodsService goodsService;
     private MallOrderService orderService;
     private MallReviewService reviewService;
+    private MallExchangeRuleService exchangeRuleService;
+
+    @Autowired
+    public void setExchangeRuleService(MallExchangeRuleService exchangeRuleService) {
+        this.exchangeRuleService = exchangeRuleService;
+    }
 
     @Autowired
     public void setGoodsService(MallGoodsService goodsService) {
@@ -120,6 +128,12 @@ public class MallController {
     @GetMapping("/reviews/mine")
     public Result<PageResult<MallReviewVO>> myReviews(PageQuery query) {
         return Result.ok(reviewService.listMine(StpUtil.getLoginIdAsLong(), query));
+    }
+
+    @Operation(summary = "兑换规则（文字 + 图片，Row 8 C）")
+    @GetMapping("/exchange-rules")
+    public Result<ExchangeRuleVO> exchangeRules() {
+        return Result.ok(exchangeRuleService.get());
     }
 
     @Operation(summary = "全部兑换记录（Row 8 C「全部人的」；只放姓名/商品/时间，不含单号与取货码）")

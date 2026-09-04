@@ -343,8 +343,17 @@ public class MallOrderService {
             throw new BusinessException("操作人不能为空");
         }
         String code = PickupCodeUtil.normalize(rawCode);
+        // 【格式不对】与【查无此单】分开报，剩下的才合并——分寸在这里：
+        // 字母表与码长是**公开信息**（码印在志愿者自己的条码上），说「13 位、不含 0 1 I O」
+        // 不泄露任何东西，却能让柜台前的人知道是抄错了一位、而不是白跑一趟。
+        // 合并它们反而制造了 javadoc 里要避免的那种处境：分不清「抄错了」和「没这单」。
+        if (!PickupCodeUtil.isValid(code)) {
+            throw new BusinessException("取货码格式不正确：应为 PU 开头的 13 位，且不含 0、1、I、O，请核对");
+        }
         if (!PickupCodeUtil.isValid(code, PickupCodeUtil.DOMAIN_MALL)) {
-            // 域标记不符也走这里：拿着证书的取货码到商城柜台，当场就该被拒，不必去表里查一趟
+            // 形态合法但不属于商城域（如纸质证书的码）——与「查无此单」合并成同一句。
+            // 这一类必须合：分开报等于告诉持码人「你这码是真的，只是走错了窗口」，
+            // 而他本就不该从商城柜台得到关于另一个域的任何信息。
             throw new BusinessException("取货码无效");
         }
         int rows = orderMapper.update(null, Wrappers.<MallOrder>lambdaUpdate()
