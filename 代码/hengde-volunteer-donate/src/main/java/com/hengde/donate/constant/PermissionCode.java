@@ -1,7 +1,7 @@
 package com.hengde.donate.constant;
 
 /**
- * donate 域权限点编码（与 V40 迁移 {@code permission} 表预置数据一致）。
+ * donate 域权限点编码（与 V41 迁移 {@code permission} 表预置数据一致）。
  *
  * <p>管理端接口用 {@code @SaCheckPermission(value=..., type="admin")} 引用；
  * 权限数据由 organization 的 StpInterface 提供，超管走 {@code *} 万能码放行。</p>
