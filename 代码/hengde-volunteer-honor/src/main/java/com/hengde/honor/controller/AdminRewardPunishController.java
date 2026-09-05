@@ -81,7 +81,7 @@ public class AdminRewardPunishController {
     public Result<PageResult<RewardPunishVO>> list(PageQuery query,
                                                    @Parameter(description = "志愿者 id") @RequestParam(required = false) Long volunteerId,
                                                    @Parameter(description = "1奖励/2处罚") @RequestParam(required = false) Integer type,
-                                                   @Parameter(description = "审核 0待审核/1已通过/2已驳回") @RequestParam(required = false) Integer reviewStatus,
+                                                   @Parameter(description = "审核 0待初审/3待终审/1已通过/2已驳回") @RequestParam(required = false) Integer reviewStatus,
                                                    @Parameter(description = "申诉 0未申诉/1申诉中/2成立/3驳回") @RequestParam(required = false) Integer appealStatus) {
         boolean appealedOnly = appealedOnly(
                 StpAdminUtil.STP_LOGIC.hasPermission(PermissionCode.HONOR_REWARD_PUNISH));
