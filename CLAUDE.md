@@ -57,7 +57,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   · **排行榜的核心是把 `fromSnapshot` 摆到明面上**——后端对已结束周期「没有快照就退回实时聚合并如实回 false」，两种情况显示成同一张表格，运营就会把一份还会变的榜单当定稿发出去。故未冻结给黄色告警、已冻结给蓝色说明；**总榜从不冻结**故两条都不显示、也不给冻结按钮；「强制重算」单列一个危险确认（它丢弃已公示的名次）。**`rankType=4` 微心愿不进下拉框**——后端预留取值但显式拒绝，放进去得到的空榜单会被读成「这个月没人上榜」。
   · ⚠️ **`API.put/patch/del` 曾只收 `(path, body)`，第三个 query 参数被静默丢掉**（已修，四个写方法与 `post` 一致）。后端有一批「路径带 id、值走 `@RequestParam`」的端点（`role-models/{id}/status?status=`、`.../sort?sort=`、`medals/{id}/sort?sort=`），调用方 `API.put(path, null, {status:1})` 写法是对的、读起来也是对的，但参数根本没发出去，后端报 `MissingServletRequestParameterException` 500。**JS 少一个形参不报任何错**，多传的实参直接消失——这类缺陷只有真发一次请求才看得见。
   · **验证方式升级为「起本地 MySQL+Redis+api 真跑一遍写路径」**：上一批的教训是「语法过了不等于渲染得出来」，这一批的是「渲染出来不等于请求发对了」。上面那个 500 就是走通「新增榜样 → 上架 → 改排序 → 删除」时抓到的，当时 `node --check` 全绿、页面也渲染正常。
-  · ⚠️ **`index.html` 的 `window.__API_BASE__` 只能指向本机**。它曾把 localhost 分支指向线上服务器 IP、而紧邻注释写着「直连 8080」——在本地打开控制台的人，每次点击都直接打在生产库上且毫无提示（已改回 `localhost:8080`）。要连服务器请显式改那一行。
+  · ⚠️ **`index.html` 的 `window.__API_BASE__` 在本地打开时指向的是【线上后端】**（`http://118.145.69.25/api`），这是有意的——服务器部署后，本地起静态页连线上后端是目前唯一的后台联调路径。**所以本地点的每一下都打在线上库上**，改数据前要想清楚；要打本机把那一行换成 `localhost:8080`（本机得先起 api）。⚠️ 那段注释一度写着「本地静态服务器直连后端 8080」而代码指向服务器 IP，照注释办事的人会以为自己在打本地（曾因此在联调中登进线上超管账号）——**注释与代码必须一起改**。
 - **缺后端模块**：均已补建——`user`（志愿者管理 `/a/user/volunteers`）+ `data`（`/a`·`/v` 数据看板）+ 全局 `GET /a/activity/enrollments?status=`（M4），各有测试。
 - **联调关键契约**：登录入参 `username`/`password`、`Result.message`；日期时间**响应统一空格格式** `yyyy-MM-dd HH:mm:ss`、**入参兼容空格与 ISO `T`** 两种（`JacksonConfig` 宽松反序列化：先固定格式、失败回退 `ISO_LOCAL_DATE_TIME`——后台 datetime-local 送 `T`、小程序 `normalizeDateTimeForSubmit` 也送 `T`，均可）；`Long`→字符串（前端 id/total 按字符串、必要处 `Number()`）；活动为 **slot 制**（名额在 `slots[].needCount`，建活动至少一个 slot）。
 
