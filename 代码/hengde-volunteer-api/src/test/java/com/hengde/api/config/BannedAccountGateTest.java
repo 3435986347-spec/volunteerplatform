@@ -45,6 +45,9 @@ class BannedAccountGateTest {
                 "站内提示；AntPathMatcher 的 /** 也匹配裸路径");
         assertTrue(BannedAccountGate.isExempt("/v/notifications/unread-count"));
         assertTrue(BannedAccountGate.isExempt("/v/notifications/9/read"));
+        // V45：申诉凭证上传，理由同 DenyAllUseGate——被禁用的人一样有 7 天申诉期，
+        // 提得出申诉却传不了凭证，那条路径就是残的。
+        assertTrue(BannedAccountGate.isExempt("/v/files/appeal-image"), "申诉凭证上传");
 
         // 必须挡住
         assertFalse(BannedAccountGate.isExempt("/v/auth/register"),
@@ -52,6 +55,9 @@ class BannedAccountGateTest {
         assertFalse(BannedAccountGate.isExempt("/v/auth/password"),
                 "改密码不是申诉的必要条件");
         assertFalse(BannedAccountGate.isExempt("/v/honor/rankings"), "排行榜；写成 /v/honor/** 就会在这里漏");
+        assertFalse(BannedAccountGate.isExempt("/v/files/profile-image"),
+                "头像/i志愿者码上传不放行——放开整条 /v/files/** 会让被禁用的账号还能改头像换 i 码；"
+                + "申诉凭证单开一个端点正是为了不牵连它");
         assertFalse(BannedAccountGate.isExempt("/v/honor/medals"), "勋章；同上");
         assertFalse(BannedAccountGate.isExempt("/v/honor/certificates"), "证书；同上");
         assertFalse(BannedAccountGate.isExempt("/v/activity/activities"), "浏览/报名活动");

@@ -121,6 +121,9 @@ public class HonorRewardPunish extends BaseEntity {
 
     private String appealReason;
 
+    /** 申诉凭证图片 URL，逗号分隔，最多 6 张（V45） */
+    private String appealImages;
+
     private LocalDateTime appealTime;
 
     private Long appealHandledBy;

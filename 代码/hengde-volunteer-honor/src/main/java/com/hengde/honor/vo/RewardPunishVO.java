@@ -3,6 +3,7 @@ package com.hengde.honor.vo;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 奖惩记录行（原型 P109 卡片与详情）。
@@ -64,6 +65,9 @@ public class RewardPunishVO {
     private LocalDateTime appealDeadline;
 
     private String appealReason;
+
+    /** 申诉凭证图片，按提交顺序；没有则为空数组（不是 null，免得客户端还要判空） */
+    private List<String> appealImageUrls;
 
     private String appealResult;
 

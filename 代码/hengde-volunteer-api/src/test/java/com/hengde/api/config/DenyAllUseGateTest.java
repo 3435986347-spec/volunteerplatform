@@ -63,6 +63,9 @@ class DenyAllUseGateTest {
         assertTrue(DenyAllUseGate.isExempt("/v/honor/sanctions"), "处置查看：只说不能用、不说到几号，是把有期限说成无期限");
         assertTrue(DenyAllUseGate.isExempt("/v/notifications"), "站内提示：告知处罚成立与申诉期限的那条就在这里");
         assertTrue(DenyAllUseGate.isExempt("/v/notifications/9/read"));
+        // V45：申诉凭证上传。不放行的话申诉提得出去却举不了证，而被挡在这道闸门后面的人
+        // 恰恰最需要举证——这正是它单开一条路径、没有并进 /v/files/profile-image 的原因。
+        assertTrue(DenyAllUseGate.isExempt("/v/files/appeal-image"), "申诉凭证上传：申诉能提交但举不了证，等于半条申诉路径");
 
         // 必须挡住——这些正是「使用本程序」的部分
         assertFalse(DenyAllUseGate.isExempt("/v/activity/activities"), "浏览/报名活动");
@@ -70,6 +73,10 @@ class DenyAllUseGateTest {
         assertFalse(DenyAllUseGate.isExempt("/v/honor/medals"), "勋章；同上");
         assertFalse(DenyAllUseGate.isExempt("/v/honor/certificates"), "证书；同上");
         assertFalse(DenyAllUseGate.isExempt("/v/user/profile"), "改资料");
+        assertFalse(DenyAllUseGate.isExempt("/v/files/profile-image"),
+                "头像/i志愿者码上传不在放行之列——为了放行申诉凭证而把整条 /v/files/** 开出去，"
+                + "就等于让被判「拒绝使用」的人还能改头像；申诉凭证之所以单开一个端点正是为了避免这个");
+        assertFalse(DenyAllUseGate.isExempt("/v/files/upload"), "活动封面上传；同上");
         assertFalse(DenyAllUseGate.isExempt("/v/organization/groups"), "小组申请——V32 漏掉的正是这一类");
         assertFalse(DenyAllUseGate.isExempt("/v/publicity/notices"), "公示互动；同上");
         assertFalse(DenyAllUseGate.isExempt(null));

@@ -1,16 +1,20 @@
 package com.hengde.honor.controller;
 
 import cn.dev33.satoken.stp.StpUtil;
+import com.hengde.common.page.PageQuery;
+import com.hengde.common.page.PageResult;
 import com.hengde.common.result.Result;
 import com.hengde.honor.service.MedalGrantService;
 import com.hengde.honor.service.RoleModelService;
 import com.hengde.honor.vo.MyMedalVO;
 import com.hengde.honor.vo.RoleModelVO;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -48,9 +52,14 @@ public class MedalController {
         return Result.ok(medalGrantService.myMedals(StpUtil.getLoginIdAsLong()));
     }
 
-    @Operation(summary = "榜样列表（仅已上架）")
+    @Operation(summary = "榜样列表（仅已上架；分页 + 关键词 + 个人/团队筛选 + 排序）")
     @GetMapping("/role-models")
-    public Result<List<RoleModelVO>> roleModels() {
-        return Result.ok(roleModelService.listPublished());
+    public Result<PageResult<RoleModelVO>> roleModels(
+            PageQuery query,
+            @Parameter(description = "关键词，匹配标题/副标题/简介") @RequestParam(required = false) String keyword,
+            @Parameter(description = "类型 1个人/2团队，不传=全部") @RequestParam(required = false) Integer modelType,
+            @Parameter(description = "排序 default按运营排序(默认)/latest按发布时间倒序")
+            @RequestParam(required = false) String sort) {
+        return Result.ok(roleModelService.listPublished(query, keyword, modelType, sort));
     }
 }

@@ -32,10 +32,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
@@ -579,11 +581,13 @@ public class RewardPunishService {
             throw new BusinessException("申诉期已过（自处罚生效起 "
                     + honorProperties.getRewardPunish().getAppealDays() + " 天内可申诉）");
         }
+        String images = joinAppealImages(dto.getImageUrls());
         // CAS：只有「未申诉」的单能提交申诉。重复提交不该覆盖第一次的理由与时间——
         // 那会让受理人看到的是最后一次的说辞，而计时仍按第一次算。
         int rows = rewardPunishMapper.update(null, Wrappers.<HonorRewardPunish>lambdaUpdate()
                 .set(HonorRewardPunish::getAppealStatus, HonorRewardPunish.APPEAL_PENDING)
                 .set(HonorRewardPunish::getAppealReason, dto.getReason())
+                .set(HonorRewardPunish::getAppealImages, images)
                 .set(HonorRewardPunish::getAppealTime, LocalDateTime.now())
                 .set(HonorRewardPunish::getUpdateTime, LocalDateTime.now())
                 .eq(HonorRewardPunish::getId, id)
@@ -669,13 +673,19 @@ public class RewardPunishService {
     /**
      * 我的奖惩记录——<b>只返回已通过审核的</b>（Row 41 F「审核才可显示」）。
      */
-    public List<RewardPunishVO> myRecords(Long volunteerId) {
-        List<HonorRewardPunish> rows = rewardPunishMapper.selectList(
-                Wrappers.<HonorRewardPunish>lambdaQuery()
-                        .eq(HonorRewardPunish::getVolunteerId, volunteerId)
-                        .eq(HonorRewardPunish::getReviewStatus, HonorRewardPunish.REVIEW_APPROVED)
-                        .orderByDesc(HonorRewardPunish::getId));
-        return toVos(rows);
+    public PageResult<RewardPunishVO> myRecords(Long volunteerId, PageQuery query) {
+        // 分页而不是一次全量（V43）：奖惩记录只增不减，小程序要做触底加载就得有 total。
+        // 此前回的是裸 List，改成 PageResult 是【破坏性改动】，已与小程序侧约定同步切换。
+        //
+        // ⚠️ 筛选条件保持不变：只回【终审已通过】的单。待初审(0)、待终审(3)、已驳回(2)
+        // 一律不返回——初审通过不产生任何效力，让志愿者提前看到一张还可能被驳回的处罚，
+        // 等于把「审核之后才可显示」这条需求（Row 41 F）作废。
+        Page<HonorRewardPunish> page = query.toPage();
+        rewardPunishMapper.selectPage(page, Wrappers.<HonorRewardPunish>lambdaQuery()
+                .eq(HonorRewardPunish::getVolunteerId, volunteerId)
+                .eq(HonorRewardPunish::getReviewStatus, HonorRewardPunish.REVIEW_APPROVED)
+                .orderByDesc(HonorRewardPunish::getId));
+        return PageResult.of(toVos(page.getRecords()), page.getTotal(), page.getCurrent(), page.getSize());
     }
 
     /** 后台列表：可按志愿者/类型/审核状态/申诉状态筛。 */
@@ -706,6 +716,75 @@ public class RewardPunishService {
             throw new BusinessException("奖惩记录不存在");
         }
         return rp;
+    }
+
+    /** 一次申诉最多允许的凭证图片数。 */
+    static final int MAX_APPEAL_IMAGES = 6;
+
+    /** {@code appeal_images} 列宽，逗号分隔串的上限（与 V44 一致）。 */
+    private static final int APPEAL_IMAGES_COLUMN_LEN = 1024;
+
+    /**
+     * 把申诉凭证图片 URL 拼成逗号分隔串。
+     *
+     * <p><b>数量与长度都在这里拦，不靠列宽兜底</b>：MySQL 非严格模式会静默截断，
+     * 严格模式抛的错指向列名——两种都不会告诉用户「最多 6 张」，而截断那种
+     * 更糟：申诉提交成功了，受理人看到的却是一张打不开的半截 URL。</p>
+     *
+     * <p><b>URL 只校验非空与长度，不校验域名</b>：对象存储的 host 是按部署配的
+     * （白标多实例各有各的桶，阿里云 OSS 与火山 TOS 域名也不同），
+     * 写死一个 host 会让别的实例传什么都被拒。</p>
+     *
+     * @param urls 图片 URL 列表，可为 null
+     * @return 逗号分隔串；无图片返回 null
+     */
+    private String joinAppealImages(List<String> urls) {
+        if (urls == null || urls.isEmpty()) {
+            return null;
+        }
+        List<String> cleaned = new ArrayList<>(urls.size());
+        for (String u : urls) {
+            if (!StringUtils.hasText(u)) {
+                continue;
+            }
+            String t = u.trim();
+            // 逗号是分隔符本身：URL 里混进一个逗号，读出来就会被切成两条坏链接，
+            // 而且是「存进去时看着好好的、看的时候才坏」。宁可当场拒绝。
+            if (t.indexOf(',') >= 0) {
+                throw new BusinessException("图片地址不能包含逗号");
+            }
+            cleaned.add(t);
+        }
+        if (cleaned.isEmpty()) {
+            return null;
+        }
+        if (cleaned.size() > MAX_APPEAL_IMAGES) {
+            throw new BusinessException("申诉凭证最多上传 " + MAX_APPEAL_IMAGES + " 张，当前 " + cleaned.size() + " 张");
+        }
+        String joined = String.join(",", cleaned);
+        if (joined.length() > APPEAL_IMAGES_COLUMN_LEN) {
+            throw new BusinessException("申诉凭证图片地址过长，请减少张数后重试");
+        }
+        return joined;
+    }
+
+    /**
+     * 逗号分隔串还原成列表。
+     *
+     * @param images 逗号分隔串，可为 null
+     * @return 图片列表；无图片返回<b>空列表而不是 null</b>——客户端少一处判空
+     */
+    private List<String> splitAppealImages(String images) {
+        if (!StringUtils.hasText(images)) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (String part : images.split(",")) {
+            if (StringUtils.hasText(part)) {
+                out.add(part.trim());
+            }
+        }
+        return out;
     }
 
     private List<RewardPunishVO> toVos(List<HonorRewardPunish> rows) {
@@ -739,6 +818,7 @@ public class RewardPunishService {
             vo.setAppealStatus(rp.getAppealStatus());
             vo.setAppealDeadline(rp.getAppealDeadline());
             vo.setAppealReason(rp.getAppealReason());
+            vo.setAppealImageUrls(splitAppealImages(rp.getAppealImages()));
             vo.setAppealResult(rp.getAppealResult());
             // 前端要据此决定「申诉」按钮显不显示。让服务端算：把「是处罚 + 已生效 + 未申诉 + 未过期」
             // 这四个条件散到前端去拼，迟早两端算出不同结果——按钮在但点了报错，或反过来。

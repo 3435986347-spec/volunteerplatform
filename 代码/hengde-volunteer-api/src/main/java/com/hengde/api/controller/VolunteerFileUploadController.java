@@ -49,6 +49,9 @@ public class VolunteerFileUploadController {
     /** 注册协议手写签名图（任意登录志愿者，注册/资料协议留痕） */
     private static final String DIR_SIGNATURE = "signature";
 
+    /** 申诉凭证图片（任意登录志愿者，奖惩申诉时随理由一起提交） */
+    private static final String DIR_APPEAL = "appeal";
+
     private static final String DIR_GROUP = "group";
 
     private FileStorageService fileStorageService;
@@ -90,6 +93,34 @@ public class VolunteerFileUploadController {
         }
         FileValidator.validate(file, FileValidator.IMAGE_EXTENSIONS, ossProperties.getMaxFileSize());
         return Result.ok(store(file, dir));
+    }
+
+    /**
+     * 上传申诉凭证图片。
+     *
+     * <p><b>为什么单开一个端点、不并进 {@code /profile-image} 的 dir 白名单</b>——
+     * 因为它必须能被两道处罚闸门放行，而那两条放行清单是<b>按路径</b>写的：</p>
+     *
+     * <ul>
+     *   <li>{@code DenyAllUseGate} 挡住被判「拒绝使用本程序」的人的整个 {@code /v/**}</li>
+     *   <li>{@code BannedAccountGate} 挡住被禁用账号的整个 {@code /v/**}</li>
+     * </ul>
+     *
+     * <p>两者都只放行登录、奖惩记录、申诉、处置查看、站内提示。若把申诉上传挂在
+     * {@code /profile-image} 上，要么这两类人传不了凭证——<b>申诉路径就是残的，
+     * 而被罚得最重的人恰恰最需要举证</b>；要么为了放行它把整个 {@code /profile-image}
+     * 开出去，顺带让被禁用的账号能改头像、换 i志愿者码。<b>单开一条路径两头都不占。</b></p>
+     *
+     * <p>不挂权限点，理由同上：能提申诉的正是被处罚的人。</p>
+     *
+     * @param file 图片文件
+     * @return 上传结果，{@code url} 随申诉一起提交
+     */
+    @Operation(summary = "上传申诉凭证图片（任意登录志愿者，含被禁用/被判「拒绝使用」者；限图片）")
+    @PostMapping("/appeal-image")
+    public Result<FileUploadVO> uploadAppealImage(@RequestParam("file") MultipartFile file) {
+        FileValidator.validate(file, FileValidator.IMAGE_EXTENSIONS, ossProperties.getMaxFileSize());
+        return Result.ok(store(file, DIR_APPEAL));
     }
 
     private FileUploadVO store(MultipartFile file, String dir) {

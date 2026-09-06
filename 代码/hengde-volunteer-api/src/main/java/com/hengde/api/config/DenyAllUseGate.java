@@ -58,6 +58,10 @@ public class DenyAllUseGate {
             "/v/auth/**",
             "/v/honor/reward-punishes",
             "/v/honor/reward-punishes/*/appeal",
+            // 申诉凭证上传：不放行的话，申诉提得出去却举不了证——
+            // 而被挡在这道闸门后面的人恰恰最需要举证。单独一条路径，
+            // 不牵连 /v/files/profile-image（那条放开会顺带让他改头像）。
+            "/v/files/appeal-image",
             "/v/honor/sanctions",
             "/v/notifications/**",
     };

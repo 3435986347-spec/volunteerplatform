@@ -102,13 +102,13 @@ class RewardPunishServiceTest {
         Long vid = insertVolunteer();
         Long id = rewardPunishService.create(reward(vid, 200), ADMIN, false);
 
-        assertTrue(rewardPunishService.myRecords(vid).isEmpty(),
+        assertTrue(myRecords(vid).isEmpty(),
                 "Row 41 F：审核才可显示——待审核的不该让志愿者看到");
         assertEquals(1, rewardPunishService.adminList(new PageQuery(), vid, null, null, null, false)
                 .getRecords().size(), "后台仍要看得到，否则没法审");
 
         approveFully(id, ADMIN);
-        List<RewardPunishVO> mine = rewardPunishService.myRecords(vid);
+        List<RewardPunishVO> mine = myRecords(vid);
         assertEquals(1, mine.size(), "通过后才显示");
         assertEquals(200, mine.get(0).getPointsDelta());
     }
@@ -120,7 +120,7 @@ class RewardPunishServiceTest {
         Long id = rewardPunishService.create(reward(vid, 50), ADMIN, false);
         rewardPunishService.reject(id, "证据不足", ADMIN);
 
-        assertTrue(rewardPunishService.myRecords(vid).isEmpty());
+        assertTrue(myRecords(vid).isEmpty());
         assertEquals(0, pointService.summary(vid).getBalance(), "驳回不入账");
         assertThrows(BusinessException.class, () -> approveFully(id, ADMIN),
                 "已裁决的单不能再审一次");
@@ -380,9 +380,9 @@ class RewardPunishServiceTest {
         assertTrue(sanctionQueryService.isRestricted(vid, SanctionScope.COMMUNITY));
 
         // 但【不能】挡住奖惩记录与申诉——被罚得最重的人恰恰是最需要申诉的那个
-        assertEquals(1, rewardPunishService.myRecords(vid).size(),
+        assertEquals(1, myRecords(vid).size(),
                 "拒绝使用本程序不得连奖惩记录一起挡掉，否则他看不到自己被罚了什么");
-        assertTrue(rewardPunishService.myRecords(vid).get(0).getAppealable(),
+        assertTrue(myRecords(vid).get(0).getAppealable(),
                 "更不能挡掉申诉入口，那会让申诉权形同虚设");
     }
 
@@ -395,7 +395,7 @@ class RewardPunishServiceTest {
         Long id = rewardPunishService.create(reward(vid, 100), ADMIN, false);
         approveFully(id, ADMIN);
 
-        assertFalse(rewardPunishService.myRecords(vid).get(0).getAppealable());
+        assertFalse(myRecords(vid).get(0).getAppealable());
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> rewardPunishService.appeal(id, vid, appealDto()));
         assertTrue(ex.getMessage().contains("无需申诉"), "实际：" + ex.getMessage());
@@ -417,7 +417,7 @@ class RewardPunishServiceTest {
         patch.setAppealDeadline(LocalDateTime.now().minusSeconds(1));
         rewardPunishMapper.updateById(patch);
 
-        assertFalse(rewardPunishService.myRecords(vid).get(0).getAppealable(),
+        assertFalse(myRecords(vid).get(0).getAppealable(),
                 "过期后前端不该再显示申诉按钮");
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> rewardPunishService.appeal(id, vid, appealDto()));
@@ -948,6 +948,18 @@ class RewardPunishServiceTest {
     private record Fixture(Long activityId, Long slotId) {
     }
 
+    /**
+     * 志愿者端「我的奖惩」。
+     *
+     * <p>V43 起该方法返回 {@link com.hengde.common.page.PageResult}，这里取 records 断言。
+     * <b>刻意不断言 total</b>：分页拦截器只装配在 api 模块，领域模块的测试上下文里
+     * {@code selectPage} 不加 LIMIT、total 恒为 0——断言 total 会得到一条
+     * 「在测试里永远成立、在生产里毫无意义」的用例。</p>
+     */
+    private List<RewardPunishVO> myRecords(Long vid) {
+        return rewardPunishService.myRecords(vid, new PageQuery()).getRecords();
+    }
+
     private RewardPunishSaveDTO reward(Long vid, int points) {
         RewardPunishSaveDTO dto = new RewardPunishSaveDTO();
         dto.setVolunteerId(vid);
@@ -990,6 +1002,77 @@ class RewardPunishServiceTest {
         } finally {
             pool.shutdownNow();
         }
+    }
+
+    // ---------- V45：申诉凭证图片 ----------
+
+    /** 传了凭证要能原样读回，顺序不变。 */
+    @Test
+    void appealImages_roundTrip() {
+        Long vid = insertVolunteer();
+        Long id = rewardPunishService.create(punish(vid, 0), ADMIN, false);
+        approveFully(id, ADMIN);
+
+        AppealSubmitDTO dto = appealDto();
+        dto.setImageUrls(List.of("https://oss/a.jpg", "https://oss/b.jpg"));
+        rewardPunishService.appeal(id, vid, dto);
+
+        List<String> got = myRecords(vid).get(0).getAppealImageUrls();
+        assertEquals(List.of("https://oss/a.jpg", "https://oss/b.jpg"), got, "顺序也要保持");
+    }
+
+    /** 没传凭证时回<b>空数组而不是 null</b>——客户端少一处判空。 */
+    @Test
+    void appealImages_absentIsEmptyListNotNull() {
+        Long vid = insertVolunteer();
+        Long id = rewardPunishService.create(punish(vid, 0), ADMIN, false);
+        approveFully(id, ADMIN);
+        rewardPunishService.appeal(id, vid, appealDto());
+
+        List<String> got = myRecords(vid).get(0).getAppealImageUrls();
+        assertNotNull(got, "空要给空数组，不要给 null");
+        assertTrue(got.isEmpty());
+    }
+
+    /**
+     * 超过 6 张当场拒绝，<b>不靠列宽兜底</b>。
+     *
+     * <p>靠列宽的话，非严格模式会静默截断——申诉提交成功了，受理人看到的却是
+     * 一张打不开的半截 URL；严格模式抛的错指向列名，同样不会告诉用户「最多 6 张」。</p>
+     */
+    @Test
+    void appealImages_overLimit_isRejectedWithUsefulMessage() {
+        Long vid = insertVolunteer();
+        Long id = rewardPunishService.create(punish(vid, 0), ADMIN, false);
+        approveFully(id, ADMIN);
+
+        AppealSubmitDTO dto = appealDto();
+        dto.setImageUrls(List.of("https://o/1.jpg", "https://o/2.jpg", "https://o/3.jpg",
+                "https://o/4.jpg", "https://o/5.jpg", "https://o/6.jpg", "https://o/7.jpg"));
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> rewardPunishService.appeal(id, vid, dto));
+        assertTrue(ex.getMessage().contains("最多上传 6 张"), "实际：" + ex.getMessage());
+
+        // 被拒之后申诉不该算已提交，否则他再也提不了了
+        assertEquals(0, rewardPunishMapper.selectById(id).getAppealStatus(),
+                "校验失败不该把单子推进「申诉中」");
+    }
+
+    /**
+     * URL 里混进逗号当场拒绝——逗号是分隔符本身。
+     *
+     * <p>放过去的话存进去时看着好好的，读出来会被切成两条坏链接，
+     * 是「存的时候没事、看的时候才坏」那一类。</p>
+     */
+    @Test
+    void appealImages_urlWithComma_isRejected() {
+        Long vid = insertVolunteer();
+        Long id = rewardPunishService.create(punish(vid, 0), ADMIN, false);
+        approveFully(id, ADMIN);
+
+        AppealSubmitDTO dto = appealDto();
+        dto.setImageUrls(List.of("https://oss/a,b.jpg"));
+        assertThrows(BusinessException.class, () -> rewardPunishService.appeal(id, vid, dto));
     }
 
     private static AppealSubmitDTO appealDto() {

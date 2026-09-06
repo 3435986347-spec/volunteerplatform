@@ -1,6 +1,8 @@
 package com.hengde.honor.controller;
 
 import cn.dev33.satoken.stp.StpUtil;
+import com.hengde.common.page.PageQuery;
+import com.hengde.common.page.PageResult;
 import com.hengde.common.result.Result;
 import com.hengde.honor.service.CertificateService;
 import com.hengde.honor.vo.CertificateVO;
@@ -39,10 +41,10 @@ public class CertificateController {
         this.certificateService = certificateService;
     }
 
-    @Operation(summary = "我的证书列表（软删的不返回）")
+    @Operation(summary = "我的证书列表（分页；软删的不返回）")
     @GetMapping("/certificates")
-    public Result<List<CertificateVO>> myCertificates() {
-        return Result.ok(certificateService.myCertificates(StpUtil.getLoginIdAsLong()));
+    public Result<PageResult<CertificateVO>> myCertificates(PageQuery query) {
+        return Result.ok(certificateService.myCertificates(StpUtil.getLoginIdAsLong(), query));
     }
 
     /**

@@ -305,7 +305,8 @@ class RewardPunishTwoStageTest {
     }
 
     private java.util.List<?> visibleToVolunteer(Long vid) {
-        return rewardPunishService.myRecords(vid);
+        // 取 records 不取 total：分页拦截器只在 api 模块，这里 total 恒为 0
+        return rewardPunishService.myRecords(vid, new com.hengde.common.page.PageQuery()).getRecords();
     }
 
     private RewardPunishSaveDTO reward(Long vid, int points) {

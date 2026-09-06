@@ -132,6 +132,7 @@
 |---|---|---|---|
 | POST | /v/files/upload | 图片上传（multipart `file` + `dir`，**仅 `dir=activity`** 活动封面、限图片），返回 `{url,name,size}`。给「管理团队」志愿者在小程序发活动传封面用；与 `/a/files/upload` 分开（小程序持志愿者 token 过不了 `/a/**`） | 需登录（activity:publish） |
 | POST | /v/files/profile-image | 图片上传（multipart `file` + `dir`，**仅 `dir=avatar`** 个人头像、限图片），返回 `{url,name,size}`。任意登录志愿者「我的资料」改头像用（无需 activity:publish） | 需登录 |
+| POST | /v/files/appeal-image | **申诉凭证图片上传**（multipart `file`，无 `dir` 参数，限图片），返回 `{url,name,size}`；URL 随 `POST /v/honor/reward-punishes/{id}/appeal` 的 `imageUrls` 一起提交（V45）。**单开一条路径而不是并进上面那个 `dir` 白名单**——它必须被 `DenyAllUseGate`（被判「拒绝使用本程序」的人）与 `BannedAccountGate`（被禁用账号）放行，而那两条清单按路径写：挂在 `/profile-image` 上，要么这两类人**申诉提得出去却举不了证**，要么为放行它把整个 `/profile-image` 开出去、顺带让被禁用账号能改头像换 i志愿者码 | 需登录（含被禁用 / 被判「拒绝使用」者） |
 
 ### 志愿者端 `/v/activity`
 
@@ -179,7 +180,7 @@
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
 | GET | /v/honor/medals | 我的勋章：返回**全部已启用勋章 ∪ 本人已获得的勋章** + `owned` 是否已获得 + `grantTime` + **获取进度**（`currentValue`/`progressPercent`，百分比封顶 100）。并集是为了让**样式停用后已生效的发放仍然可见**——停用的语义是「不再发新的」而非「收回已发的」；未获得者看不到已停用的勋章。进度对「有阈值」的条件即时计算，与排行榜同口径：时长取**已发布/已结束活动上、有签到、且秘书部已确认**的分钟数之和、次数取同范围的签到考勤条数（草稿/待审/已取消活动上的脏考勤与无签到行都不计）、积分取**累计获得**（非余额，花掉积分不该丢进度）；手动授予类无进度，相关字段为 null。**志愿者 id 取自登录态，不接受入参** | 需登录 |
-| GET | /v/honor/role-models | 榜样列表（**仅已上架**，按 sort 正序） | 需登录 |
+| GET | /v/honor/role-models | 榜样列表（**仅已上架**）。**V43 起分页**：`page`/`size` + `keyword`（匹配标题/副标题/**简介**）+ `modelType`（1个人/2团队）+ `sort`（`default` 按运营排序，默认；`latest` 按发布时间倒序）。⚠️ **响应从裸数组改为 `{records,total,page,size,pages}`，是破坏性改动**。行上带 `modelType`/`modelTypeLabel`/`summary`/`publishTime`，以及 `linkType`（0不跳转/1小程序页面/2网页WebView/3外部链接仅复制）+ **`linkTypeName`**（`NONE`/`PAGE`/`WEB`/`EXTERNAL`，直接 switch 它，别在客户端自己维护「1 是什么」的映射）。**未知的 `sort` 直接报错**，不悄悄按默认排——拼错一个值得到另一种顺序且毫无提示，是最难查的那类问题 | 需登录 |
 
 ### 我的证书 — 志愿者端 `/v/honor`（V2 第 4 批·电子证书核心，V31）
 
@@ -194,7 +195,7 @@
 
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | /v/honor/certificates | 我的证书列表（软删的不返回）。每行带 `certNo`/活动/**场次(`slotId`/`slotProjectName`/岗位起止)**/`downloadCount`/`fileReady`。**不返回 `fileKey`**——前端只需知道能否下载，取文件走下面的接口 | 需登录 |
+| GET | /v/honor/certificates | 我的证书列表（软删的不返回）。**V43 起分页**（`page`/`size`，响应改为 `{records,total,…}`，破坏性改动）。每行带 `certNo`/活动/**场次(`slotId`/`slotProjectName`/岗位起止)**/`downloadCount`/`fileReady`。**不返回 `fileKey`**——前端只需知道能否下载，取文件走下面的接口 | 需登录 |
 | GET | /v/honor/certificates/{id}/file | 预览/下载：校验归属 → **文件缺失时懒渲染并回填** → **计数即闸门**（`UPDATE … WHERE is_deleted=0` 影响 0 行即拒发，堵住「渲染期间证书被撤销」的竞态；被拒的请求不计数）→ 返回**短期签名 URL**（默认 120s，受 `hengde.oss.presign-max-ttl-seconds` 二次约束）。渲染按 certificate_id 加分布式锁 + `WHERE file_key IS NULL` 的 CAS 回填，并发下不会渲染两份也不会覆盖。**渲染把协会电子样本 PDF 当底图套印**——公章在样本上；**未配置样本、或样本文件读不出，一律拒绝生成**（不退化成一张无章的证书）。归属不符与不存在**返回同一句话**，避免枚举他人证书 | 需登录 |
 
 ### 活动现场负责人 — 志愿者端 `/v/activity/managed-activities`
@@ -320,8 +321,8 @@
 |---|---|---|---|
 | GET | /a/honor/role-models | 列表（`status` 0下架/1上架可筛选） | honor:role-model |
 | POST | /a/honor/role-models | 新增（落下架态） | honor:role-model |
-| PUT | /a/honor/role-models/{id} | 修改（副标题/图片/链接**可传 null 清空**） | honor:role-model |
-| PUT | /a/honor/role-models/{id}/status | 上架 / 下架 | honor:role-model |
+| PUT | /a/honor/role-models/{id} | 修改（副标题/图片/简介**可传 null 清空**）。**V43 起 `linkType` 与 `linkUrl` 一起校验**：选了跳转必须给链接；`linkType=2`(WEB) 必须是 https（微信业务域名不收 http，http 在体验版能开、正式版白屏）；**选了「不跳转」却又填链接直接报错、不静默清空**（静默清空是最糟的——填了地址、保存也提示成功，链接却没了）。⚠️ **「域名是否已备案」后端判不了**，备案清单不在代码里，最终裁判是小程序后台配的业务域名白名单 | honor:role-model |
+| PUT | /a/honor/role-models/{id}/status | 上架 / 下架。**首次上架时写 `publish_time`**，下架不清、再次上架不覆盖——「发布时间」是这条内容第一次与志愿者见面的时刻，临时下架改个错别字再上架不该让它在小程序「最新」里跳到最前 | honor:role-model |
 | PUT | /a/honor/role-models/{id}/sort | 调整排序 | honor:role-model |
 | DELETE | /a/honor/role-models/{id} | 删除 | honor:role-model |
 
@@ -379,9 +380,9 @@
 
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | /v/honor/reward-punishes | 我的奖惩记录，**只返回已通过组织部审核的**（Row 41 F）。行上带 `rpNo`（P109「处罚编号」）/类别/标题/说明/`pointsDelta`/处置（`sanctionScope` + 中文名 + `sanctionDays`）/申诉状态与截止时刻，以及 **`appealable`**——「是处罚 + 已生效 + 未申诉 + 未过期」四条由**服务端**算，散到前端拼迟早两端算出不同结果（按钮在但点了报错，或反过来） | 需登录 |
+| GET | /v/honor/reward-punishes | 我的奖惩记录，**只返回【终审】已通过的**（Row 41 F）——待初审(0)/待终审(3)/已驳回(2) 一律不返回：初审通过不产生任何效力，让志愿者提前看到一张还可能被驳回的处罚，等于把「审核之后才可显示」作废。**V43 起分页**（`page`/`size`，响应改为 `{records,total,…}`，破坏性改动）。行上带 `rpNo`（P109「处罚编号」）/类别/标题/说明/`pointsDelta`/处置（`sanctionScope` + 中文名 + `sanctionDays`）/申诉状态与截止时刻，以及 **`appealable`**——「是处罚 + 已生效 + 未申诉 + 未过期」四条由**服务端**算，散到前端拼迟早两端算出不同结果（按钮在但点了报错，或反过来） | 需登录 |
 | GET | /v/honor/sanctions | 我当前生效中的处置。**到期即自动消失，不依赖任何定时任务**——判定恒为 `status=1 AND effective_time<=NOW() AND (expire_time IS NULL OR expire_time>NOW())`；靠 cron 改状态位的话，任务漏跑一次处罚就会超期继续生效，而「到期即恢复」是对志愿者的承诺 | 需登录 |
-| POST | /v/honor/reward-punishes/{id}/appeal | 对**处罚**提交申诉，body `reason` 必填。**奖励不能申诉**（P109 的申诉按钮只画在处罚卡片与处罚详情上，奖励卡片只有「查看详情」）；超过 `appealDeadline` 拒绝；**重复提交拒绝**而不是覆盖第一次的理由与时间。非本人的单返回「奖惩记录不存在」，不区分「不存在」与「不是你的」 | 需登录 |
+| POST | /v/honor/reward-punishes/{id}/appeal | 对**处罚**提交申诉，body `reason` 必填，**`imageUrls` 可选**（申诉凭证，最多 6 张，先经 `POST /v/files/appeal-image` 拿 URL；张数与逗号在服务端当场校验，**不靠列宽兜底**——截断会让受理人看到半截 URL 而提交却是成功的）。出参 `appealImageUrls` 为**空数组而非 null**。**奖励不能申诉**（P109 的申诉按钮只画在处罚卡片与处罚详情上，奖励卡片只有「查看详情」）；超过 `appealDeadline` 拒绝；**重复提交拒绝**而不是覆盖第一次的理由与时间。非本人的单返回「奖惩记录不存在」，不区分「不存在」与「不是你的」 | 需登录 |
 
 ### 站内提示 — 志愿者端 `/v/notifications`（V2 第 5 批收口，V37）
 

@@ -3,6 +3,8 @@ package com.hengde.honor.controller;
 import cn.dev33.satoken.stp.StpUtil;
 import com.hengde.auth.entity.VolunteerSanction;
 import com.hengde.auth.service.SanctionQueryService;
+import com.hengde.common.page.PageQuery;
+import com.hengde.common.page.PageResult;
 import com.hengde.common.result.Result;
 import com.hengde.honor.dto.AppealSubmitDTO;
 import com.hengde.honor.service.RewardPunishService;
@@ -48,10 +50,10 @@ public class RewardPunishController {
         this.sanctionQueryService = sanctionQueryService;
     }
 
-    @Operation(summary = "我的奖惩记录（只返回已通过组织部审核的）")
+    @Operation(summary = "我的奖惩记录（分页；只返回【终审】已通过的，待初审/待终审/已驳回一律不返回）")
     @GetMapping("/reward-punishes")
-    public Result<List<RewardPunishVO>> myRecords() {
-        return Result.ok(rewardPunishService.myRecords(StpUtil.getLoginIdAsLong()));
+    public Result<PageResult<RewardPunishVO>> myRecords(PageQuery query) {
+        return Result.ok(rewardPunishService.myRecords(StpUtil.getLoginIdAsLong(), query));
     }
 
     @Operation(summary = "我当前生效中的处置（到期即自动消失，不依赖定时任务）")

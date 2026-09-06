@@ -168,7 +168,8 @@ class CertificateServiceTest {
 
         certificateService.softDelete(certId, "误发", 900L);
         assertNull(certificateMapper.selectById(certId), "软删后常规查询应查不到");
-        assertTrue(certificateService.myCertificates(f.volunteerId).isEmpty(), "我的证书不返回软删的");
+        assertTrue(certificateService.myCertificates(f.volunteerId, new com.hengde.common.page.PageQuery())
+                .getRecords().isEmpty(), "我的证书不返回软删的");
 
         Long again = certificateService.createForSlot(f.volunteerId, f.activityId, f.slotId);
         assertEquals(certId, again, "应复活原行，而不是新建");

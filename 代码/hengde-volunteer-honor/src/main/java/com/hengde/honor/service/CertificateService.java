@@ -283,11 +283,15 @@ public class CertificateService {
     // ---------- ② 我的证书列表 ----------
 
     /** 我的证书（软删的不返回，由 {@code @TableLogic} 自动过滤）。 */
-    public List<CertificateVO> myCertificates(Long volunteerId) {
-        List<HonorCertificate> rows = certificateMapper.selectList(Wrappers.<HonorCertificate>lambdaQuery()
+    public PageResult<CertificateVO> myCertificates(Long volunteerId, PageQuery query) {
+        // 分页而不是一次全量：证书随参加的活动逐场累积，老志愿者手上会有几十上百张，
+        // 小程序那边要做触底加载就必须拿到 total。V43 之前这里回的是裸 List，
+        // 改成 PageResult 是【破坏性改动】，已与小程序侧约定同步切换。
+        Page<HonorCertificate> page = query.toPage();
+        certificateMapper.selectPage(page, Wrappers.<HonorCertificate>lambdaQuery()
                 .eq(HonorCertificate::getVolunteerId, volunteerId)
                 .orderByDesc(HonorCertificate::getId));
-        return toVos(rows);
+        return PageResult.of(toVos(page.getRecords()), page.getTotal(), page.getCurrent(), page.getSize());
     }
 
     /**
