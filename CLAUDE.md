@@ -19,7 +19,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 本仓库内原先的 `hengde-volunteer-miniprogram/`、`volunteer-platform-back/` 两个目录**现已清空**（内容已迁出到上表位置）——**改前端代码要去同级目录，不要在本仓库里找**。
 
-后端 `代码/`：各模块独立目录，`<parent>` 通过本地 Maven 仓库引用父 POM（`relativePath` 为空）。
+后端 `代码/`：各模块独立目录，`<parent>` 的 `relativePath` 指向 `../hengde-volunteer-parent/pom.xml`，构建直接读磁盘上的父 POM（2026-09-15 前为空、只认本地仓库里装过的那份，见「Common Commands」第 1 步的说明）。
 
 前端两端的形态（供跨端改动时参考）：**后台控制台**入口 `index.html`+`assets/`，无构建、纯 `React.createElement`（无 JSX 语法），M5 硬化后已去掉运行期 Babel 与 unpkg CDN、改用本地 `assets/vendor/` React 生产版；`assets/api.js` 为统一请求封装，经 `window.__API_BASE__` 适配同源/nginx 分离部署；已全部接入真实 `/a` 接口（见下「### 后台前端接真实接口」）；与 `文档/v1/后台管理页面设计prompt.md` 配套。**小程序**为原生 `app.json`/`pages`/`utils`/`custom-tab-bar`，无 `node_modules`；注意 `utils/api-mode.js` 的 `DEFAULT_USE_MOCK_API = true`——**默认走 mock**，联调真实后端需经 `globalData.useMockApi` 或本地 storage 切换。
 
@@ -75,7 +75,7 @@ V1 落地顺序：`auth` → `organization`（子账号权限） → `activity` 
 - `honor`：**排行榜已完成**（V2 第 2 批，V25+V26——次数/时长/积分 × 月/年/总，见「已完成」表 honor 行）；**微心愿排行**（第 4 板块）数据源属 donate 未建，`rank_type=4` 已预留取值、V3 接数据源即可；勋章/榜样已完成（第 3 批）；**奖惩中心已收口**（V32–V38 + **V40 两级审核**：`SanctionScope.ALL` 由 `DenyAllUseGate` 在 `/v/**` 统一拦截，Row 41 F 的「收到提示」落在 `volunteer_notification`；V40 起组织部初审 → 理事会终审，奖励不经组织部，理事会开单即通过——协会 2026-09-02 答复问题二，见 `协会待确认清单.md` 回执三；⚠️ 提示仍仅站内无推送，微信服务号那一半卡在「服务号 openid 与小程序 openid 不是同一个值」这个前置上）；评优评先按 Row 47 原文「需预留」推迟。**XXL-Job 仍未接入**——定时任务当前走 Spring `@Scheduled`，接 XXL-Job 需先部署独立的 `xxl-job-admin` 调度中心（独立应用 + 自己的 `xxl_job` 库表），属部署侧前置工作。
 - `activity` 签到/时长/积分闭环 **V1.1 分三批**：第 1 批（主干：现场负责人/GPS 签到/统一签退算时长/秘书部确认/服务记录大板块/积分发放）**已完成**（V10）；第 2 批（我的活动页、确认到家、双向评价、活动总结、组织部改签到签退积分+部长二次审核、已参加时长门槛）**已完成**（V14；活动相册依赖社区 social 推迟）；第 3 批（活动留言 V15、固定日期周期发布、历史活动+活动补录 V16）**已完成**。另 `enroll_scope=1` 指定分队报名（单个分队）仍搁置。auth 注册手写签名+协议阅读（V17）**已完成**。
 
-新建领域模块时：先建 Maven 子模块（`<parent>` 指向 `hengde-volunteer-parent`、`relativePath` 空，**不写自身 `groupId`/`version`**），在父 POM `dependencyManagement` 的「本项目内部模块」段登记它（`${project.version}`；漏登记的话，别的模块引它时直接报「缺 version」），在 api pom 加该模块依赖（不写 version），再按领域内部分包约定写业务代码。
+新建领域模块时：先建 Maven 子模块（`<parent>` 指向 `hengde-volunteer-parent`、`relativePath` 写 `../hengde-volunteer-parent/pom.xml`，**不写自身 `groupId`/`version`**），在父 POM `dependencyManagement` 的「本项目内部模块」段登记它（`${project.version}`；漏登记的话，别的模块引它时直接报「缺 version」），在 api pom 加该模块依赖（不写 version），再按领域内部分包约定写业务代码。
 
 ### 注意
 
@@ -100,18 +100,19 @@ V1 落地顺序：`auth` → `organization`（子账号权限） → `activity` 
 
 所有 Maven 命令在父工程目录 `hengde-volunteer-parent/` 下执行（仓库根目录没有 POM）。该目录自带 Maven Wrapper（`mvnw` / `mvnw.cmd`，Maven 3.9.15），可用 `./mvnw` 代替本机 `mvn`。
 
-**重要：父 POM 现已带 `<modules>` 聚合段（全部 11 个模块，按依赖顺序 common→auth→organization→publicity→activity→**trade→donate**→user→data→honor→api）**——在父目录直接 `./mvnw install -DskipTests` 即可全量按序构建，`-pl`/`-am` 可用。**2026-07-02 教训**：此前该列表漏了 user/data 两模块，全量 reactor 构建「SUCCESS」但 api 打包进的是本地仓库里的旧 user/data jar（新功能悄悄缺失）——全量构建后核对 Reactor Summary 是否列全 **11 个模块（含 parent 共 12 行）**。**新增模块时必须同步这里的数字与顺序**，否则这条检查会悄悄失效——它存在的意义正是发现「少了一个模块」。单模块构建/测试仍用 `-f ../hengde-volunteer-<module>/pom.xml`；用 `-f` 时各模块经**本地仓库**解析父 POM 与彼此依赖，被依赖的模块改动后要先 `install` 才能被下游模块看到。
+**重要：父 POM 现已带 `<modules>` 聚合段（全部 11 个模块，按依赖顺序 common→auth→organization→publicity→activity→**trade→donate**→user→data→honor→api）**——在父目录直接 `./mvnw install -DskipTests` 即可全量按序构建，`-pl`/`-am` 可用。**2026-07-02 教训**：此前该列表漏了 user/data 两模块，全量 reactor 构建「SUCCESS」但 api 打包进的是本地仓库里的旧 user/data jar（新功能悄悄缺失）——全量构建后核对 Reactor Summary 是否列全 **11 个模块（含 parent 共 12 行）**。**新增模块时必须同步这里的数字与顺序**，否则这条检查会悄悄失效——它存在的意义正是发现「少了一个模块」。单模块构建/测试仍用 `-f ../hengde-volunteer-<module>/pom.xml`；用 `-f` 时父 POM 经 `relativePath` 从磁盘读，彼此依赖仍经**本地仓库**解析，被依赖的模块改动后要先 `install` 才能被下游模块看到。
 
 ```bash
 cd hengde-volunteer-parent
 
 # 0) 改版本号：父 POM + 11 个子模块 <parent> 里的版本号共 12 处，一条命令改完（已实测只动这 12 行）。
-#    改完紧接着跑下面第 1 步。jar 文件名随之改变，服务器上 systemd 只认软链，发版步骤见 文档/v1/部署说明.md 第 6 节
+#    jar 文件名随之改变，服务器上 systemd 只认软链，发版步骤见 文档/v1/部署说明.md 第 6 节
 ./mvnw versions:set -DnewVersion=2.0.2 -DgenerateBackupPoms=false
 
-# 1) 安装父 POM 到本地仓库（改了父 POM 的版本/依赖管理后必须重跑）
-#    子模块 relativePath 为空，全量构建也只认本地仓库里装过的父 POM、不读磁盘上的那份：
-#    改了版本号不跑这条 → 直接报 Non-resolvable parent POM（2.0.1 升级时实测）；只改依赖管理不跑 → 静默用旧的那份
+# 1) 安装父 POM 到本地仓库：只在走下面第 2 步那种 -f 单模块构建、又没跑过全量 install 时需要
+#    （被依赖模块装进本地仓库的 POM 引用着父 POM，要从本地仓库找）；全量构建直接读磁盘上的父 POM，并会顺带装好。
+#    ⚠️ 别把子模块的 relativePath 改回空：那样全量构建也只认本地仓库里装过的父 POM——改了版本号不先 install -N
+#    直接报 Non-resolvable parent POM（2.0.1 升级时实测），只改依赖管理则静默用旧的那份
 ./mvnw install -N
 
 # 2) 构建并安装单个模块到本地仓库（按依赖顺序：common → auth → organization → publicity → activity → trade → donate → user → data → honor → api，与父 POM <modules> 一致）

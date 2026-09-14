@@ -6,7 +6,7 @@
         <groupId>com.hengde</groupId>
         <artifactId>hengde-volunteer-parent</artifactId>
         <version>2.0.1</version>
-        <relativePath/> <!-- lookup parent from repository -->
+        <relativePath>../hengde-volunteer-parent/pom.xml</relativePath> <!-- 读磁盘上的父 POM；别留空，留空时只认本地仓库里装过的那份 -->
     </parent>
     <artifactId>hengde-volunteer-organization</artifactId>
     <name>hengde-volunteer-organization</name>
