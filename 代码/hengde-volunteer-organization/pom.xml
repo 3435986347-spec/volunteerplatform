@@ -5,12 +5,10 @@
     <parent>
         <groupId>com.hengde</groupId>
         <artifactId>hengde-volunteer-parent</artifactId>
-        <version>1.1-SNAPSHOT</version>
+        <version>2.0.1</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
-    <groupId>com.hengde</groupId>
     <artifactId>hengde-volunteer-organization</artifactId>
-    <version>1.1-SNAPSHOT</version>
     <name>hengde-volunteer-organization</name>
     <description>hengde-volunteer-organization</description>
     <packaging>jar</packaging>
@@ -34,14 +32,12 @@
         <dependency>
             <groupId>com.hengde</groupId>
             <artifactId>hengde-volunteer-common</artifactId>
-            <version>1.1-SNAPSHOT</version>
         </dependency>
 
         <!-- 认证领域：复用 AdminUser/AdminUserMapper/StpAdminUtil（传递带来 common/sa-token/mybatis-plus 等） -->
         <dependency>
             <groupId>com.hengde</groupId>
             <artifactId>hengde-volunteer-auth</artifactId>
-            <version>1.1-SNAPSHOT</version>
         </dependency>
 
         <dependency>
@@ -83,7 +79,6 @@
         <dependency>
             <groupId>com.hengde</groupId>
             <artifactId>hengde-volunteer-common</artifactId>
-            <version>${project.version}</version>
             <type>test-jar</type>
             <scope>test</scope>
         </dependency>

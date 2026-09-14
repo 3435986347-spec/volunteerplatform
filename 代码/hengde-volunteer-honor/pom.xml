@@ -5,12 +5,10 @@
     <parent>
         <groupId>com.hengde</groupId>
         <artifactId>hengde-volunteer-parent</artifactId>
-        <version>1.1-SNAPSHOT</version>
+        <version>2.0.1</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
-    <groupId>com.hengde</groupId>
     <artifactId>hengde-volunteer-honor</artifactId>
-    <version>1.1-SNAPSHOT</version>
     <name>hengde-volunteer-honor</name>
     <description>hengde-volunteer-honor</description>
     <packaging>jar</packaging>
@@ -34,14 +32,12 @@
         <dependency>
             <groupId>com.hengde</groupId>
             <artifactId>hengde-volunteer-common</artifactId>
-            <version>1.1-SNAPSHOT</version>
         </dependency>
 
         <!-- 认证域：榜单展示要把 volunteerId 换成姓名（VolunteerQueryService.listNamesByIds） -->
         <dependency>
             <groupId>com.hengde</groupId>
             <artifactId>hengde-volunteer-auth</artifactId>
-            <version>1.1-SNAPSHOT</version>
         </dependency>
 
         <!-- 活动域：三个榜单的数据源（ActivityRankingQueryService）。
@@ -49,7 +45,6 @@
         <dependency>
             <groupId>com.hengde</groupId>
             <artifactId>hengde-volunteer-activity</artifactId>
-            <version>1.1-SNAPSHOT</version>
         </dependency>
 
         <dependency>
@@ -90,7 +85,6 @@
         <dependency>
             <groupId>com.hengde</groupId>
             <artifactId>hengde-volunteer-common</artifactId>
-            <version>${project.version}</version>
             <type>test-jar</type>
             <scope>test</scope>
         </dependency>

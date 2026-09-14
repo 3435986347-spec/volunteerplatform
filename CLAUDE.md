@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-雷州市恒德爱心公益协会志愿者管理平台，基于微信小程序的多端志愿者服务系统（后端为 Spring Boot 4 / Spring Cloud 微服务）。所有模块 `groupId=com.hengde`，`version=1.1-SNAPSHOT`，Java 17。
+雷州市恒德爱心公益协会志愿者管理平台，基于微信小程序的多端志愿者服务系统（后端为 Spring Boot 4 / Spring Cloud 微服务）。所有模块 `groupId=com.hengde`，`version=2.0.1`，Java 17。**版本号只在父 POM 维护**：子模块不写自身 `groupId`/`version`（继承），模块之间互相引用也不写 version（父 POM `dependencyManagement` 的「本项目内部模块」段按 `${project.version}` 统一管）；唯一例外是各子模块 `<parent>` 里的版本号，Maven 3 规定必须写死——改版本号用 `versions:set` 一条命令改完这 12 处，见「Common Commands」。
 
 ## 当前状态（重要）
 
@@ -75,7 +75,7 @@ V1 落地顺序：`auth` → `organization`（子账号权限） → `activity` 
 - `honor`：**排行榜已完成**（V2 第 2 批，V25+V26——次数/时长/积分 × 月/年/总，见「已完成」表 honor 行）；**微心愿排行**（第 4 板块）数据源属 donate 未建，`rank_type=4` 已预留取值、V3 接数据源即可；勋章/榜样已完成（第 3 批）；**奖惩中心已收口**（V32–V38 + **V40 两级审核**：`SanctionScope.ALL` 由 `DenyAllUseGate` 在 `/v/**` 统一拦截，Row 41 F 的「收到提示」落在 `volunteer_notification`；V40 起组织部初审 → 理事会终审，奖励不经组织部，理事会开单即通过——协会 2026-09-02 答复问题二，见 `协会待确认清单.md` 回执三；⚠️ 提示仍仅站内无推送，微信服务号那一半卡在「服务号 openid 与小程序 openid 不是同一个值」这个前置上）；评优评先按 Row 47 原文「需预留」推迟。**XXL-Job 仍未接入**——定时任务当前走 Spring `@Scheduled`，接 XXL-Job 需先部署独立的 `xxl-job-admin` 调度中心（独立应用 + 自己的 `xxl_job` 库表），属部署侧前置工作。
 - `activity` 签到/时长/积分闭环 **V1.1 分三批**：第 1 批（主干：现场负责人/GPS 签到/统一签退算时长/秘书部确认/服务记录大板块/积分发放）**已完成**（V10）；第 2 批（我的活动页、确认到家、双向评价、活动总结、组织部改签到签退积分+部长二次审核、已参加时长门槛）**已完成**（V14；活动相册依赖社区 social 推迟）；第 3 批（活动留言 V15、固定日期周期发布、历史活动+活动补录 V16）**已完成**。另 `enroll_scope=1` 指定分队报名（单个分队）仍搁置。auth 注册手写签名+协议阅读（V17）**已完成**。
 
-新建领域模块时：先建 Maven 子模块（`<parent>` 指向 `hengde-volunteer-parent`、`relativePath` 空），在 api pom 加该模块依赖，再按领域内部分包约定写业务代码。
+新建领域模块时：先建 Maven 子模块（`<parent>` 指向 `hengde-volunteer-parent`、`relativePath` 空，**不写自身 `groupId`/`version`**），在父 POM `dependencyManagement` 的「本项目内部模块」段登记它（`${project.version}`；漏登记的话，别的模块引它时直接报「缺 version」），在 api pom 加该模块依赖（不写 version），再按领域内部分包约定写业务代码。
 
 ### 注意
 
@@ -105,7 +105,13 @@ V1 落地顺序：`auth` → `organization`（子账号权限） → `activity` 
 ```bash
 cd hengde-volunteer-parent
 
+# 0) 改版本号：父 POM + 11 个子模块 <parent> 里的版本号共 12 处，一条命令改完（已实测只动这 12 行）。
+#    改完紧接着跑下面第 1 步。jar 文件名随之改变，服务器上 systemd 只认软链，发版步骤见 文档/v1/部署说明.md 第 6 节
+./mvnw versions:set -DnewVersion=2.0.2 -DgenerateBackupPoms=false
+
 # 1) 安装父 POM 到本地仓库（改了父 POM 的版本/依赖管理后必须重跑）
+#    子模块 relativePath 为空，全量构建也只认本地仓库里装过的父 POM、不读磁盘上的那份：
+#    改了版本号不跑这条 → 直接报 Non-resolvable parent POM（2.0.1 升级时实测）；只改依赖管理不跑 → 静默用旧的那份
 ./mvnw install -N
 
 # 2) 构建并安装单个模块到本地仓库（按依赖顺序：common → auth → organization → publicity → activity → trade → donate → user → data → honor → api，与父 POM <modules> 一致）

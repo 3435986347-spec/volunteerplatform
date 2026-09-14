@@ -7,7 +7,8 @@
 #   journalctl -u hengde-api -f            # 看日志（应用日志走 stdout → journald）
 #
 # 前置（见 文档/v1/部署说明.md）：
-#   - jar 放 /opt/hengde/api/hengde-volunteer-api-1.1-SNAPSHOT.jar
+#   - jar 带版本号放进 /opt/hengde/api/，再建软链 hengde-volunteer-api.jar 指向它（部署说明第 2、6 节）。
+#     本文件只认软链：改版本号不用动这里，换版本 / 回滚都是「改软链 + restart」。
 #   - 环境变量填好 /etc/hengde/api.env（chmod 600，模板见同目录 api.env.example）
 #   - 协议正文等长文本配置放 /opt/hengde/api/config/application-prod.yaml
 #     （WorkingDirectory 指向 /opt/hengde/api，Spring Boot 自动加载 ./config/ 下的 prod 配置）
@@ -27,7 +28,7 @@ Group=hengde
 WorkingDirectory=/opt/hengde/api
 EnvironmentFile=/etc/hengde/api.env
 # 2C4G 服务器参考堆配置；更大内存可按需上调 -Xmx
-ExecStart=/usr/bin/java -Xms512m -Xmx1024m -jar /opt/hengde/api/hengde-volunteer-api-1.1-SNAPSHOT.jar --spring.profiles.active=prod
+ExecStart=/usr/bin/java -Xms512m -Xmx1024m -jar /opt/hengde/api/hengde-volunteer-api.jar --spring.profiles.active=prod
 # JVM 收到 SIGTERM 正常退出码为 143，不算失败
 SuccessExitStatus=143
 Restart=on-failure

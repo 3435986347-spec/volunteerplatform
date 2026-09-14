@@ -5,12 +5,10 @@
     <parent>
         <groupId>com.hengde</groupId>
         <artifactId>hengde-volunteer-parent</artifactId>
-        <version>1.1-SNAPSHOT</version>
+        <version>2.0.1</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
-    <groupId>com.hengde</groupId>
     <artifactId>hengde-volunteer-user</artifactId>
-    <version>1.1-SNAPSHOT</version>
     <name>hengde-volunteer-user</name>
     <description>hengde-volunteer-user</description>
     <packaging>jar</packaging>
@@ -34,21 +32,18 @@
         <dependency>
             <groupId>com.hengde</groupId>
             <artifactId>hengde-volunteer-common</artifactId>
-            <version>1.1-SNAPSHOT</version>
         </dependency>
 
         <!-- 认证域：Volunteer 实体/Mapper（志愿者表归 auth）、StpAdminUtil、CryptoUtil(经 common) -->
         <dependency>
             <groupId>com.hengde</groupId>
             <artifactId>hengde-volunteer-auth</artifactId>
-            <version>1.1-SNAPSHOT</version>
         </dependency>
 
         <!-- 组织域：分队名(SquadQueryService)、所在小组名(GroupQueryService) 跨模块只读 -->
         <dependency>
             <groupId>com.hengde</groupId>
             <artifactId>hengde-volunteer-organization</artifactId>
-            <version>1.1-SNAPSHOT</version>
         </dependency>
 
         <!-- 活动域：服务时长/积分/参与活动数聚合(ServiceRecordService.batchStatsByVolunteerIds)。
@@ -56,7 +51,6 @@
         <dependency>
             <groupId>com.hengde</groupId>
             <artifactId>hengde-volunteer-activity</artifactId>
-            <version>1.1-SNAPSHOT</version>
         </dependency>
 
         <dependency>
@@ -92,7 +86,6 @@
         <dependency>
             <groupId>com.hengde</groupId>
             <artifactId>hengde-volunteer-common</artifactId>
-            <version>${project.version}</version>
             <type>test-jar</type>
             <scope>test</scope>
         </dependency>

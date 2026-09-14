@@ -23,7 +23,7 @@
 	</modules>
 	<groupId>com.hengde</groupId>
 	<artifactId>hengde-volunteer-parent</artifactId>
-	<version>1.1-SNAPSHOT</version>
+	<version>2.0.1</version>
 	<name>hengde-volunteer-parent</name>
 	<description>hengde-volunteer</description>
 	<packaging>pom</packaging>
@@ -116,6 +116,69 @@
 	</properties>
 		<dependencyManagement>
 			<dependencies>
+
+				<!-- ===== 本项目内部模块 =====
+				     子模块不写自身 groupId/version（继承本 POM），互相引用也不写 version（由这里管），
+				     所以本项目的版本号只出现在两类地方：本 POM 的 <version>，和各子模块 <parent> 里的 <version>
+				     ——后者是 Maven 3 的规定，必须写死、不能继承。
+				     test-jar 必须单独登记一条：dependencyManagement 按 groupId+artifactId+type+classifier 区分，
+				     只登记 jar 那条管不到 <type>test-jar</type> 的引用，子模块会直接报「缺 version」。 -->
+				<dependency>
+					<groupId>com.hengde</groupId>
+					<artifactId>hengde-volunteer-common</artifactId>
+					<version>${project.version}</version>
+				</dependency>
+				<dependency>
+					<groupId>com.hengde</groupId>
+					<artifactId>hengde-volunteer-common</artifactId>
+					<version>${project.version}</version>
+					<type>test-jar</type>
+				</dependency>
+				<dependency>
+					<groupId>com.hengde</groupId>
+					<artifactId>hengde-volunteer-auth</artifactId>
+					<version>${project.version}</version>
+				</dependency>
+				<dependency>
+					<groupId>com.hengde</groupId>
+					<artifactId>hengde-volunteer-organization</artifactId>
+					<version>${project.version}</version>
+				</dependency>
+				<dependency>
+					<groupId>com.hengde</groupId>
+					<artifactId>hengde-volunteer-publicity</artifactId>
+					<version>${project.version}</version>
+				</dependency>
+				<dependency>
+					<groupId>com.hengde</groupId>
+					<artifactId>hengde-volunteer-activity</artifactId>
+					<version>${project.version}</version>
+				</dependency>
+				<dependency>
+					<groupId>com.hengde</groupId>
+					<artifactId>hengde-volunteer-trade</artifactId>
+					<version>${project.version}</version>
+				</dependency>
+				<dependency>
+					<groupId>com.hengde</groupId>
+					<artifactId>hengde-volunteer-donate</artifactId>
+					<version>${project.version}</version>
+				</dependency>
+				<dependency>
+					<groupId>com.hengde</groupId>
+					<artifactId>hengde-volunteer-user</artifactId>
+					<version>${project.version}</version>
+				</dependency>
+				<dependency>
+					<groupId>com.hengde</groupId>
+					<artifactId>hengde-volunteer-data</artifactId>
+					<version>${project.version}</version>
+				</dependency>
+				<dependency>
+					<groupId>com.hengde</groupId>
+					<artifactId>hengde-volunteer-honor</artifactId>
+					<version>${project.version}</version>
+				</dependency>
 
 				<!-- ===== Spring Boot Starters ===== -->
 				<dependency>
