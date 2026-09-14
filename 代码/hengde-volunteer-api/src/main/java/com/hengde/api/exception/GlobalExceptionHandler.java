@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonMappingException;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.result.Result;
 import lombok.extern.slf4j.Slf4j;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
@@ -90,9 +91,22 @@ public class GlobalExceptionHandler {
     }
 
     // BusinessException 使用业务码，HTTP 状态固定 400，前端按 code 区分具体错误
+    /**
+     * 业务拒绝 → HTTP 400。<b>必须留一行日志</b>。
+     *
+     * <p>此前这里一行日志都不打：前端拿到 400 和一个 {@code X-Trace-Id}，拿着 traceId 去服务器日志里
+     * 却 grep 不到任何东西——traceId 在日志格式里（{@code [%X{traceId}]}），可这一次请求压根没写过日志。
+     * 于是「证书下载 400」这种问题只能靠猜，或者让测试的人把响应体一个字一个字抄回来。</p>
+     *
+     * <p>记 WARN 不记 ERROR：这是业务按规则拒绝，不是程序出错。
+     * 带上请求方法与路径，否则同一句「证书不存在」分不清是哪个接口报的。
+     * <b>不打堆栈</b>——业务拒绝的堆栈没有信息量，只会把真正的 ERROR 淹掉。</p>
+     */
     @ExceptionHandler(BusinessException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public Result<Void> handleBusiness(BusinessException e) {
+    public Result<Void> handleBusiness(BusinessException e, HttpServletRequest request) {
+        log.warn("业务拒绝 {} {} → code={} message={}",
+                request.getMethod(), request.getRequestURI(), e.getCode(), e.getMessage());
         return Result.fail(e.getCode(), e.getMessage());
     }
 

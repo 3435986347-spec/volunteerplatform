@@ -73,6 +73,10 @@ public class WebMvcConfig implements WebMvcConfigurer {
         config.addAllowedOriginPattern("*");
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.addAllowedHeader("*");
+        // 跨域时浏览器只让 JS 读到几个「简单响应头」，其余一律藏起来——不 expose 的话，
+        // 后台控制台（本地打开、连服务器，是跨域）在 JS 里永远拿不到 TraceFilter 写的 X-Trace-Id，
+        // 报错时也就没法把它展示给人去对日志。小程序的 wx.request 不受 CORS 约束，不受影响。
+        config.addExposedHeader("X-Trace-Id");
         config.setAllowCredentials(true);
         config.setMaxAge(3600L);
 
