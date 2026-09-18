@@ -365,6 +365,7 @@ _EXEMPT_MARKER = re.compile(r'不入权限点表')
 DOC_PATHS = [
     "文档/v2/url文档v2.md",
     "文档/v3/url文档v3.md",
+    "文档/v4/url文档v4.md",
 ]
 
 EXEMPT_ALLOWLIST = {

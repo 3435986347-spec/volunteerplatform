@@ -5,9 +5,11 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.hengde.activity.constant.ActivityStatus;
 import com.hengde.activity.constant.SecretaryStatus;
 import com.hengde.activity.dao.ActivityAttendanceMapper;
+import com.hengde.activity.dao.ActivityEnrollmentMapper;
 import com.hengde.activity.dao.ActivityMapper;
 import com.hengde.activity.entity.Activity;
 import com.hengde.activity.entity.ActivityAttendance;
+import com.hengde.activity.entity.ActivityEnrollment;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -36,6 +38,12 @@ public class ActivityStatsService {
 
     private ActivityMapper activityMapper;
     private ActivityAttendanceMapper attendanceMapper;
+    private ActivityEnrollmentMapper enrollmentMapper;
+
+    @Autowired
+    public void setEnrollmentMapper(ActivityEnrollmentMapper enrollmentMapper) {
+        this.enrollmentMapper = enrollmentMapper;
+    }
 
     @Autowired
     public void setActivityMapper(ActivityMapper activityMapper) {
@@ -68,6 +76,16 @@ public class ActivityStatsService {
     }
 
     /** 总服务时长（分钟）：仅累计已发布/已结束活动上、秘书部已确认（secretary_status=1）的 service_minutes。 */
+    /**
+     * 代报名次数（Row 79 志愿小组数据里的「组员相互报名次数」）：{@code proxy_by_volunteer_id} 非空的报名。
+     *
+     * <p>代报名只在同小组成员之间开放（V7），所以它就是那一项；口径放在 activity 是因为报名是这里的语义。</p>
+     */
+    public long countProxyEnrollments() {
+        return enrollmentMapper.selectCount(Wrappers.<ActivityEnrollment>lambdaQuery()
+                .isNotNull(ActivityEnrollment::getProxyByVolunteerId));
+    }
+
     public long sumConfirmedServiceMinutes() {
         List<Map<String, Object>> rows = attendanceMapper.selectMaps(new QueryWrapper<ActivityAttendance>()
                 .select("IFNULL(SUM(service_minutes),0) AS total")

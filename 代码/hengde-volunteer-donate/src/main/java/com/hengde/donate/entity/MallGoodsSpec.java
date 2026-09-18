@@ -25,6 +25,8 @@ public class MallGoodsSpec extends BaseEntity {
     private String name;
     /** 所需积分 */
     private Integer points;
+    /** 现金部分【分】，0=纯积分（V57，清单②默认：固定积分 + 固定现金） */
+    private Integer cashFen;
     /** 库存 */
     private Integer stock;
     /** 排序 */

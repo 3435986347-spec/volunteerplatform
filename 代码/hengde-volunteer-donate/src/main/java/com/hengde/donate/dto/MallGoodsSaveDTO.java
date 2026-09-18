@@ -49,6 +49,15 @@ public class MallGoodsSaveDTO {
     private String sponsorName;
 
     /**
+     * 必须使用的卷定义 id（Row 8 F「商品只能使用指定卷才能兑换，没有卷就不能兑换」）。
+     *
+     * <p>不传 = 不要求。<b>修改时按全量语义</b>：传 null 就是取消要求——与 name/coverUrl 等其余字段一致，
+     * 这个入参本就是整张商品表单。改它会让已上架的商品退回待审核（它决定谁能买）。</p>
+     */
+    @Schema(description = "必须使用的卷定义 id；不传=不要求")
+    private Long requireCouponId;
+
+    /**
      * 规格与库存。<b>库存只存在规格上</b>，商品本身没有库存字段。
      *
      * <p>新增时至少一条；修改时传 null=不动规格，传列表=全量替换。</p>

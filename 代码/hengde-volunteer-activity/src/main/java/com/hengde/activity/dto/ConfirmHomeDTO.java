@@ -3,6 +3,7 @@ package com.hengde.activity.dto;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -36,4 +37,8 @@ public class ConfirmHomeDTO {
     @DecimalMin(value = "-180", message = "经度范围 -180~180")
     @DecimalMax(value = "180", message = "经度范围 -180~180")
     private BigDecimal lng;
+
+    /** 详细地址（Row 63；小程序逆地理编码后带上，可空） */
+    @Size(max = 255, message = "地址不超过 255 字")
+    private String address;
 }

@@ -1,5 +1,7 @@
 package com.hengde.honor.entity;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.hengde.common.entity.BaseEntity;
 import lombok.Data;
@@ -54,6 +56,23 @@ public class HonorCertificate extends BaseEntity {
 
     /** PDF 实际渲染完成时间；懒渲染前为 null */
     private LocalDateTime generateTime;
+
+    /**
+     * 业务来源键，形如 {@code pair:{结对登记id}}；活动证书为 null（它由 {@code uk_slot_cert} 保幂等）。
+     *
+     * <p>捐赠证书没有活动与场次，{@code uk_slot_cert} 对它不起作用（MySQL 视多个 NULL 互不相同），
+     * 幂等改由 V54 的 {@code uk_cert_biz_ref} 保证。</p>
+     */
+    private String bizRef;
+
+    /**
+     * 「类型 + 业务来源键」，<b>由数据库生成列计算</b>，应用不可写（写它 INSERT 直接报错）。
+     * 软删行仍占用——与 {@code uk_slot_cert} 同口径：重复触发要能命中并恢复原件，而不是另发一张新编号。
+     */
+    @TableField(value = "active_biz_ref",
+            insertStrategy = FieldStrategy.NEVER,
+            updateStrategy = FieldStrategy.NEVER)
+    private String activeBizRef;
 
     /** 删除人 admin_user.id */
     private Long deletedBy;

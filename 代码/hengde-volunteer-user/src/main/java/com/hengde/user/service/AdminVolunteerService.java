@@ -20,6 +20,7 @@ import com.hengde.common.exception.BusinessException;
 import com.hengde.common.page.PageResult;
 import com.hengde.organization.biz.service.GroupQueryService;
 import com.hengde.organization.biz.service.SquadQueryService;
+import com.hengde.organization.biz.service.StructureService;
 import com.hengde.user.dto.VolunteerQueryDTO;
 import com.hengde.user.dto.VolunteerUpdateDTO;
 import com.hengde.user.vo.AdminVolunteerDetailVO;
@@ -30,6 +31,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -61,6 +63,12 @@ public class AdminVolunteerService {
     private ServiceRecordService serviceRecordService;
     private GroupQueryService groupQueryService;
     private SquadQueryService squadQueryService;
+    private StructureService structureService;
+
+    @Autowired
+    public void setStructureService(StructureService structureService) {
+        this.structureService = structureService;
+    }
 
     @Autowired
     public void setVolunteerMapper(VolunteerMapper volunteerMapper) {
@@ -149,7 +157,13 @@ public class AdminVolunteerService {
         uw.set(Volunteer::getRealName, dto.getRealName());
         uw.set(Volunteer::getGender, parseGender(dto.getGender()));
         uw.set(Volunteer::getPoliticalStatus, parsePolitical(dto.getPolitical()));
-        uw.set(Volunteer::getGrade, parseGrade(dto.getGrade()));
+        Grade grade = parseGrade(dto.getGrade());
+        uw.set(Volunteer::getGrade, grade);
+        if (!Objects.equals(grade, v.getGrade())) {
+            // 后台改了年级：当作已对应到当前学年，并清掉挂着的提示（与本人修改同口径，V67）
+            uw.set(Volunteer::getGradeUpgradeYear, grade == null ? null : Grade.schoolYearOf(LocalDate.now()));
+            uw.set(Volunteer::getGradePromptPending, 0);
+        }
         uw.set(Volunteer::getSchool, trimToNull(dto.getSchool()));
         uw.set(Volunteer::getSquadId, dto.getSquadId());
         uw.set(Volunteer::getEmergencyContactName, trimToNull(dto.getEmergencyContactName()));
@@ -356,14 +370,15 @@ public class AdminVolunteerService {
     /** 一次性批量取列表行所需的跨域展示数据，避免逐行查询。 */
     private Enrichment enrichmentFor(List<Volunteer> records) {
         if (records.isEmpty()) {
-            return new Enrichment(Map.of(), Map.of(), Map.of());
+            return new Enrichment(Map.of(), Map.of(), Map.of(), Map.of());
         }
         List<Long> ids = records.stream().map(Volunteer::getId).toList();
         List<Long> squadIds = records.stream().map(Volunteer::getSquadId).filter(Objects::nonNull).distinct().toList();
         return new Enrichment(
                 serviceRecordService.batchStatsByVolunteerIds(ids),
                 groupQueryService.listActiveGroupNamesByVolunteerIds(ids),
-                squadQueryService.listNamesByIds(squadIds));
+                squadQueryService.listNamesByIds(squadIds),
+                structureService.positionLabelsOf(ids));
     }
 
     private void fillCommon(AdminVolunteerListVO vo, Volunteer v, Enrichment enrich) {
@@ -384,6 +399,7 @@ public class AdminVolunteerService {
         vo.setSquadId(v.getSquadId());
         vo.setSquad(v.getSquadId() == null ? null : enrich.squadNames.get(v.getSquadId()));
         vo.setGroup(enrich.groupNames.get(v.getId()));
+        vo.setPosition(enrich.positions.get(v.getId()));
         VolunteerServiceStatsView s = enrich.stats.get(v.getId());
         vo.setHours(minutesToHours(s == null ? 0 : s.confirmedMinutes()));
         vo.setPoints(s == null ? 0 : s.points());
@@ -429,6 +445,7 @@ public class AdminVolunteerService {
     /** 一页内的跨域批量聚合结果。 */
     private record Enrichment(Map<Long, VolunteerServiceStatsView> stats,
                               Map<Long, String> groupNames,
-                              Map<Long, String> squadNames) {
+                              Map<Long, String> squadNames,
+                              Map<Long, String> positions) {
     }
 }

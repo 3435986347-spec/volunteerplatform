@@ -85,6 +85,23 @@
             <artifactId>hengde-volunteer-honor</artifactId>
         </dependency>
 
+        <!-- 领域模块：社区（/v/social/**、/a/social/**，V4 社区核心批） -->
+        <dependency>
+            <groupId>com.hengde</groupId>
+            <artifactId>hengde-volunteer-social</artifactId>
+        </dependency>
+
+        <!-- 爱心企业（V4 爱心企业批）：企业端 /e/** 与第三套登录态 -->
+        <dependency>
+            <groupId>com.hengde</groupId>
+            <artifactId>hengde-volunteer-enterprise</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.hengde</groupId>
+            <artifactId>hengde-volunteer-system</artifactId>
+        </dependency>
+
         <!-- Spring Boot 启动器 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

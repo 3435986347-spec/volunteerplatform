@@ -101,6 +101,13 @@
 - [ ] 上传一张图（头像/活动图），确认是**真实 OSS URL** 且能访问。
 - [ ] 报名审核：管理端通过/拒绝，志愿者端「我的报名」状态正确。
 - [ ] 确认弱默认值（admin123 / dev-only-* 密钥）**均已被覆盖**。
+- [ ] **V4 新增的三条公开路径**（不带登录态也打得到，靠各自的凭据）：`GET /api/v/user/volunteer-cards/verify?token=`（志愿者证核验）、
+      `GET /api/share/files/{token}`（文件分享，V4 系统治理批）、`POST /api/callback/**`（支付与快递 webhook）。
+      逐条 `curl` 一次，确认**不是 401**（401 说明鉴权拦截器把它们一起挡了，钱与扫码都会静默失败）。
+- [ ] **私信的 WebSocket**：`/api/ws/social/chat?token=<登录 token>` 能握手（nginx 要放行 `Upgrade`/`Connection`，见《部署说明》第 3 节）。
+      握不上手不影响业务——消息已落库，只是对方要刷新才看得到，**所以这条必须主动验**，否则没人会发现。
+- [ ] **Excel 导出**（志愿者名单或报名名单各导一次）：2.0.1 那版 commons-compress 不配套会 `NoSuchMethodError`，
+      父 POM 已钉 1.27.1，**重新发版后要在生产实际导出一次**确认。
 
 ## 7. 多组织（白标）说明
 

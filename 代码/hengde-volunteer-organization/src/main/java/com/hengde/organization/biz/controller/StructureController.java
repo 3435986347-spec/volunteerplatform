@@ -1,5 +1,7 @@
 package com.hengde.organization.biz.controller;
 
+import cn.dev33.satoken.stp.StpUtil;
+import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.common.result.Result;
 import com.hengde.organization.biz.service.StructureService;
 import com.hengde.organization.biz.vo.StructureNodeVO;
@@ -18,15 +20,22 @@ import java.util.List;
 public class StructureController {
 
     private StructureService structureService;
+    private VolunteerQueryService volunteerQueryService;
 
     @Autowired
     public void setStructureService(StructureService structureService) {
         this.structureService = structureService;
     }
 
-    @Operation(summary = "组织架构树")
+    @Autowired
+    public void setVolunteerQueryService(VolunteerQueryService volunteerQueryService) {
+        this.volunteerQueryService = volunteerQueryService;
+    }
+
+    @Operation(summary = "组织架构树（节点里的人：姓名 / 职位；已实名的人还能看到电话）")
     @GetMapping
     public Result<List<StructureNodeVO>> tree() {
-        return Result.ok(structureService.tree());
+        Long me = StpUtil.getLoginIdAsLong();
+        return Result.ok(structureService.tree(volunteerQueryService.filterActiveRegistered(List.of(me)).contains(me)));
     }
 }

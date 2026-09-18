@@ -68,6 +68,12 @@ public class Volunteer extends BaseEntity {
     /** 年级 */
     private Grade grade;
 
+    /** 年级已对应到的学年（V67；9 月 1 日为界，升级任务只处理小于当前学年的行） */
+    private Integer gradeUpgradeYear;
+
+    /** 是否挂着「请修改学校和年级」提示（V67；到了分界年级由升级任务挂上，本人改年级即清除） */
+    private Integer gradePromptPending;
+
     /** 通讯地址 */
     private String address;
 
@@ -87,10 +93,16 @@ public class Volunteer extends BaseEntity {
     /** 协议手写签名图片 */
     private String signatureUrl;
 
+    /** 安全中心手写签名板（V67；与注册协议签名分开，协议签名是留痕、不随手改） */
+    private String padSignatureUrl;
+
     /** 注册时所签志愿者协议版本（V17；合规留痕） */
     private String signedAgreementVersion;
 
-    /** 职位（后台设置，前端名字下展示） */
+    /**
+     * 职位（V1 预留，一直没有写入口）。⚠️ V4 组织架构维护批起<b>不再读写</b>：名字下面那一行由组织架构现算
+     * （{@code StructureService.positionLabelsOf}），两处都能改「职位」迟早各说各的。
+     */
     private String position;
 
     /** 管理团队标记 0否/1是（V11；参加活动积分按管理团队倍率 ×1.2。报名管理团队/审批为预留功能） */

@@ -29,6 +29,32 @@ public interface FileStorageService {
     String upload(MultipartFile file, String dir);
 
     /**
+     * 这个 URL 是不是本系统经 {@link #upload(MultipartFile, String)} 传到 {@code dir} 目录下的对象。
+     *
+     * <p>给「客户端把上传得到的 URL 回传回来」的场景校验用（问卷的文件题、申诉凭证之类）：不校验的话，
+     * 答卷里可以塞任意外链，管理员在后台点开的就是别人的页面。判据是<b>前缀 + 本实现生成的对象名形状</b>
+     * （{@code dir/yyyyMMdd/32位十六进制[.扩展名]}），所以 {@code ../}、查询串、别的目录一概不认。</p>
+     *
+     * <p>默认不支持：测试里的替身实现不必各写一份，真实的两家实现都覆盖了它。</p>
+     */
+    default boolean isOwnUpload(String url, String dir) {
+        throw new UnsupportedOperationException("当前存储实现不支持校验上传 URL");
+    }
+
+    /**
+     * {@link #isOwnUpload} 的共用判定：{@code url} 以 {@code base + "/" + dir + "/"} 开头，余下部分是本项目生成的对象名。
+     * 两家实现共用，保证口径一致。
+     */
+    static boolean matchesUploadedName(String url, String base, String dir) {
+        if (url == null || base == null || dir == null || dir.isBlank()) {
+            return false;
+        }
+        String prefix = base + "/" + dir + "/";
+        return url.startsWith(prefix)
+                && url.substring(prefix.length()).matches("\\d{8}/[0-9a-f]{32}(\\.[A-Za-z0-9]{1,10})?");
+    }
+
+    /**
      * 上传字节数据（用于生成类文件，如二维码、PDF 证书）。
      *
      * @param data        文件字节
@@ -119,6 +145,23 @@ public interface FileStorageService {
      * @throws com.hengde.common.exception.BusinessException TTL 非正或超过上限
      */
     String presignGet(String objectKey, Duration ttl);
+
+    /**
+     * 签一条限时的直传 PUT（V4 社区核心批：帖子视频不经服务端中转，Q11 默认 100MB）。
+     *
+     * <p>对象键与 {@link #upload(MultipartFile, String)} 同形（{@code dir/yyyyMMdd/uuid.ext}），所以传完之后
+     * {@link #isOwnUpload} 认得出它。Content-Type 由扩展名在服务端推导；声明的大小进签名（存储侧支持时），传的不是这个大小会被拒收。</p>
+     *
+     * <p>⚠️ 真实对象存储上的直传<b>没有端到端验证过</b>；存储未启用时返回占位地址（与 {@code upload} 的占位 URL 同前缀），供本地联调。</p>
+     *
+     * @param dir           目录
+     * @param extension     扩展名（不带点，已由调用方按白名单校验）
+     * @param contentLength 声明的字节数
+     * @param ttl           有效期（受 {@code hengde.oss.presign-max-ttl-seconds} 约束）
+     */
+    default PresignedUpload presignPut(String dir, String extension, long contentLength, Duration ttl) {
+        throw new UnsupportedOperationException("当前存储实现不支持直传签名");
+    }
 
     /**
      * 校验签名有效期。两家实现共用，保证口径一致——各写一份迟早漂开。

@@ -23,16 +23,18 @@ public final class RankType {
     public static final int SERVICE_MINUTES = 2;
     /** 积分排行（累计获得） */
     public static final int POINTS = 3;
-    /** 微心愿排行（V3 donate 建成后启用，当前查询会被拒） */
+    /** 微心愿排行（V3 微心愿批放行；数据源 donate 的 {@code DonateRankingQueryService}，按「已实现」算） */
     public static final int WISH = 4;
 
     /**
-     * 当前<b>已有数据源</b>的板块——查询与快照生成都只认这三个。
+     * 当前<b>已有数据源</b>的板块——查询与快照生成都只认这些。
      *
-     * <p>{@link #WISH} 不在其中：它有码但没数据源，若混进来会静默产出空榜单，
-     * 前端看到的是「微心愿排行没人上榜」而不是「功能未开放」，属于把缺功能伪装成空数据。</p>
+     * <p>{@link #WISH} 在 V2 时被刻意挡在外面：那时它有码但没数据源，混进来会静默产出空榜单，
+     * 把「功能未开放」伪装成「没人上榜」。V3 微心愿批建好了数据源才放进来。
+     * ⚠️ 放进来的连带后果：每日的快照任务会为<b>此前已冻结</b>的往期补冻这个板块（那时还没有实现的心愿，
+     * 于是冻出空榜）——这是正确的：那些月份确实没有人圆过心愿。</p>
      */
-    public static final List<Integer> AVAILABLE = List.of(ATTENDANCE_COUNT, SERVICE_MINUTES, POINTS);
+    public static final List<Integer> AVAILABLE = List.of(ATTENDANCE_COUNT, SERVICE_MINUTES, POINTS, WISH);
 
     /**
      * 板块中文名，供出参直接展示。

@@ -63,6 +63,12 @@ public class MyProfileVO {
     /** 年级中文 */
     private String gradeName;
 
+    /** 是否要提示他修改学校和年级（Row 25：读完六年级 / 九年级 / 高三 / 大三 / 大四 / 大五后的 9 月；改过年级即消失） */
+    private Boolean gradePromptPending;
+
+    /** 安全中心手写签名板（与注册协议签名分开） */
+    private String padSignatureUrl;
+
     /** 学校 */
     private String school;
 
@@ -76,7 +82,7 @@ public class MyProfileVO {
     @JsonProperty("iVolunteerCodeUrl")
     private String iVolunteerCodeUrl;
 
-    /** 职位（后台设置，名字下展示） */
+    /** 名字下面展示的「部门 · 职位」（由组织架构现算，V4 组织架构维护批；不在架构里为空） */
     private String position;
 
     /** 紧急联系人姓名 */
@@ -87,6 +93,15 @@ public class MyProfileVO {
 
     /** 管理团队标记 0否/1是 */
     private Integer managerFlag;
+
+    /** 所属职务（Row 24）：通过临时负责人考试且资格有效＝「活动临时负责人」，已实名＝「志愿者」，游客＝「游客」 */
+    private String duty;
+
+    /** 现在是不是活动临时负责人 */
+    private Boolean tempLeader;
+
+    /** 临时负责人资格到期时间（长期有效或不是临时负责人为空） */
+    private LocalDateTime tempLeaderExpireTime;
 
     /** 注册时间（null=游客） */
     private LocalDateTime registerTime;

@@ -62,7 +62,7 @@ public class AttendanceController {
     @Operation(summary = "确认到家（活动结束后；超时仅记录）")
     @PostMapping("/activities/{id}/confirm-home")
     public Result<Void> confirmHome(@PathVariable Long id, @RequestBody @Valid ConfirmHomeDTO dto) {
-        attendanceService.confirmHome(id, dto.getSlotId(), StpUtil.getLoginIdAsLong(), dto.getLat(), dto.getLng());
+        attendanceService.confirmHome(id, dto.getSlotId(), StpUtil.getLoginIdAsLong(), dto.getLat(), dto.getLng(), dto.getAddress());
         return Result.ok();
     }
 

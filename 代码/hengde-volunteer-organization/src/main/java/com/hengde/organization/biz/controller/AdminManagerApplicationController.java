@@ -2,6 +2,7 @@ package com.hengde.organization.biz.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.hengde.auth.config.StpAdminUtil;
+import com.hengde.common.excel.ExcelUtil;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
 import com.hengde.common.result.Result;
@@ -11,6 +12,7 @@ import com.hengde.organization.biz.vo.ManagerApplicationVO;
 import com.hengde.organization.constant.PermissionCode;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -44,6 +46,21 @@ public class AdminManagerApplicationController {
     public Result<PageResult<ManagerApplicationVO>> list(PageQuery query,
                                                          @RequestParam(required = false) Integer status) {
         return Result.ok(managerApplicationService.list(query, status));
+    }
+
+    @Operation(summary = "批量下载申请（Excel：固定三项 + 电话 + 问卷答卷；不传 status 导出全部）")
+    @SaCheckPermission(value = PermissionCode.ORG_MANAGER_FLAG, type = "admin")
+    @GetMapping("/export")
+    public void export(@RequestParam(required = false) Integer status, HttpServletResponse response) {
+        ExcelUtil.exportTable(response, "报名管理团队申请", "申请", ManagerApplicationService.EXPORT_HEAD,
+                managerApplicationService.exportRows(status));
+    }
+
+    @Operation(summary = "申请详情（含电话与问卷答卷逐题答案）")
+    @SaCheckPermission(value = PermissionCode.ORG_MANAGER_FLAG, type = "admin")
+    @GetMapping("/{id}")
+    public Result<ManagerApplicationVO> detail(@PathVariable Long id) {
+        return Result.ok(managerApplicationService.detail(id));
     }
 
     @Operation(summary = "审核通过（置为管理团队 manager_flag=1）")

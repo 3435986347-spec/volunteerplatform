@@ -76,8 +76,8 @@ public class ActivityCreateDTO {
     @Max(value = 1, message = "enrollScope 取值 0/1")
     private Integer enrollScope;
 
-    /** 指定分队id列表（逗号分隔，enrollScope=1时用；V1 暂不校验） */
-    private String targetSquadIds;
+    /** 指定分队 id（enrollScope=1 时必填、须是启用中的分队；enrollScope=0 时不许填） */
+    private Long targetSquadId;
 
     /** 最小年龄要求 */
     @Min(value = 0, message = "年龄要求不能为负")
@@ -140,10 +140,10 @@ public class ActivityCreateDTO {
     /** 发布团队/部门名称 */
     private String publisherDeptName;
 
-    /** 管理团队报名开放时间（null=即时可报） */
+    /** 管理团队报名开放时间：早于志愿者开放时间时管理团队按它报；null＝没有提前（跟志愿者一样） */
     private LocalDateTime enrollOpenManager;
 
-    /** 临时负责人报名开放时间（V1 字段预留） */
+    /** 活动临时负责人（考试通过、资格有效）报名开放时间：早于志愿者开放时间时按它报；null＝没有提前 */
     private LocalDateTime enrollOpenLeader;
 
     /** 志愿者报名开放时间（影响志愿者端 enroll/代报名） */

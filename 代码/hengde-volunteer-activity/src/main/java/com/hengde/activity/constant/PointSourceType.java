@@ -45,6 +45,8 @@ public final class PointSourceType {
     public static final int MANUAL = 5;
     /** 奖惩调整（V2 第 5 批奖惩中心）；独占一码，勿与 {@link #CORRECTION} 合并 */
     public static final int REWARD_PUNISH = 6;
+    /** 相册上传（V4 活动相册批，D10）：非消费类，计入累计获得；source_id＝相册上传批次 id，审核通过才入账 */
+    public static final int ALBUM = 7;
 
     /**
      * 奖惩申诉成立时那笔<b>反向流水</b>的 {@code request_id} 前缀，<b>系统保留</b>。
@@ -132,6 +134,7 @@ public final class PointSourceType {
             case EXCHANGE -> "兑换消费";
             case MANUAL -> "管理员调整";
             case REWARD_PUNISH -> "奖惩调整";
+            case ALBUM -> "相册上传";
             default -> "其他";
         };
     }

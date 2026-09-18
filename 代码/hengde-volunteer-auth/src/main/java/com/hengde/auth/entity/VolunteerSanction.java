@@ -27,6 +27,9 @@ public class VolunteerSanction extends BaseEntity {
     /** 来源：奖惩单 */
     public static final int SOURCE_REWARD_PUNISH = 1;
 
+    /** 来源：社区禁言（V4 社区治理批；source_id＝social_ban.id，即时生效、不走奖惩审核，Q2） */
+    public static final int SOURCE_SOCIAL_BAN = 2;
+
     /**
      * 限制天数上限（10 年）。<b>单一出处</b>：写入端 {@code SanctionService.impose}、
      * 开单端 {@code RewardPunishService} 与 V33 的 {@code ck_rp_sanction_days} 三处同一个数。

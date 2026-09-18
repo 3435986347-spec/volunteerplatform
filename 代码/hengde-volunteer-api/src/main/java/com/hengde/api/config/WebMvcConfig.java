@@ -22,10 +22,25 @@ import java.util.List;
 public class WebMvcConfig implements WebMvcConfigurer {
 
     private ObjectMapper objectMapper;
+    private OperationLogInterceptor operationLogInterceptor;
 
     @Autowired
     public void setObjectMapper(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
+    }
+
+    @Autowired
+    public void setOperationLogInterceptor(OperationLogInterceptor operationLogInterceptor) {
+        this.operationLogInterceptor = operationLogInterceptor;
+    }
+
+    /**
+     * 操作日志拦截器（V4 系统治理批，Row 62）。注册在这里而不是 system 模块：
+     * 「主动改变应用行为的配置放 api」——领域模块的测试上下文因此不会平白记一堆日志。
+     */
+    @Override
+    public void addInterceptors(org.springframework.web.servlet.config.annotation.InterceptorRegistry registry) {
+        registry.addInterceptor(operationLogInterceptor).addPathPatterns("/**");
     }
 
     /**

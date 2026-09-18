@@ -51,6 +51,66 @@ public class CertificatePdfRenderer {
     }
 
     /**
+     * 捐赠证书的内容（V3 结对批，xlsx Row 10「捐赠后需要自动生成证书」）。
+     *
+     * <p><b>为什么另起一个记录而不是把 {@link Content} 改通用</b>：活动证书那条路径已经在跑、也已被用例钉住，
+     * 为了多一类证书去动它的字段，等于让一个已验证的渲染路径跟着变。两个记录各自表达各自那件事，
+     * 共用的只有「套印在协会样本上」这一段。</p>
+     *
+     * @param templatePdf 协会「电子样本」的 PDF 字节，<b>作为底图</b>，不得为 null（理由同 {@link Content}）
+     */
+    public record DonationContent(String volunteerName,
+                                  String projectTitle,
+                                  String projectTypeLabel,
+                                  java.math.BigDecimal amount,
+                                  java.time.LocalDateTime establishedTime,
+                                  String certNo,
+                                  byte[] templatePdf) {
+    }
+
+    /**
+     * 渲染捐赠证书：把结对人、项目、认捐金额与日期套印到协会样本上。
+     *
+     * <p><b>措辞只说「认捐 / 结对」，不说「已捐款」</b>——本批不碰支付，系统并不知道钱有没有到账；
+     * 印一张写着「已捐赠 N 元」的盖章证书，是拿协会的公章为一件未经证实的事背书。</p>
+     */
+    public byte[] render(DonationContent c) {
+        if (c.templatePdf() == null || c.templatePdf().length == 0) {
+            throw new BusinessException("证书电子样本内容为空，无法生成盖章证书");
+        }
+        try (ByteArrayOutputStream out = new ByteArrayOutputStream();
+             PdfDocument pdf = openOnTemplate(c.templatePdf(), out);
+             Document doc = new Document(pdf)) {
+
+            PdfFont font = PdfFontFactory.createFont("STSong-Light", PdfEncodings.IDENTITY_H);
+            doc.setFont(font);
+            doc.add(new Paragraph(nullSafe(c.volunteerName()) + "　爱心人士：")
+                    .setFontSize(15).setMarginTop(120));
+
+            StringBuilder body = new StringBuilder("　　您于 ");
+            if (c.establishedTime() != null) {
+                body.append(c.establishedTime().format(DATE));
+            }
+            body.append(" 认捐「").append(nullSafe(c.projectTitle())).append("」");
+            if (c.projectTypeLabel() != null && !c.projectTypeLabel().isBlank()) {
+                body.append("（").append(c.projectTypeLabel()).append("）");
+            }
+            if (c.amount() != null) {
+                body.append("，金额人民币 ").append(c.amount().stripTrailingZeros().toPlainString()).append(" 元");
+            }
+            body.append("，与受助人结成帮扶对子。特发此证，以资鼓励。");
+            doc.add(new Paragraph(body.toString()).setFontSize(14).setMarginTop(20).setMultipliedLeading(1.8f));
+            doc.add(new Paragraph("证书编号：" + nullSafe(c.certNo()))
+                    .setFontSize(11).setMarginTop(40));
+
+            doc.close();
+            return out.toByteArray();
+        } catch (IOException e) {
+            throw new BusinessException("证书渲染失败：" + e.getMessage());
+        }
+    }
+
+    /**
      * 把可变字段套印到协会样本上，产出成品证书。
      *
      * <p><b>为什么是「套印底图」而不是「按坐标摆字段」</b>：需求只写了「设置某个活动的电子样本」与

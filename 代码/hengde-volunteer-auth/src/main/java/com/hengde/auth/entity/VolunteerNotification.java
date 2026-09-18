@@ -39,10 +39,34 @@ public class VolunteerNotification extends BaseEntity {
      */
     public static final int TYPE_APPEAL_HANDLED = 2;
 
+    /** 微心愿认领被后台撤销（V3 微心愿批）：认领人要知道心愿回到了心愿池、为什么。V37 列注释只列到 2，以本类为准 */
+    public static final int TYPE_WISH_CLAIM_REVOKED = 3;
+
+    /** 认领的微心愿已实现（V3 微心愿批，Row 12 G「给捐赠人反馈物资发放图片」）：发放照片在微心愿中心可看 */
+    public static final int TYPE_WISH_REALIZED = 4;
+
+    /** 投诉建议已答复（V4 投诉建议批，Row 43「含处理进度」的最后一步）：短信只放得下答复的开头，全文在这里与工单详情 */
+    public static final int TYPE_COMPLAINT_REPLIED = 5;
+
+    /** 社区互动汇总（V4 社区治理批，Row 23 D「点赞、评论等通知每隔20分钟……汇总提示一次」；订阅消息模板报备之前落站内提示，Q13） */
+    public static final int TYPE_SOCIAL_INTERACTIONS = 6;
+
+    /** 社区帖子未通过审核（V4 社区治理批）：驳回即对他人隐藏，作者要知道为什么 */
+    public static final int TYPE_SOCIAL_POST_REJECTED = 7;
+
     // ---------- biz_type ----------
 
     /** 关联奖惩单 {@code honor_reward_punish.id} */
     public static final int BIZ_REWARD_PUNISH = 1;
+
+    /** 关联微心愿认领 {@code donate_wish_claim.id}（V3 微心愿批） */
+    public static final int BIZ_WISH_CLAIM = 2;
+
+    /** 关联投诉建议工单 {@code data_complaint.id}（V4 投诉建议批） */
+    public static final int BIZ_COMPLAINT = 3;
+
+    /** 关联社区帖子 {@code social_post.id}（V4 社区治理批） */
+    public static final int BIZ_SOCIAL_POST = 4;
 
     // ---------- is_read ----------
 

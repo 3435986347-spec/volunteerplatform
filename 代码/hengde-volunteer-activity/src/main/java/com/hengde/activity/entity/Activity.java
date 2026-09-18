@@ -12,7 +12,7 @@ import java.time.LocalDateTime;
  * 志愿活动（V1 粗粒度，不含签到/时长/公示闭环）。
  *
  * <p>报名限制条件（年龄/年级/性别/已参加次数/最少最多报名项目数）以 null 或 0 表示「不限」。
- * {@code targetSquadIds} 为临时字段，分队模块就绪后改为关联表。</p>
+ * 指定分队报名（{@code enrollScope=1}）自 V4 活动补全批起限定<b>单个</b>分队 {@code targetSquadId}；V3 的 {@code target_squad_ids} 列不再读写。</p>
  *
  * @author hengde
  */
@@ -66,8 +66,8 @@ public class Activity extends BaseEntity {
     /** 报名范围 0全平台/1指定分队 */
     private Integer enrollScope;
 
-    /** 【临时】指定分队id列表（逗号分隔，enrollScope=1时用；分队模块就绪后改关联表） */
-    private String targetSquadIds;
+    /** 指定分队 volunteer_squad.id（enrollScope=1 时必填，V70） */
+    private Long targetSquadId;
 
     /** 最小年龄要求（null不限） */
     private Integer requireMinAge;
@@ -180,4 +180,12 @@ public class Activity extends BaseEntity {
 
     /** 发布审核时间（V19） */
     private LocalDateTime publishReviewTime;
+
+    // ---------- V70 名单公示（Row 13） ----------
+
+    /** 名单公示开始时间（组织部确认名单；为空＝不公示；活动开始后自动不再显示） */
+    private LocalDateTime rosterPublishTime;
+
+    /** 确认名单的管理员 admin_user.id */
+    private Long rosterPublishBy;
 }

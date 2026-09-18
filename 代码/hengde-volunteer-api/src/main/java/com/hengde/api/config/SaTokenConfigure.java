@@ -1,10 +1,12 @@
 package com.hengde.api.config;
 
+import cn.dev33.satoken.SaManager;
 import cn.dev33.satoken.context.SaHolder;
 import cn.dev33.satoken.interceptor.SaInterceptor;
 import cn.dev33.satoken.router.SaRouter;
 import cn.dev33.satoken.stp.StpUtil;
 import com.hengde.auth.config.StpAdminUtil;
+import com.hengde.auth.config.StpEnterpriseUtil;
 import com.hengde.auth.dao.AdminUserMapper;
 import com.hengde.auth.dao.VolunteerMapper;
 import com.hengde.auth.entity.AdminUser;
@@ -23,6 +25,12 @@ public class SaTokenConfigure implements WebMvcConfigurer {
     private AdminUserMapper adminUserMapper;
     private VolunteerMapper volunteerMapper;
     private DenyAllUseGate denyAllUseGate;
+    private EnterpriseAccountGate enterpriseAccountGate;
+
+    @Autowired
+    public void setEnterpriseAccountGate(EnterpriseAccountGate enterpriseAccountGate) {
+        this.enterpriseAccountGate = enterpriseAccountGate;
+    }
 
     @Autowired
     public void setDenyAllUseGate(DenyAllUseGate denyAllUseGate) {
@@ -41,6 +49,15 @@ public class SaTokenConfigure implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
+        // ⚠️ 启动时就把管理端 StpLogic 注册进 SaManager，不能等到第一次用 StpAdminUtil。
+        // SaInterceptor 先做注解校验、后跑下面的路由函数；而注解里的 type="admin" 要靠 SaManager 查 StpLogic，
+        // 它只在 StpAdminUtil 类初始化（new StpLogic 时）才注册——StpAdminUtil.TYPE 是编译期常量，引用它不触发初始化。
+        // 于是重启后第一个打到带 @SaCheckPermission(type="admin") 端点的请求（不论带不带 token）
+        // 都会抛「未能获取对应StpLogic，type=admin」成 500，未登录的也拿不到 401，控制台跳不回登录页；
+        // 直到有人碰巧先调了登录或 /a/auth/me 才自愈。TradeCallbackApiTest 的反向断言撞出来的
+        SaManager.putStpLogic(StpAdminUtil.STP_LOGIC);
+        // 企业端同理（V4 爱心企业批）：@SaCheckLogin(type="enterprise") 之类的注解同样要靠 SaManager 查到它
+        SaManager.putStpLogic(StpEnterpriseUtil.STP_LOGIC);
         registry.addInterceptor(new SaInterceptor(handler -> {
 
             // 志愿者端：仅放行微信登录/发验证码/企业微信群前置校验；
@@ -53,7 +70,9 @@ public class SaTokenConfigure implements WebMvcConfigurer {
             SaRouter.match("/v/**")
                     .notMatch("/v/auth/login/wechat", "/v/auth/login/dev", "/v/auth/login/sms",
                             "/v/auth/login/password", "/v/auth/password/reset", "/v/auth/sms/codes",
-                            "/v/auth/wechat/group-membership", "/v/auth/agreement")
+                            "/v/auth/wechat/group-membership", "/v/auth/agreement",
+                            // 志愿者证扫码核验（V4 志愿者证批，Row 26）：扫码的人不一定是本平台用户；只收随机令牌、不收志愿者 id
+                            "/v/user/volunteer-cards/verify")
                     .check(r -> {
                         StpUtil.checkLogin();
                         checkVolunteerEnabled(SaHolder.getRequest().getRequestPath());
@@ -79,10 +98,15 @@ public class SaTokenConfigure implements WebMvcConfigurer {
                         checkAdminEnabled();
                     });
 
-            // 企业端（V1 暂缓，预留拦截链占位）
+            // 企业端（V4 爱心企业批，第三套登录态）：注册 / 登录 / 发验证码 / 找回密码公开；其余要企业登录态，
+            // 再按账号当前状态放行（暂停 / 删除即踢出，待审核 / 驳回只能用认证与「我的企业」），判定在 EnterpriseAccountGate。
+            // ⚠️ 志愿者 token 与管理端 token 在这里都过不了（各自的 StpLogic 查不到登录态）。
             SaRouter.match("/e/**")
-                    .notMatch("/e/auth/login")
-                    .check(r -> StpUtil.checkLogin());
+                    .notMatch("/e/auth/login", "/e/auth/register", "/e/auth/sms/codes", "/e/auth/password/reset")
+                    .check(r -> {
+                        StpEnterpriseUtil.checkLogin();
+                        enterpriseAccountGate.check(SaHolder.getRequest().getRequestPath(), StpEnterpriseUtil.getLoginIdAsLong());
+                    });
 
         })).addPathPatterns("/**");
     }

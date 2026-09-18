@@ -70,4 +70,10 @@ public class EnrollmentAdminVO {
 
     /** 代报名人姓名（非代报名为 null） */
     private String proxyByName;
+
+    /** 是否管理团队（按活动的报名列表才标，优先展示） */
+    private boolean manager;
+
+    /** 是否考试通过的活动临时负责人（按活动的报名列表才标，排在管理团队之后） */
+    private boolean tempLeader;
 }

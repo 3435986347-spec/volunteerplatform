@@ -28,4 +28,10 @@ public interface SmsScene {
 
     /** 修改/换绑手机号 */
     String CHANGE_PHONE = "change-phone";
+
+    /** 爱心企业入驻注册（负责人手机号验证，V4 爱心企业批） */
+    String ENTERPRISE_REGISTER = "enterprise-register";
+
+    /** 爱心企业找回密码（负责人手机号验证） */
+    String ENTERPRISE_PASSWORD_RESET = "enterprise-password-reset";
 }

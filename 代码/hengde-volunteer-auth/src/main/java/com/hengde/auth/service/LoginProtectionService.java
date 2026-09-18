@@ -36,6 +36,8 @@ public class LoginProtectionService {
     /** 志愿者端 key 前缀（标识=phoneHash） */
     private static final String VOL_ACCOUNT_PREFIX = "auth:volunteer:login:fail:id:";
     private static final String VOL_IP_PREFIX = "auth:volunteer:login:fail:ip:";
+    private static final String ENT_ACCOUNT_PREFIX = "auth:enterprise:login:fail:user:";
+    private static final String ENT_IP_PREFIX = "auth:enterprise:login:fail:ip:";
 
     private RedisUtil redisUtil;
     private AuthProperties authProperties;
@@ -76,6 +78,20 @@ public class LoginProtectionService {
 
     public void onVolunteerLoginSucceeded(String phoneHash) {
         redisUtil.delete(VOL_ACCOUNT_PREFIX + phoneHash);
+    }
+
+    // ==================== 爱心企业端（标识=小写登录账号，V4 爱心企业批） ====================
+
+    public void checkEnterpriseNotLocked(String username, String clientIp) {
+        checkNotLocked(ENT_ACCOUNT_PREFIX, ENT_IP_PREFIX, username, clientIp);
+    }
+
+    public void onEnterpriseLoginFailed(String username, String clientIp) {
+        onLoginFailed(ENT_ACCOUNT_PREFIX, ENT_IP_PREFIX, username, clientIp, "企业账号");
+    }
+
+    public void onEnterpriseLoginSucceeded(String username) {
+        redisUtil.delete(ENT_ACCOUNT_PREFIX + username);
     }
 
     // ==================== 共用核心 ====================

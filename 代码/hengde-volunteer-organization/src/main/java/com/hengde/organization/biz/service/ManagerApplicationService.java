@@ -15,6 +15,10 @@ import com.hengde.organization.biz.dao.ManagerApplicationMapper;
 import com.hengde.organization.biz.dto.ManagerApplyDTO;
 import com.hengde.organization.biz.entity.ManagerApplication;
 import com.hengde.organization.biz.vo.ManagerApplicationVO;
+import com.hengde.auth.vo.VolunteerContactView;
+import com.hengde.organization.form.service.FormSubmissionService;
+import com.hengde.organization.form.support.FormFlow;
+import com.hengde.organization.form.vo.FormVOs;
 import org.redisson.api.RedissonClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,6 +60,12 @@ public class ManagerApplicationService {
     private SmsNotifyService smsNotifyService;
     private RedissonClient redissonClient;
     private TransactionTemplate transactionTemplate;
+    private FormSubmissionService formSubmissionService;
+
+    @Autowired
+    public void setFormSubmissionService(FormSubmissionService formSubmissionService) {
+        this.formSubmissionService = formSubmissionService;
+    }
 
     @Autowired
     public void setApplicationMapper(ManagerApplicationMapper applicationMapper) {
@@ -107,12 +117,16 @@ public class ManagerApplicationService {
         if (pending != null && pending > 0) {
             throw new BusinessException("您已有待审核的申请，请耐心等待");
         }
+        // 协会发布了「报名管理团队」问卷时，答卷与申请同一事务落库；没有问卷时返回 null、照旧只落固定三项
+        Long formSubmissionId = formSubmissionService.submitForScene(FormFlow.SCENE_MANAGER_APPLICATION, volunteerId,
+                dto.getAnswers());
         LocalDateTime now = LocalDateTime.now();
         ManagerApplication app = new ManagerApplication();
         app.setVolunteerId(volunteerId);
         app.setReason(dto.getReason());
         app.setExperience(dto.getExperience());
         app.setExpectDepartment(dto.getExpectDepartment());
+        app.setFormSubmissionId(formSubmissionId);
         app.setStatus(STATUS_PENDING);
         app.setApplyTime(now);
         applicationMapper.insert(app);
@@ -149,6 +163,79 @@ public class ManagerApplicationService {
             vos.add(toVO(a, nameById.get(a.getVolunteerId())));
         }
         return PageResult.of(vos, page.getTotal(), page.getCurrent(), page.getSize());
+    }
+
+    /** 后台详情：申请 + 申请人电话 + 问卷答卷逐题答案。 */
+    public ManagerApplicationVO detail(Long id) {
+        ManagerApplication app = id == null ? null : applicationMapper.selectById(id);
+        if (app == null) {
+            throw new BusinessException("申请不存在");
+        }
+        VolunteerContactView c = volunteerQueryService.listContactsByIds(Set.of(app.getVolunteerId()))
+                .get(app.getVolunteerId());
+        ManagerApplicationVO vo = toVO(app, c == null ? null : c.realName());
+        vo.setVolunteerPhone(c == null ? null : c.phone());
+        vo.setFormAnswers(app.getFormSubmissionId() == null ? List.of()
+                : formSubmissionService.answerViews(app.getFormSubmissionId()));
+        return vo;
+    }
+
+    /**
+     * 批量下载（Row 44「类似于简历提交 / 批量下载功能」）：固定三项 + 电话 + 问卷答卷（每道题「题目：答案」一行）。
+     * 不同时期的申请可能答的是不同的问卷，所以答卷合成一列，而不是按某一份问卷的题目拆列。
+     */
+    public List<List<String>> exportRows(Integer status) {
+        List<ManagerApplication> apps = applicationMapper.selectList(Wrappers.<ManagerApplication>lambdaQuery()
+                .eq(status != null, ManagerApplication::getStatus, status)
+                .orderByDesc(ManagerApplication::getApplyTime)
+                .orderByDesc(ManagerApplication::getId)
+                .last("LIMIT " + (EXPORT_LIMIT + 1)));
+        if (apps.size() > EXPORT_LIMIT) {
+            throw new BusinessException("申请超过 " + EXPORT_LIMIT + " 条，一次导不完，请按状态分批导出");
+        }
+        Map<Long, VolunteerContactView> contacts = apps.isEmpty() ? Map.of()
+                : volunteerQueryService.listContactsByIds(
+                        apps.stream().map(ManagerApplication::getVolunteerId).collect(Collectors.toSet()));
+        Map<Long, List<FormVOs.AnswerView>> answers = formSubmissionService.answerViews(apps.stream()
+                .map(ManagerApplication::getFormSubmissionId).filter(java.util.Objects::nonNull).toList());
+        List<List<String>> rows = new ArrayList<>(apps.size());
+        for (ManagerApplication a : apps) {
+            VolunteerContactView c = contacts.get(a.getVolunteerId());
+            List<FormVOs.AnswerView> views = a.getFormSubmissionId() == null ? List.of()
+                    : answers.getOrDefault(a.getFormSubmissionId(), List.of());
+            rows.add(List.of(
+                    String.valueOf(a.getId()),
+                    c == null || c.realName() == null ? "" : c.realName(),
+                    c == null || c.phone() == null ? "" : c.phone(),
+                    nz(a.getReason()), nz(a.getExperience()), nz(a.getExpectDepartment()),
+                    statusLabel(a.getStatus()),
+                    a.getApplyTime() == null ? "" : a.getApplyTime().toString().replace('T', ' '),
+                    a.getAuditTime() == null ? "" : a.getAuditTime().toString().replace('T', ' '),
+                    nz(a.getRejectReason()),
+                    views.stream().map(v -> v.getSort() + ". " + v.getTitle() + "：" + v.getDisplay())
+                            .collect(Collectors.joining("\n"))));
+        }
+        return rows;
+    }
+
+    public static final List<String> EXPORT_HEAD = List.of("申请编号", "姓名", "手机号", "申请理由", "相关经历",
+            "期望部门", "状态", "申请时间", "审核时间", "驳回原因", "问卷答卷");
+    private static final int EXPORT_LIMIT = 20000;
+
+    private static String nz(String s) {
+        return s == null ? "" : s;
+    }
+
+    private static String statusLabel(Integer s) {
+        if (s == null) {
+            return "";
+        }
+        return switch (s) {
+            case STATUS_PENDING -> "待审核";
+            case STATUS_APPROVED -> "已通过";
+            case STATUS_REJECTED -> "已驳回";
+            default -> "未知";
+        };
     }
 
     /**
@@ -254,6 +341,7 @@ public class ManagerApplicationService {
         vo.setRejectReason(a.getRejectReason());
         vo.setApplyTime(a.getApplyTime());
         vo.setAuditTime(a.getAuditTime());
+        vo.setFormSubmissionId(a.getFormSubmissionId());
         return vo;
     }
 }

@@ -68,14 +68,13 @@ public interface VolunteerSanctionMapper extends BaseMapper<VolunteerSanction> {
      *
      * @param now 判定时刻，由调用方传入，保证同一次判定里各条件用的是同一个时刻
      */
-    @Select("SELECT * FROM volunteer_sanction "
+    @Select("<script>SELECT * FROM volunteer_sanction "
             + "WHERE is_deleted = 0 AND volunteer_id = #{volunteerId} AND status = 1 "
-            + "AND scope IN (#{scope}, #{allScope}) "
-            + "AND effective_time <= #{now} "
-            + "AND (expire_time IS NULL OR expire_time > #{now}) "
-            + "ORDER BY expire_time IS NULL DESC, expire_time DESC LIMIT 1 FOR SHARE")
+            + "AND scope IN <foreach collection='scopes' item='s' open='(' separator=',' close=')'>#{s}</foreach> "
+            + "AND effective_time &lt;= #{now} "
+            + "AND (expire_time IS NULL OR expire_time &gt; #{now}) "
+            + "ORDER BY expire_time IS NULL DESC, expire_time DESC LIMIT 1 FOR SHARE</script>")
     VolunteerSanction selectBlockingForShare(@Param("volunteerId") Long volunteerId,
-                                             @Param("scope") int scope,
-                                             @Param("allScope") int allScope,
+                                             @Param("scopes") java.util.Collection<Integer> scopes,
                                              @Param("now") LocalDateTime now);
 }

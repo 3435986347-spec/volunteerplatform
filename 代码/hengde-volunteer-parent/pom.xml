@@ -17,8 +17,11 @@
 		<module>../hengde-volunteer-trade</module>
 		<module>../hengde-volunteer-donate</module>
 		<module>../hengde-volunteer-user</module>
-		<module>../hengde-volunteer-data</module>
 		<module>../hengde-volunteer-honor</module>
+		<module>../hengde-volunteer-social</module>
+		<module>../hengde-volunteer-enterprise</module>
+		<module>../hengde-volunteer-data</module>
+		<module>../hengde-volunteer-system</module>
 		<module>../hengde-volunteer-api</module>
 	</modules>
 	<groupId>com.hengde</groupId>
@@ -42,6 +45,8 @@
 	</scm>
 	<properties>
 		<java.version>17</java.version>
+		<!-- surefire 默认排除的测试标签；跑压测时 -Dtest.excludedGroups=none -Dgroups=stress，见 surefire 配置 -->
+		<test.excludedGroups>stress</test.excludedGroups>
 		<spring-boot.version>4.0.6</spring-boot.version>
 		<spring-cloud.version>2025.0.0</spring-cloud.version>
 		<spring-cloud-alibaba.version>2025.0.0.0</spring-cloud-alibaba.version>
@@ -177,6 +182,22 @@
 				<dependency>
 					<groupId>com.hengde</groupId>
 					<artifactId>hengde-volunteer-honor</artifactId>
+					<version>${project.version}</version>
+				</dependency>
+
+				<dependency>
+					<groupId>com.hengde</groupId>
+					<artifactId>hengde-volunteer-social</artifactId>
+					<version>${project.version}</version>
+				</dependency>
+				<dependency>
+					<groupId>com.hengde</groupId>
+					<artifactId>hengde-volunteer-enterprise</artifactId>
+					<version>${project.version}</version>
+				</dependency>
+				<dependency>
+					<groupId>com.hengde</groupId>
+					<artifactId>hengde-volunteer-system</artifactId>
 					<version>${project.version}</version>
 				</dependency>
 
@@ -369,6 +390,21 @@
 					<artifactId>poi-ooxml</artifactId>
 					<version>${poi.version}</version>
 				</dependency>
+				<!--
+					commons-compress 必须与 poi.version 配套（POI 5.4.0 的 poi-ooxml 声明的就是 1.27.1）。
+					【2026-09-16 撞出来的线上缺陷】此前这里没有管它，打出来的 hengde-volunteer-api-2.0.1.jar 里
+					是 poi-5.4.0 + commons-compress-1.24.0：POI 写 xlsx 时调用的
+					ZipArchiveOutputStream.putArchiveEntry(ZipArchiveEntry) 在 1.24 里不存在，
+					于是【所有 Excel 导出】（志愿者名单、报名名单、捐赠物资明细）都以 NoSuchMethodError 失败——
+					而 mvn 构建、单元测试一律全绿，因为没有任何用例真的写出过一个 xlsx。
+					是 BookDonationApiFlowTest 走 HTTP 真导出了一次才照出来。
+					升级 poi.version 时连同这里一起改，并跑一遍那条用例。
+				-->
+				<dependency>
+					<groupId>org.apache.commons</groupId>
+					<artifactId>commons-compress</artifactId>
+					<version>1.27.1</version>
+				</dependency>
 				<dependency>
 					<groupId>com.itextpdf</groupId>
 					<artifactId>itext-core</artifactId>
@@ -507,6 +543,16 @@
 					<systemPropertyVariables>
 						<api.version>${tc.docker.api.version}</api.version>
 					</systemPropertyVariables>
+					<!--
+						压力测试（JUnit @Tag("stress")）默认不跑：它们动辄几百个线程、跑一两分钟，
+						放进日常 mvn test 会让人开始习惯性地 -DskipTests。要跑时：
+						  ./mvnw test -Dtest.excludedGroups=none -Dgroups=stress -f ../hengde-volunteer-<模块>/pom.xml
+						（none 是一个不存在的标签，等于「什么都不排除」。只传 -Dgroups=stress 而不改排除项，
+						  会一条都不跑——排除优先于包含。）
+						⚠️ 并发「正确性」用例（如 MallStockLockOrderTest 的锁序）不打这个标签，它们必须每次都跑；
+						  stress 只给「量大、慢、主要看吞吐与不变式」的那一类。
+					-->
+					<excludedGroups>${test.excludedGroups}</excludedGroups>
 				</configuration>
 			</plugin>
 

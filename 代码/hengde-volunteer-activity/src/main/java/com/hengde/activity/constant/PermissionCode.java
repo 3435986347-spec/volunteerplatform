@@ -80,4 +80,22 @@ public final class PermissionCode {
      * 与 Row 41 F「各类违规记录和奖励均需组织部同学审核才可显示」。</p>
      */
     public static final String ACTIVITY_VIOLATION_REVIEW = "activity:violation-review";
+    /** 活动相册管理：搜索 / 新增相册 / 后台上传 / 积分规则（V74，Row 11 F） */
+    public static final String ACTIVITY_ALBUM = "activity:album";
+    /** 删除相册（Row 11 D：理事会、宣传部、各部门部长） */
+    public static final String ACTIVITY_ALBUM_DELETE = "activity:album-delete";
+    /** 删除照片（Row 11 D：理事会、宣传部、各部门部长、宣传部成员） */
+    public static final String ACTIVITY_ALBUM_PHOTO_DELETE = "activity:album-photo-delete";
+    /** 批量下载（Row 11 D：理事会、宣传部、各部门部长、宣传部成员） */
+    public static final String ACTIVITY_ALBUM_DOWNLOAD = "activity:album-download";
+    /** 相册上传积分审核（Row 11 C「需要审核才发放」） */
+    public static final String ACTIVITY_ALBUM_POINTS_AUDIT = "activity:album-points-audit";
+
+    /**
+     * 查看到家详细地址（V83，Row 63「详细地址最高权限才可查看，其他权限均显示已到家」）。
+     *
+     * <p><b>默认不授任何人</b>（超管通配）：没有这个点的账号在名单上只看得到「已到家 + 时间」，
+     * 地址与坐标<b>根本不下发</b>——前端打码挡不住看响应体的人。</p>
+     */
+    public static final String ACTIVITY_HOME_ADDRESS = "activity:home-address";
 }

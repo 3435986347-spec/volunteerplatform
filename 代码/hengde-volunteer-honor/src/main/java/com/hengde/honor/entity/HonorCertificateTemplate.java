@@ -27,6 +27,15 @@ public class HonorCertificateTemplate extends BaseEntity {
     public static final String SCOPE_ACTIVITY_PREFIX = "activity:";
 
     /**
+     * 捐赠证书的作用域键（V3 结对批）。
+     *
+     * <p>协会现有的电子样本只有活动证书那一张（《协会待确认清单-v3》⑨ 未答）。
+     * 出捐赠证书时<b>先找这个作用域、找不到退回 {@link #SCOPE_GLOBAL}</b>：
+     * 协会日后给了专用样本，配一条这个键即可生效，代码不用动。</p>
+     */
+    public static final String SCOPE_DONATION = "donate-pair";
+
+    /**
      * 作用域键：{@code activity:{活动id}} 或 {@code global}。
      *
      * <p><b>为什么不用可空的 activity_id</b>：MySQL 唯一索引视多个 NULL 互不相同，

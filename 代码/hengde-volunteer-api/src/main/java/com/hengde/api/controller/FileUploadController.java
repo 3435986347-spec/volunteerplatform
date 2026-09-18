@@ -1,11 +1,14 @@
 package com.hengde.api.controller;
 
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.hengde.api.vo.FileUploadVO;
 import com.hengde.auth.config.StpAdminUtil;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.oss.FileStorageService;
 import com.hengde.common.oss.FileValidator;
 import com.hengde.common.oss.OssProperties;
+import com.hengde.common.oss.PresignedUpload;
+import com.hengde.social.service.SocialMediaService;
 import com.hengde.common.result.Result;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -35,6 +38,7 @@ import java.util.Set;
  *   <tr><td>medal</td><td>honor:medal</td><td>图片</td><td>勋章图标</td></tr>
  *   <tr><td>goods</td><td>donate:goods</td><td>图片</td><td>积分商品图片</td></tr>
  *   <tr><td>exchange-rule</td><td>donate:goods</td><td>图片</td><td>兑换规则配图（与商品同权限，另起目录只为对象存储可读）</td></tr>
+ *   <tr><td>wish</td><td>donate:wish</td><td>图片</td><td>微心愿图片与物资发放反馈图</td></tr>
  *   <tr><td>file</td><td>pub:file</td><td>图片+文档</td><td>文件下载板块</td></tr>
  * </table>
  *
@@ -62,6 +66,21 @@ public class FileUploadController {
         this.ossProperties = ossProperties;
     }
 
+    private SocialMediaService socialMediaService;
+
+    @Autowired
+    public void setSocialMediaService(SocialMediaService socialMediaService) {
+        this.socialMediaService = socialMediaService;
+    }
+
+    @Operation(summary = "官方帖视频直传签名（social:official；extension=mp4|mov，size=字节数）")
+    @SaCheckPermission(value = com.hengde.social.constant.PermissionCode.SOCIAL_OFFICIAL, type = "admin")
+    @PostMapping("/social-video/presign")
+    public Result<PresignedUpload> presignSocialVideo(@RequestParam("extension") String extension,
+                                                      @RequestParam("size") long size) {
+        return Result.ok(socialMediaService.presignVideo(extension, size));
+    }
+
     @Operation(summary = "通用上传图片/文件，返回可访问 URL（按 dir 做权限+类型门槛，dir 必传）")
     @PostMapping("/upload")
     public Result<FileUploadVO> upload(@RequestParam("file") MultipartFile file,
@@ -87,12 +106,23 @@ public class FileUploadController {
             case "medal" -> StpAdminUtil.STP_LOGIC.checkPermission("honor:medal");
             case "goods" -> StpAdminUtil.STP_LOGIC.checkPermission("donate:goods");
             case "exchange-rule" -> StpAdminUtil.STP_LOGIC.checkPermission("donate:goods");
+            case "wish" -> StpAdminUtil.STP_LOGIC.checkPermission("donate:wish");
+            // 个人中心内容（我的保险图片 / 客服二维码，V4 个人中心补全批）
+            case "center" -> StpAdminUtil.STP_LOGIC.checkPermission("user:center-content");
+            // 官方帖图片（V4 社区核心批）
+            case "social" -> StpAdminUtil.STP_LOGIC.checkPermission("social:official");
+            // 活动相册照片（V4 活动相册批）
+            case "album" -> StpAdminUtil.STP_LOGIC.checkPermission("activity:album");
+            // 爱心企业头像（V4 爱心企业批：后台注册企业账号时用）
+            case "enterprise" -> StpAdminUtil.STP_LOGIC.checkPermission("enterprise:manage");
+            // 文件网盘（V4 系统治理批，Row 71）：**这一个目录收文档**，能不能放进某个文件夹另由网盘的授权判
+            case "vault" -> StpAdminUtil.STP_LOGIC.checkPermission("system:file");
             default -> throw new BusinessException("不支持的上传目录：" + dir);
         }
     }
 
-    /** 图片目录只允许图片；{@code file} 目录才允许文档（沿用 OSS 基线扩展名集，含图片+文档）。 */
+    /** 图片目录只允许图片；{@code file} 与 {@code vault} 目录才允许文档（沿用 OSS 基线扩展名集，含图片+文档）。 */
     private Set<String> allowedExtensionsFor(String dir) {
-        return "file".equals(dir) ? ossProperties.getAllowedExtensions() : FileValidator.IMAGE_EXTENSIONS;
+        return "file".equals(dir) || "vault".equals(dir) ? ossProperties.getAllowedExtensions() : FileValidator.IMAGE_EXTENSIONS;
     }
 }

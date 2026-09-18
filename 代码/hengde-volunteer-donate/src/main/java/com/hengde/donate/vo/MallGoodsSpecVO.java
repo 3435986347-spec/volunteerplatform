@@ -21,6 +21,12 @@ public class MallGoodsSpecVO {
     @Schema(description = "所需积分")
     private Integer points;
 
+    @Schema(description = "现金部分【分】，0=纯积分")
+    private Integer cashFen;
+
+    @Schema(description = "现金部分【元】，展示用")
+    private String cashYuan;
+
     @Schema(description = "库存")
     private Integer stock;
 

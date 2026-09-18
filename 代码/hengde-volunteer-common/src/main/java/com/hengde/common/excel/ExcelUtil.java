@@ -45,6 +45,38 @@ public final class ExcelUtil {
             EasyExcel.write(response.getOutputStream(), clazz).sheet(sheetName).doWrite(data);
         } catch (Exception e) {
             log.error("[Excel] 导出失败 fileName={}", fileName, e);
+            // 把已经设好的 xlsx 响应头撤回来再抛。否则全局异常处理器要写的 Result JSON 与预设的 xlsx Content-Type
+            // 对不上（HttpMessageNotWritableException），客户端拿到的是一个 HTTP 200、内容残缺的「xlsx」——
+            // 打开报文件损坏，却看不到任何错误信息（2026-09-16 HTTP 全流程用例撞出来的）。
+            // 已经提交（字节已刷出去）的响应撤不回，那种情况只能留给连接中断。
+            if (!response.isCommitted()) {
+                response.reset();
+            }
+            throw new BusinessException(ResultCode.SERVER_ERROR.getCode(), "Excel 导出失败");
+        }
+    }
+
+    /**
+     * 按<b>运行期才知道的表头</b>导出（问卷答卷：列随题目变化，没法写成带注解的行类）。
+     * 失败处理与 {@link #export} 相同。
+     *
+     * @param head 表头，一列一个标题
+     * @param rows 每行按表头顺序给出单元格文字
+     */
+    public static void exportTable(HttpServletResponse response, String fileName, String sheetName,
+                                   List<String> head, List<List<String>> rows) {
+        try {
+            response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+            String encoded = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replaceAll("\\+", "%20");
+            response.setHeader("Content-Disposition", "attachment;filename*=utf-8''" + encoded + ".xlsx");
+            List<List<String>> excelHead = head.stream().map(List::of).toList();
+            EasyExcel.write(response.getOutputStream()).head(excelHead).sheet(sheetName).doWrite(rows);
+        } catch (Exception e) {
+            log.error("[Excel] 导出失败 fileName={}", fileName, e);
+            if (!response.isCommitted()) {
+                response.reset();
+            }
             throw new BusinessException(ResultCode.SERVER_ERROR.getCode(), "Excel 导出失败");
         }
     }

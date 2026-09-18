@@ -11,10 +11,14 @@ import com.hengde.common.constant.Grade;
 import com.hengde.common.constant.PoliticalStatus;
 import com.hengde.common.crypto.CryptoUtil;
 import com.hengde.common.exception.BusinessException;
+import com.hengde.common.oss.FileStorageService;
 import com.hengde.common.sms.SmsScene;
 import com.hengde.common.sms.VerifyCodeService;
 import com.hengde.organization.biz.service.GroupQueryService;
 import com.hengde.organization.biz.service.SquadQueryService;
+import com.hengde.organization.biz.service.StructureService;
+import com.hengde.organization.exam.entity.OrgTempLeaderQualification;
+import com.hengde.organization.exam.service.TempLeaderQueryService;
 import com.hengde.user.dto.MyProfileUpdateDTO;
 import com.hengde.user.vo.MyProfileVO;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +26,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -41,12 +46,33 @@ import java.util.Map;
 @Service
 public class MyProfileService {
 
+    /** 手写签名图的对象目录（与 {@code POST /v/files/profile-image?dir=signature} 一致） */
+    private static final String SIGNATURE_DIR = "signature";
+
     private VolunteerMapper volunteerMapper;
     private CryptoUtil cryptoUtil;
     private ServiceRecordService serviceRecordService;
     private GroupQueryService groupQueryService;
     private SquadQueryService squadQueryService;
+    private StructureService structureService;
+    private TempLeaderQueryService tempLeaderQueryService;
+
+    @Autowired
+    public void setTempLeaderQueryService(TempLeaderQueryService tempLeaderQueryService) {
+        this.tempLeaderQueryService = tempLeaderQueryService;
+    }
+
+    @Autowired
+    public void setStructureService(StructureService structureService) {
+        this.structureService = structureService;
+    }
     private VerifyCodeService verifyCodeService;
+    private FileStorageService fileStorageService;
+
+    @Autowired
+    public void setFileStorageService(FileStorageService fileStorageService) {
+        this.fileStorageService = fileStorageService;
+    }
 
     @Autowired
     public void setVolunteerMapper(VolunteerMapper volunteerMapper) {
@@ -106,14 +132,22 @@ public class MyProfileService {
         Grade gr = v.getGrade();
         vo.setGrade(gr == null ? null : gr.getCode());
         vo.setGradeName(gr == null ? null : gr.getLabel());
+        vo.setGradePromptPending(Integer.valueOf(1).equals(v.getGradePromptPending()));
+        vo.setPadSignatureUrl(v.getPadSignatureUrl());
         vo.setSchool(v.getSchool());
         vo.setAddress(v.getAddress());
         vo.setAvatarUrl(v.getAvatarUrl());
         vo.setIVolunteerCodeUrl(v.getIVolunteerCodeUrl());
-        vo.setPosition(v.getPosition());
+        // 名字下面那一行由组织架构现算（V4 组织架构维护批）；volunteer.position 那一列不再写
+        vo.setPosition(structureService.positionLabelsOf(List.of(volunteerId)).get(volunteerId));
         vo.setEmergencyContactName(v.getEmergencyContactName());
         vo.setEmergencyContactPhone(decrypt(v.getEmergencyContactPhone()));
         vo.setManagerFlag(v.getManagerFlag() == null ? 0 : v.getManagerFlag());
+        // 所属职务（Row 24「如通过活动临时负责人考试则显示活动临时负责人，没有则默认为志愿者」）：资格按时间现算
+        OrgTempLeaderQualification tl = v.getRegisterTime() == null ? null : tempLeaderQueryService.current(volunteerId);
+        vo.setTempLeader(tl != null);
+        vo.setTempLeaderExpireTime(tl == null ? null : tl.getExpireTime());
+        vo.setDuty(tl != null ? "活动临时负责人" : v.getRegisterTime() != null ? "志愿者" : "游客");
         vo.setRegisterTime(v.getRegisterTime());
         vo.setSignedAgreementVersion(v.getSignedAgreementVersion());
 
@@ -177,6 +211,9 @@ public class MyProfileService {
         }
         if (dto.getGrade() != null) {
             uw.set(Volunteer::getGrade, parseGrade(dto.getGrade()));
+            // 本人确认过的年级就是当前学年的年级：升级任务下个 9 月才动它；挂着的「请改学校和年级」提示随之清除（Row 25）
+            uw.set(Volunteer::getGradeUpgradeYear, Grade.schoolYearOf(LocalDate.now()));
+            uw.set(Volunteer::getGradePromptPending, 0);
             any = true;
         }
         if (StringUtils.hasText(dto.getEmergencyContactPhone())) {
@@ -209,6 +246,37 @@ public class MyProfileService {
      * <p>校验新号 CHANGE_PHONE 场景验证码 → 与当前号相同则幂等返回 → 否则查重（不能撞别的活跃账号）→ 落库。
      * 与本人手机号绑定的登录态不变（loginId=志愿者 id 不依赖手机号），换号后下次用新号登录。</p>
      */
+    /**
+     * 安全中心手写签名板（Row 48「可以理解为涂鸦」）：存签名图，<b>只收本系统传到 {@code signature/} 下的图片</b>
+     * （先经 {@code POST /v/files/profile-image?dir=signature}）。与注册协议签名是两列，不覆盖协议留痕。
+     */
+    public void setPadSignature(long volunteerId, String url) {
+        requireVolunteer(volunteerId);
+        String u = url == null ? "" : url.trim();
+        if (u.isEmpty() || u.length() > 512 || !fileStorageService.isOwnUpload(u, SIGNATURE_DIR)) {
+            throw new BusinessException("签名图片无效，请重新上传");
+        }
+        volunteerMapper.update(null, Wrappers.<Volunteer>lambdaUpdate()
+                .eq(Volunteer::getId, volunteerId)
+                .set(Volunteer::getPadSignatureUrl, u)
+                .set(Volunteer::getUpdateTime, LocalDateTime.now()));
+    }
+
+    /** 清掉手写签名板（协议签名不受影响）。 */
+    public void clearPadSignature(long volunteerId) {
+        requireVolunteer(volunteerId);
+        volunteerMapper.update(null, Wrappers.<Volunteer>lambdaUpdate()
+                .eq(Volunteer::getId, volunteerId)
+                .set(Volunteer::getPadSignatureUrl, null)
+                .set(Volunteer::getUpdateTime, LocalDateTime.now()));
+    }
+
+    private void requireVolunteer(long volunteerId) {
+        if (volunteerMapper.selectById(volunteerId) == null) {
+            throw new BusinessException("账号不存在");
+        }
+    }
+
     public void changePhone(long volunteerId, String newPhone, String smsCode) {
         Volunteer v = volunteerMapper.selectById(volunteerId);
         if (v == null) {

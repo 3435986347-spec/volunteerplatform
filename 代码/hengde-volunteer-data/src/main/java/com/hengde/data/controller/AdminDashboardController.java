@@ -1,8 +1,12 @@
 package com.hengde.data.controller;
 
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.hengde.common.result.Result;
+import com.hengde.data.constant.PermissionCode;
 import com.hengde.data.service.DashboardService;
 import com.hengde.data.vo.DashboardVO;
+import com.hengde.data.vo.PlatformSummaryVO;
+import com.hengde.donate.vo.DonateStatsVOs;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,5 +38,18 @@ public class AdminDashboardController {
     @GetMapping("/dashboard")
     public Result<DashboardVO> dashboard() {
         return Result.ok(dashboardService.overview());
+    }
+
+    @Operation(summary = "数据汇总（Row 79 九块：平台 / 社区 / 爱心企业 / 志愿小组 / 相册 / 举报 / 微心愿 / 结对 / 捐书）")
+    @SaCheckPermission(value = PermissionCode.DATA_DASHBOARD, type = "admin")
+    @GetMapping("/summary")
+    public Result<PlatformSummaryVO> summary() {
+        return Result.ok(dashboardService.summary());
+    }
+
+    @Operation(summary = "捐赠数据汇总（Row 79：微心愿 / 结对 / 捐书活动；仅管理端）")
+    @GetMapping("/donation-summary")
+    public Result<DonateStatsVOs.Summary> donationSummary() {
+        return Result.ok(dashboardService.donationSummary());
     }
 }

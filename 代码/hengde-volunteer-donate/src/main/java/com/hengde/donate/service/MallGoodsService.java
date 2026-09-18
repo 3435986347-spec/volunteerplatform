@@ -43,6 +43,7 @@ public class MallGoodsService {
     private MallGoodsMapper goodsMapper;
     private MallGoodsSpecMapper specMapper;
     private MallGoodsReviewMapper reviewMapper;
+    private MallCouponService couponService;
 
     @Autowired
     public void setGoodsMapper(MallGoodsMapper goodsMapper) {
@@ -57,6 +58,11 @@ public class MallGoodsService {
     @Autowired
     public void setReviewMapper(MallGoodsReviewMapper reviewMapper) {
         this.reviewMapper = reviewMapper;
+    }
+
+    @Autowired
+    public void setCouponService(MallCouponService couponService) {
+        this.couponService = couponService;
     }
 
     /**
@@ -75,11 +81,13 @@ public class MallGoodsService {
         if (dto.getSpecs() == null || dto.getSpecs().isEmpty()) {
             throw new BusinessException("请至少填写一个规格（库存与所需积分都挂在规格上）");
         }
+        couponService.requireExists(dto.getRequireCouponId());
         MallGoods goods = new MallGoods();
         goods.setName(dto.getName());
         goods.setCoverUrl(dto.getCoverUrl());
         goods.setDetail(dto.getDetail());
         goods.setSponsorName(dto.getSponsorName());
+        goods.setRequireCouponId(dto.getRequireCouponId());
         goods.setStatus(MallGoodsStatus.DRAFT);
         goods.setHidden(0);
         goods.setSort(0);
@@ -111,7 +119,8 @@ public class MallGoodsService {
      *
      * <p><b>为什么退回重审</b>：样式与价格是审核过的东西，改完还算「审核通过」等于给了一条
      * 绕过审核的路——先提交一版素净的过审，通过后再改成别的。商城这里更实：改的是
-     * <b>价格、所需积分、赞助方</b>。同 {@code MedalService.update} 的判断。</p>
+     * <b>价格、所需积分、赞助方</b>，卷批起还有<b>「必须持卷才能兑换」</b>——它决定谁能买。
+     * 同 {@code MedalService.update} 的判断。</p>
      *
      * <p><b>「不许改审核中的商品」这条限制写进 UPDATE 的 WHERE，靠影响行数判定</b>，
      * 不能只在方法开头 if 一下：那个 if 读的是 RR 快照，挡不住「修改先完成、审核后完成」
@@ -122,24 +131,46 @@ public class MallGoodsService {
      * 走同一个入口会让「临时隐藏一下」变成「重新排一次队」。</p>
      *
      * @param id     商品 id
-     * @param values 新值（name/coverUrl/detail/sponsorName）
+     * @param values 新值（name/coverUrl/detail/sponsorName/requireCouponId，全量语义）
      */
     @Transactional(rollbackFor = Exception.class)
     public void update(Long id, MallGoodsSaveDTO values) {
+        doUpdate(id, values, null);
+    }
+
+    /**
+     * 赞助企业修改自己的商品（V4 爱心企业批）：与后台修改同一套「改已过审的退回重审 / 审核中不许改」，
+     * 另加<b>只能改本企业赞助的</b>（条件写在 UPDATE 的 WHERE 里）；赞助方名称与「必须持卷」不归企业改。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void updateForSponsor(Long id, Long enterpriseId, MallGoodsSaveDTO values) {
+        if (enterpriseId == null) {
+            throw new BusinessException("企业不能为空");
+        }
+        doUpdate(id, values, enterpriseId);
+    }
+
+    private void doUpdate(Long id, MallGoodsSaveDTO values, Long sponsorScope) {
         if (id == null) {
             throw new BusinessException("商品不存在");
         }
         if (!StringUtils.hasText(values.getName())) {
             throw new BusinessException("请填写商品名称");
         }
+        if (sponsorScope == null) {
+            couponService.requireExists(values.getRequireCouponId());
+        }
         int rows = goodsMapper.update(null, Wrappers.<MallGoods>lambdaUpdate()
                 .eq(MallGoods::getId, id)
+                .eq(sponsorScope != null, MallGoods::getSponsorEnterpriseId, sponsorScope)
                 // CAS：把「不许改审核中的商品」变成语句级的原子条件
                 .ne(MallGoods::getStatus, MallGoodsStatus.PENDING)
                 .set(MallGoods::getName, values.getName())
                 .set(MallGoods::getCoverUrl, values.getCoverUrl())
                 .set(MallGoods::getDetail, values.getDetail())
-                .set(MallGoods::getSponsorName, values.getSponsorName())
+                .set(sponsorScope == null, MallGoods::getSponsorName, values.getSponsorName())
+                // 显式 set（含 null）：取消「必须持卷」要能真的写成 NULL，updateById 会跳过 null
+                .set(sponsorScope == null, MallGoods::getRequireCouponId, values.getRequireCouponId())
                 // 已上架 / 已停用 → 退回待审核；草稿与驳回稿保持原状（它们本就没过审）
                 .setSql("status = CASE WHEN status IN (" + MallGoodsStatus.ON_SALE + ", "
                         + MallGoodsStatus.DISABLED + ") THEN " + MallGoodsStatus.PENDING + " ELSE status END")
@@ -191,6 +222,8 @@ public class MallGoodsService {
             row.setGoodsId(goodsId);
             row.setName(dto.getName());
             row.setPoints(dto.getPoints());
+            // 不填按 0（纯积分）写，<b>不留 null</b>：updateById 会跳过 null，把「改回纯积分」静默丢掉
+            row.setCashFen(dto.getCashFen() == null ? 0 : dto.getCashFen());
             row.setStock(dto.getStock());
             row.setSort(dto.getSort() == null ? order : dto.getSort());
             if (dto.getId() != null && byId.containsKey(dto.getId())) {
@@ -279,6 +312,107 @@ public class MallGoodsService {
         casReview(id, MallGoodsStatus.REJECTED, reason, adminId);
     }
 
+    // ---------------- 赞助企业（V4 爱心企业批） ----------------
+
+    /**
+     * 赞助企业自助新增商品（落草稿，提交后走同一个后台审核）。赞助方名称取企业名称快照，企业 id 记在 {@code sponsor_enterprise_id}；
+     * 企业不能设「必须持卷」（卷是平台发的）。后台代企业发布也走这里。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Long createForSponsor(MallGoodsSaveDTO dto, Long enterpriseId, String enterpriseName) {
+        if (enterpriseId == null || !StringUtils.hasText(enterpriseName)) {
+            throw new BusinessException("企业不能为空");
+        }
+        if (dto.getSpecs() == null || dto.getSpecs().isEmpty()) {
+            throw new BusinessException("请至少填写一个规格（库存与所需积分都挂在规格上）");
+        }
+        MallGoods goods = new MallGoods();
+        goods.setName(dto.getName());
+        goods.setCoverUrl(dto.getCoverUrl());
+        goods.setDetail(dto.getDetail());
+        goods.setSponsorEnterpriseId(enterpriseId);
+        goods.setSponsorName(enterpriseName);
+        goods.setSponsorSuspended(0);
+        goods.setStatus(MallGoodsStatus.DRAFT);
+        goods.setHidden(0);
+        goods.setSort(0);
+        goodsMapper.insert(goods);
+        replaceSpecs(goods.getId(), dto.getSpecs());
+        return goods.getId();
+    }
+
+    /** 赞助企业提交审核：只对本企业的草稿与驳回稿。 */
+    public void submitForSponsor(Long id, Long enterpriseId) {
+        int rows = goodsMapper.update(null, Wrappers.<MallGoods>lambdaUpdate()
+                .eq(MallGoods::getId, id)
+                .eq(MallGoods::getSponsorEnterpriseId, enterpriseId)
+                .in(MallGoods::getStatus, MallGoodsStatus.DRAFT, MallGoodsStatus.REJECTED)
+                .set(MallGoods::getStatus, MallGoodsStatus.PENDING)
+                .set(MallGoods::getSubmitTime, LocalDateTime.now())
+                .set(MallGoods::getUpdateTime, LocalDateTime.now()));
+        if (rows != 1) {
+            throw new BusinessException("商品不存在或当前状态不可提交审核");
+        }
+    }
+
+    /** 赞助企业删除自己的商品（连同规格；历史订单有快照不受影响）。 */
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteForSponsor(Long id, Long enterpriseId) {
+        if (id == null || goodsMapper.delete(Wrappers.<MallGoods>lambdaQuery()
+                .eq(MallGoods::getId, id).eq(MallGoods::getSponsorEnterpriseId, enterpriseId)) != 1) {
+            throw new BusinessException("商品不存在");
+        }
+        specMapper.delete(Wrappers.<MallGoodsSpec>lambdaQuery().eq(MallGoodsSpec::getGoodsId, id));
+    }
+
+    /** 赞助企业隐藏 / 显示自己的商品（Row 8 F「商品隐藏功能」；不触发重审）。 */
+    public void hideForSponsor(Long id, Long enterpriseId, int hidden) {
+        if (hidden != 0 && hidden != 1) {
+            throw new BusinessException("隐藏标记只能是 0 或 1");
+        }
+        int rows = goodsMapper.update(null, Wrappers.<MallGoods>lambdaUpdate()
+                .eq(MallGoods::getId, id)
+                .eq(MallGoods::getSponsorEnterpriseId, enterpriseId)
+                .set(MallGoods::getHidden, hidden)
+                .set(MallGoods::getUpdateTime, LocalDateTime.now()));
+        if (rows != 1) {
+            throw new BusinessException("商品不存在");
+        }
+    }
+
+    /** 赞助企业自己的商品（含草稿 / 待审核 / 驳回原因）。 */
+    public PageResult<MallGoodsVO> listForSponsor(Long enterpriseId, PageQuery query, Integer status) {
+        IPage<MallGoods> page = goodsMapper.selectPage(query.toPage(), Wrappers.<MallGoods>lambdaQuery()
+                .eq(MallGoods::getSponsorEnterpriseId, enterpriseId)
+                .eq(status != null, MallGoods::getStatus, status)
+                .orderByDesc(MallGoods::getId));
+        PageResult<MallGoodsVO> result = PageResult.of(page.convert(g -> toVO(g, true)));
+        fill(result.getRecords());
+        return result;
+    }
+
+    public MallGoodsVO detailForSponsor(Long id, Long enterpriseId) {
+        MallGoods goods = id == null ? null : goodsMapper.selectById(id);
+        if (goods == null || enterpriseId == null || !enterpriseId.equals(goods.getSponsorEnterpriseId())) {
+            throw new BusinessException("商品不存在");
+        }
+        MallGoodsVO vo = toVO(goods, true);
+        fill(List.of(vo));
+        return vo;
+    }
+
+    /**
+     * 整批置位「赞助企业当前不可用」（企业暂停 / 删除时 true，恢复时 false）。<b>必须在调用方事务里</b>，与企业状态迁移同成同败。
+     *
+     * @return 影响的商品数
+     */
+    public int setSponsorSuspended(Long enterpriseId, boolean suspended) {
+        return goodsMapper.update(null, Wrappers.<MallGoods>lambdaUpdate()
+                .eq(MallGoods::getSponsorEnterpriseId, enterpriseId)
+                .set(MallGoods::getSponsorSuspended, suspended ? 1 : 0)
+                .set(MallGoods::getUpdateTime, LocalDateTime.now()));
+    }
+
     private void requireAdmin(Long adminId) {
         if (adminId == null) {
             throw new BusinessException("操作人不能为空");
@@ -303,10 +437,20 @@ public class MallGoodsService {
      * <p>草稿 / 待审核 / 驳回 / 已停用一律不可见，与活动「仅已发布可见」同口径。</p>
      */
     public PageResult<MallGoodsVO> listForVolunteer(PageQuery query, String keyword) {
+        return listForVolunteer(query, keyword, null);
+    }
+
+    /**
+     * @param sponsorEnterpriseId 只看某个赞助企业的（企业主页「赞助商品」）；null＝全部
+     */
+    public PageResult<MallGoodsVO> listForVolunteer(PageQuery query, String keyword, Long sponsorEnterpriseId) {
         IPage<MallGoods> page = goodsMapper.selectPage(query.toPage(),
                 Wrappers.<MallGoods>lambdaQuery()
                         .eq(MallGoods::getStatus, MallGoodsStatus.ON_SALE)
                         .eq(MallGoods::getHidden, 0)
+                        // 赞助企业被暂停 / 删除：它的商品一并不可见（V78；下单那条 UPDATE 同样带着这个条件）
+                        .eq(MallGoods::getSponsorSuspended, 0)
+                        .eq(sponsorEnterpriseId != null, MallGoods::getSponsorEnterpriseId, sponsorEnterpriseId)
                         .like(StringUtils.hasText(keyword), MallGoods::getName, keyword)
                         .orderByAsc(MallGoods::getSort)
                         .orderByDesc(MallGoods::getId));
@@ -332,7 +476,8 @@ public class MallGoodsService {
         MallGoods goods = id == null ? null : goodsMapper.selectById(id);
         if (goods == null || goods.getStatus() == null
                 || goods.getStatus() != MallGoodsStatus.ON_SALE
-                || (goods.getHidden() != null && goods.getHidden() == 1)) {
+                || (goods.getHidden() != null && goods.getHidden() == 1)
+                || (goods.getSponsorSuspended() != null && goods.getSponsorSuspended() == 1)) {
             throw new BusinessException("商品不存在");
         }
         MallGoodsVO vo = toVO(goods, false);
@@ -352,7 +497,7 @@ public class MallGoodsService {
     }
 
     /**
-     * 批量补齐规格与评价聚合。<b>两次查库，不按行循环</b>——列表页 N+1 是本项目反复清理过的老问题
+     * 批量补齐规格、评价聚合与「需持卷」卷名。<b>每类一次查库，不按行循环</b>——列表页 N+1 是本项目反复清理过的老问题
      * （小组列表、分队列表、报名列表都各记过一次）。
      */
     private void fill(List<MallGoodsVO> records) {
@@ -371,6 +516,9 @@ public class MallGoodsService {
 
         Map<Long, Map<String, Object>> stats = reviewStats(ids);
 
+        Map<Long, String> couponNames = couponService.namesOf(records.stream()
+                .map(MallGoodsVO::getRequireCouponId).filter(Objects::nonNull).collect(Collectors.toSet()));
+
         for (MallGoodsVO vo : records) {
             List<MallGoodsSpecVO> list = specs.getOrDefault(vo.getId(), Collections.emptyList());
             vo.setSpecs(list);
@@ -382,6 +530,9 @@ public class MallGoodsService {
             vo.setReviewCount(row == null ? 0 : ((Number) row.get("cnt")).intValue());
             vo.setAvgRating(row == null ? null
                     : Math.round(((Number) row.get("avgRating")).doubleValue() * 10) / 10.0);
+            if (vo.getRequireCouponId() != null) {
+                vo.setRequireCouponName(couponNames.getOrDefault(vo.getRequireCouponId(), "指定卷"));
+            }
         }
     }
 
@@ -404,6 +555,9 @@ public class MallGoodsService {
         vo.setId(spec.getId());
         vo.setName(spec.getName());
         vo.setPoints(spec.getPoints());
+        int cash = spec.getCashFen() == null ? 0 : spec.getCashFen();
+        vo.setCashFen(cash);
+        vo.setCashYuan(com.hengde.trade.constant.TradeFlow.yuan(cash));
         vo.setStock(spec.getStock());
         vo.setSort(spec.getSort());
         return vo;
@@ -420,6 +574,7 @@ public class MallGoodsService {
         vo.setCoverUrl(goods.getCoverUrl());
         vo.setDetail(goods.getDetail());
         vo.setSponsorName(goods.getSponsorName());
+        vo.setRequireCouponId(goods.getRequireCouponId());
         vo.setStatus(goods.getStatus());
         vo.setStatusLabel(MallGoodsStatus.labelOf(goods.getStatus()));
         vo.setHidden(goods.getHidden());

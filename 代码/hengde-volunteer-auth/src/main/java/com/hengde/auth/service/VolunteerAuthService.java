@@ -165,7 +165,9 @@ public class VolunteerAuthService {
 
         // 造一个可用的「已实名」测试身份：填姓名 + 成年生日 + 性别，避免年龄/性别资格校验取到 null
         if (registered && volunteer.getRegisterTime() == null) {
-            volunteer.setRealName("测试志愿者-" + safeKey);
+            // real_name 是 VARCHAR(32)：key 长一点（压测里常带随机后缀）就会撞列宽成 500，截到列宽以内
+            String devName = "测试志愿者-" + safeKey;
+            volunteer.setRealName(devName.length() > 32 ? devName.substring(0, 32) : devName);
             volunteer.setBirthday(LocalDate.of(2000, 1, 1));
             volunteer.setGender(Gender.MALE);
             volunteer.setRegisterTime(LocalDateTime.now());
@@ -452,6 +454,10 @@ public class VolunteerAuthService {
         volunteer.setPoliticalStatus(politicalStatus);
         volunteer.setSchool(dto.getSchool());
         volunteer.setGrade(grade);
+        if (grade != null) {
+            // 注册时填的年级就是当前学年的年级，升级任务从下一个 9 月起才动它（V67）
+            volunteer.setGradeUpgradeYear(Grade.schoolYearOf(LocalDate.now()));
+        }
         volunteer.setAddress(dto.getAddress());
         volunteer.setIVolunteerCodeUrl(dto.getIVolunteerCodeUrl());
         volunteer.setAvatarUrl(dto.getAvatarUrl());

@@ -53,6 +53,28 @@
             <artifactId>hengde-volunteer-activity</artifactId>
         </dependency>
 
+        <!-- 捐赠域：后台「数据汇总」里的微心愿 / 结对 / 捐书活动数据（DonateStatsService，V3 收尾批）。
+             donate 在父 POM modules 里排在 data 之前，不成环 -->
+        <dependency>
+            <groupId>com.hengde</groupId>
+            <artifactId>hengde-volunteer-donate</artifactId>
+        </dependency>
+
+        <!-- 数据汇总（V4 数据汇总批，Row 79）：社区 / 爱心企业 / 荣誉三块的口径各自落在 owner 域的只读 service，
+             data 只组装。依赖方向 data → 它们，它们都不依赖 data（无环）；父 POM <modules> 里 data 因此排在 enterprise 之后 -->
+        <dependency>
+            <groupId>com.hengde</groupId>
+            <artifactId>hengde-volunteer-social</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.hengde</groupId>
+            <artifactId>hengde-volunteer-enterprise</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.hengde</groupId>
+            <artifactId>hengde-volunteer-honor</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>io.swagger.core.v3</groupId>
             <artifactId>swagger-annotations-jakarta</artifactId>

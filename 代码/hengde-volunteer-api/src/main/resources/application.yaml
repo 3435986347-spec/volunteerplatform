@@ -73,7 +73,7 @@ hengde:
       # 与验证码模板不同，这些各有各的占位变量，变量名与顺序由 SmsNotifyTemplate 枚举统一持有，
       # 业务侧按声明顺序传值即可（火山的占位名大小写敏感，传错键不报错、只把那一段替换成空）。
       # 留空 = 该通知不发（启动时会 warn 列出「已接业务却没配」的那几条）。
-      # ⚠️ 只列【已经接到业务事件】的 11 条；另外 9 条对应功能未开发，配了也没人调，故不在此占位。
+      # ⚠️ 只列【已经接到业务事件】的 13 条；其余对应功能未开发，配了也没人调，故不在此占位。
       enrollment-approved: ${SMS_TPL_ENROLL_APPROVED:}          # 报名审核通过
       enrollment-rejected: ${SMS_TPL_ENROLL_REJECTED:}          # 报名审核拒绝
       enrollment-position: ${SMS_TPL_ENROLL_POSITION:}          # 同小组代报名（被代者事先并不知情）
@@ -85,6 +85,8 @@ hengde:
       activity-violation: ${SMS_TPL_ACTIVITY_VIOLATION:}        # 违规记录审核通过
       org-join-result: ${SMS_TPL_ORG_JOIN_RESULT:}              # 分队加入 / 报名管理团队 审核结果
       group-join-result: ${SMS_TPL_GROUP_JOIN_RESULT:}          # 志愿小组 建组/加入 审核结果
+      points-order-review: ${SMS_TPL_POINTS_ORDER_REVIEW:}      # 积分商城兑换单审核结果（V3 卷批接上，当时漏配）
+      complaint-replied: ${SMS_TPL_COMPLAINT_REPLIED:}          # 投诉建议已答复（V4 投诉建议批）
   oss:
     provider: ${OSS_PROVIDER:aliyun}     # 存储厂商：aliyun / volc（火山引擎 TOS）；恒德实例置 volc
     enabled: ${OSS_ENABLED:false}        # dev/test 默认关，不真上传只打日志返回占位 URL；生产置 true
@@ -125,6 +127,40 @@ hengde:
   security:
     aes-key: ${SECURITY_AES_KEY:dev-only-aes-secret-change-in-prod}    # 身份证/手机号字段加密；生产必须用环境变量覆盖
     hmac-key: ${SECURITY_HMAC_KEY:dev-only-hmac-secret-change-in-prod}  # 可查询哈希密钥；生产必须用环境变量覆盖
+  user:
+    grade-upgrade:
+      # 年级每年 9 月升一级（V4 个人中心补全批，Row 25）。每天跑、按学年幂等：那天不在线之后也补得上，重复跑什么也不改
+      enabled: ${USER_GRADE_UPGRADE_ENABLED:true}
+      cron: ${USER_GRADE_UPGRADE_CRON:0 20 3 * * ?}
+    card:
+      # 志愿者证（V4 志愿者证批，Row 26）。配了 WX_APPID / WX_SECRET 时码图是小程序码（scene＝令牌，打开下面这个页面）；
+      # 生成不了时回退普通二维码：内容是 H5 核验地址 + ?token=，地址留空则是「hengde-volunteer-card:令牌」（只有本小程序的扫一扫认得）
+      miniapp-page: ${USER_CARD_MINIAPP_PAGE:pages/volunteer-card/verify}
+      miniapp-env-version: ${USER_CARD_MINIAPP_ENV_VERSION:release}
+      verify-url: ${USER_CARD_VERIFY_URL:}
+      code-cache-seconds: ${USER_CARD_CODE_CACHE_SECONDS:604800}
+  data:
+    complaint:
+      # 投诉建议（V4 投诉建议批，Row 43）。默认部门须与后台账号的「部门」一字不差，否则新工单没人看得到
+      default-department: ${DATA_COMPLAINT_DEFAULT_DEPARTMENT:监察部}
+      daily-limit: ${DATA_COMPLAINT_DAILY_LIMIT:5}            # 同一个人 24 小时内最多提交几条
+      sms-reply-max-chars: ${DATA_COMPLAINT_SMS_REPLY_MAX_CHARS:30}  # 短信里答复内容最多几个字，全文在小程序
+  enterprise:
+    points:
+      # 爱心企业积分账本（V4 爱心企业批）：赞助商品的兑换单「已领取」之后补记入账。回看窗口之外漏掉的用 POST /a/enterprise/points/reconcile?since= 显式补
+      credit-enabled: ${ENTERPRISE_POINTS_CREDIT_ENABLED:true}
+      credit-cron: ${ENTERPRISE_POINTS_CREDIT_CRON:0 */10 * * * ?}
+      credit-lookback-hours: ${ENTERPRISE_POINTS_CREDIT_LOOKBACK_HOURS:72}
+  social:
+    # 社区（V4 社区核心批，Row 23）。「最热」= 本小时 + 上一小时按剩余比例折算的加权分（Redis 小时桶，丢了只退化成按时间排）
+    hot-view-weight: ${SOCIAL_HOT_VIEW_WEIGHT:1}
+    hot-like-weight: ${SOCIAL_HOT_LIKE_WEIGHT:3}
+    hot-comment-weight: ${SOCIAL_HOT_COMMENT_WEIGHT:5}
+    hot-share-weight: ${SOCIAL_HOT_SHARE_WEIGHT:4}
+    video-max-bytes: ${SOCIAL_VIDEO_MAX_BYTES:104857600}      # 帖子视频上限（直传签名按它拒，默认 100MB）
+    video-presign-ttl-seconds: ${SOCIAL_VIDEO_PRESIGN_TTL_SECONDS:300}  # 不能超过 hengde.oss.presign-max-ttl-seconds
+    digest-enabled: ${SOCIAL_DIGEST_ENABLED:true}             # 互动汇总提示（V4 社区治理批，Row 23 D「每隔 20 分钟」）
+    digest-cron: ${SOCIAL_DIGEST_CRON:0 */20 * * * ?}
   honor:
     ranking:
       # 排行榜快照：往期名次冻结，防事后补录/考勤修正让历史榜单漂移。以下均为代码默认值，此处显式列出便于运维调整。
@@ -142,6 +178,94 @@ hengde:
       cron: ${ACTIVITY_REMINDER_CRON:0 5 * * * ?}   # 每小时第 5 分钟。窗口（24h）远大于间隔，漏跑一两轮下一轮补上
       lead-hours: ${ACTIVITY_REMINDER_LEAD_HOURS:24}
       batch-limit: ${ACTIVITY_REMINDER_BATCH_LIMIT:200}  # 单轮封顶，防一次周期发布的几十场把单次执行拖很久；没处理完下一轮继续
+  trade:
+    # 交易单有效期：默认 15 分钟（商城快递费占着库存，这个值合理）
+    default-ttl-minutes: ${TRADE_TTL_MINUTES:15}
+    # 各业务类型覆盖。**众筹与结对捐款不占任何资源**，15 分钟关单只会平白打断一笔捐赠，故给一天。
+    # 键是 TradeFlow.BIZ_* 的数值（2 众筹捐款 / 3 助学结对捐款），YAML 里整数键要写成 "[2]"
+    ttl-minutes-by-biz-type:
+      "[2]": ${TRADE_TTL_CROWDFUND:1440}
+      "[3]": ${TRADE_TTL_PAIR:1440}
+    scan:
+      # 分钟级扫描：捞「已发起未终态」的单主动查单。⚠️ 这是支付回写四道里的第二道，
+      # 关掉它等于接受「回调丢了就再没人管」——只建议排障时临时关
+      enabled: ${TRADE_SCAN_ENABLED:true}
+      cron: ${TRADE_SCAN_CRON:0 */2 * * * ?}
+      batch: ${TRADE_SCAN_BATCH:100}
+      min-age-minutes: ${TRADE_SCAN_MIN_AGE_MINUTES:2}
+    reconcile:
+      # 每日对账核对**前一天**（已支付与已关闭两侧），结果落 trade_reconcile_run、后台可查——
+      # 支付回写四道里的第四道。渠道未开通时照跑、落一行「跳过」
+      enabled: ${TRADE_RECONCILE_ENABLED:true}
+      cron: ${TRADE_RECONCILE_CRON:0 30 3 * * ?}
+    wechat:
+      # **默认关**：要协会的商户资质（《协会待确认清单-v3》⑩）。关闭时下单会被明确拒绝，不伪造成功
+      enabled: ${TRADE_WECHAT_ENABLED:false}
+      mch-id: ${TRADE_WECHAT_MCH_ID:}
+      app-id: ${TRADE_WECHAT_APP_ID:}
+      api-v3-key: ${TRADE_WECHAT_API_V3_KEY:}
+      merchant-serial-number: ${TRADE_WECHAT_SERIAL_NO:}
+      private-key: ${TRADE_WECHAT_PRIVATE_KEY:}
+      # 回调地址必须是已备案域名的 https，且含 /api context-path
+      pay-notify-url: ${TRADE_WECHAT_PAY_NOTIFY_URL:}
+      refund-notify-url: ${TRADE_WECHAT_REFUND_NOTIFY_URL:}
+  donate:
+    mall:
+      # 自提点（商城批）：审核通过时快照进兑换单。只有一个当前值，换办公地点不影响历史单据
+      pickup-site:
+        name: ${DONATE_MALL_PICKUP_NAME:}
+        address: ${DONATE_MALL_PICKUP_ADDRESS:}
+        phone: ${DONATE_MALL_PICKUP_PHONE:}
+      express:
+        # 快递寄送（商城快递批）。**默认关**：快递费与积分折算汇率协会还没给（清单③）。
+        # 快递费是计价器的输出、下单时快照；积分抵扣所需积分 = ⌈快递费（元）× 汇率⌉
+        enabled: ${DONATE_MALL_EXPRESS_ENABLED:false}
+        fee-fen: ${DONATE_MALL_EXPRESS_FEE_FEN:1000}
+        points-per-yuan: ${DONATE_MALL_EXPRESS_POINTS_PER_YUAN:100}
+        # 发货满这么多天未确认收货的，系统自动确认
+        auto-receive-days: ${DONATE_MALL_EXPRESS_AUTO_RECEIVE_DAYS:15}
+        auto-receive-cron: ${DONATE_MALL_EXPRESS_AUTO_RECEIVE_CRON:0 40 3 * * ?}
+      payment:
+        # 有现金要付的兑换单，下单后多久内付完（占着库存、积分与卷）。截止时刻同时传给 trade
+        timeout-minutes: ${DONATE_MALL_PAY_TIMEOUT_MINUTES:15}
+        # 待支付同步：事件丢了的照样推进、超时的取消并归还——「钱收了、单没发货」的补偿，不是可选项
+        sync-cron: ${DONATE_MALL_PAY_SYNC_CRON:30 */2 * * * ?}
+    donation:
+      # 在线捐款（V3 捐款批）：需要微信支付已开通。付款时限内没付的由补偿任务取消；截止时刻同时传给 trade
+      pay-timeout-minutes: ${DONATE_DONATION_PAY_TIMEOUT_MINUTES:30}
+      # 单笔上限（元），更大的金额走对公转账
+      max-amount: ${DONATE_DONATION_MAX_AMOUNT:50000}
+      # 待支付同步：事件丢了的照样到账、超时的取消——「钱收了、账上没有」的补偿，不是可选项
+      sync-cron: ${DONATE_DONATION_SYNC_CRON:45 */2 * * * ?}
+    wish:
+      # 微心愿「物资接收地址」（Row 12 C：捐赠人按要求把物资寄到办公室）。收件的永远是协会办公室、心愿只决定寄什么，
+      # 所以是一份配置而不是每个心愿一份。只有认领人在心愿详情里看得到；留空则认领人看到的是空地址，上线前必须填。
+      recv-name: ${DONATE_WISH_RECV_NAME:}
+      recv-phone: ${DONATE_WISH_RECV_PHONE:}
+      recv-address: ${DONATE_WISH_RECV_ADDRESS:}
+    logistics:
+      # 快递100。**查询与订阅推送是两个计费项**（《协会待确认清单-v3》⑧），开关分开；两者共用一个账号的授权 key。
+      # 都默认关闭：关闭时物流轨迹显示「未开通」，我们自己的流转轨迹（到货 / 核对 / 装箱 / 送达）不受影响
+      kuaidi100:
+        enabled: ${KUAIDI100_ENABLED:false}
+        customer: ${KUAIDI100_CUSTOMER:}
+        key: ${KUAIDI100_KEY:}
+      # 查询：志愿者端快照超过这么多分钟才重查；定时轮询的间隔、每轮单数、寄出多少天后停止
+      refresh-minutes: ${KUAIDI100_REFRESH_MINUTES:30}
+      poll-enabled: ${KUAIDI100_POLL_ENABLED:true}
+      poll-cron: ${KUAIDI100_POLL_CRON:0 20 */2 * * ?}
+      poll-interval-minutes: ${KUAIDI100_POLL_INTERVAL_MINUTES:120}
+      poll-batch: ${KUAIDI100_POLL_BATCH:50}
+      track-max-days: ${KUAIDI100_TRACK_MAX_DAYS:30}
+      push:
+        # 订阅推送（物流推送批，V56）。要**已备案域名的 https 回调地址**（周级前置），不带查询参数——运单 id 由系统拼上。
+        # 开着时，订上了的运单由推送保持快照、轮询跳过；订不上的（被拒 / 失败次数用尽 / 被快递100 中止）交还轮询
+        enabled: ${KUAIDI100_PUSH_ENABLED:false}
+        callback-url: ${KUAIDI100_PUSH_CALLBACK_URL:}
+        subscribe-cron: ${KUAIDI100_PUSH_SUBSCRIBE_CRON:0 */5 * * * ?}
+        subscribe-batch: ${KUAIDI100_PUSH_SUBSCRIBE_BATCH:50}
+        retry-interval-minutes: ${KUAIDI100_PUSH_RETRY_INTERVAL_MINUTES:30}
+        max-attempts: ${KUAIDI100_PUSH_MAX_ATTEMPTS:5}
 
 springdoc:
   group-configs:

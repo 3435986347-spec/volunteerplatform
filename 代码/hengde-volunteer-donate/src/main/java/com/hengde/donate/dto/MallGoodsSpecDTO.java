@@ -31,6 +31,10 @@ public class MallGoodsSpecDTO {
     @Min(value = 1, message = "所需积分必须大于 0")
     private Integer points;
 
+    @Schema(description = "现金部分【分】；不填或 0＝纯积分（清单②默认：固定积分 + 固定现金，下单两者都付）")
+    @Min(value = 0, message = "现金部分不能为负")
+    private Integer cashFen;
+
     @Schema(description = "库存")
     @NotNull(message = "请填写库存")
     @Min(value = 0, message = "库存不能为负")

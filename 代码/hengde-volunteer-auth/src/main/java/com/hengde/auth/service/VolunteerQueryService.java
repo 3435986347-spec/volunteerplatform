@@ -91,7 +91,7 @@ public class VolunteerQueryService {
         }
         Integer genderCode = v.getGender() == null ? Gender.UNKNOWN.getCode() : v.getGender().getCode();
         Integer gradeCode = v.getGrade() == null ? null : v.getGrade().getCode();
-        return new VolunteerProfileView(v.getId(), genderCode, v.getBirthday(), gradeCode, v.getStatus());
+        return new VolunteerProfileView(v.getId(), genderCode, v.getBirthday(), gradeCode, v.getStatus(), v.getSquadId());
     }
 
     /**
@@ -108,6 +108,33 @@ public class VolunteerQueryService {
                 Wrappers.<Volunteer>lambdaQuery().in(Volunteer::getId, volunteerIds));
         return list.stream().map(this::toDisplay)
                 .collect(Collectors.toMap(VolunteerDisplayView::id, Function.identity()));
+    }
+
+    /**
+     * 批量取志愿者<b>联系方式</b>（姓名 / 明文手机号 / i志愿者码链接），供导出类场景使用——
+     * 如捐赠物资导出（Row 17 F 导出列「捐赠人名字、电话、…、志愿者码链接」）。
+     *
+     * <p><b>只 select 需要的四列</b>，不把整行加密实体搬出来。列名用字符串而非方法引用：
+     * {@code iVolunteerCodeUrl} 这种第二个字母大写的属性，MyBatis-Plus 从 {@code getIVolunteerCodeUrl}
+     * 反推出的属性名是 {@code IVolunteerCodeUrl}，与字段对不上会在运行期报「找不到 lambda 缓存」。</p>
+     *
+     * @param volunteerIds 志愿者 id 集合
+     * @return id -> 联系方式；空集合返回空 Map
+     */
+    public Map<Long, com.hengde.auth.vo.VolunteerContactView> listContactsByIds(Collection<Long> volunteerIds) {
+        if (volunteerIds == null || volunteerIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Volunteer> list = volunteerMapper.selectList(Wrappers.<Volunteer>query()
+                .select("id", "real_name", "phone", "i_volunteer_code_url")
+                .in("id", volunteerIds));
+        Map<Long, com.hengde.auth.vo.VolunteerContactView> result = new HashMap<>();
+        for (Volunteer v : list) {
+            String phone = StringUtils.hasText(v.getPhone()) ? cryptoUtil.decrypt(v.getPhone()) : null;
+            result.put(v.getId(), new com.hengde.auth.vo.VolunteerContactView(
+                    v.getId(), v.getRealName(), phone, v.getIVolunteerCodeUrl()));
+        }
+        return result;
     }
 
     /**
@@ -286,6 +313,60 @@ public class VolunteerQueryService {
     }
 
     /**
+     * 从一批志愿者 id 里筛出「<b>存在、已实名、账号正常</b>」的那些，一次查库。
+     *
+     * <p>供批量发放类动作（如商城批量发卷、指派核销员）判定资格，不逐个查库。
+     * 口径与 {@link #isActive} 对齐：status 为 null 按正常处理；「已实名」= {@code register_time} 非空，
+     * 与 {@link #countRegistered} 同一条判据。<b>「账号正常」这条语义收在 auth 一处</b>，
+     * 不让 donate 各自去比 status 码——散开就会有人漏掉注销态且没有征兆。</p>
+     *
+     * @param volunteerIds 志愿者 id 集合
+     * @return 其中合格的 id；入参为空返回空集
+     */
+    public Set<Long> filterActiveRegistered(Collection<Long> volunteerIds) {
+        if (volunteerIds == null || volunteerIds.isEmpty()) {
+            return Set.of();
+        }
+        List<Volunteer> rows = volunteerMapper.selectList(Wrappers.<Volunteer>lambdaQuery()
+                .select(Volunteer::getId, Volunteer::getStatus, Volunteer::getRegisterTime)
+                .in(Volunteer::getId, volunteerIds));
+        Set<Long> eligible = new HashSet<>();
+        for (Volunteer v : rows) {
+            Integer status = v.getStatus();
+            if (v.getRegisterTime() != null && (status == null || UserStatus.NORMAL.equals(status))) {
+                eligible.add(v.getId());
+            }
+        }
+        return eligible;
+    }
+
+    /**
+     * 志愿者是否<b>已验证过手机号</b>——「查看心愿必须登录系统并验证手机号」（Row 12 D）那一道门。
+     *
+     * <p><b>这道门独立于登录态</b>：微信登录的账号可能根本没绑手机号，{@code /v/**} 的登录态挡不住它
+     * （V3规划·洞4）。判据是 {@code phone_hash} 非空：手机号进库的每一条路都要过短信验证码
+     * （验证码登录建号、实名注册绑定、改绑），唯一例外是超管在后台改资料——那是管理员替他担保的。</p>
+     *
+     * <p>口径收在 auth 一处，donate（微心愿）与日后的 social（「登录验证手机号才能看帖子」，Row 23 D）共用。</p>
+     *
+     * @param volunteerId 志愿者 id
+     * @return true = 存在、账号正常、且绑过手机号
+     */
+    public boolean hasVerifiedPhone(Long volunteerId) {
+        if (volunteerId == null) {
+            return false;
+        }
+        Volunteer v = volunteerMapper.selectOne(Wrappers.<Volunteer>lambdaQuery()
+                .select(Volunteer::getId, Volunteer::getStatus, Volunteer::getPhoneHash)
+                .eq(Volunteer::getId, volunteerId));
+        if (v == null) {
+            return false;
+        }
+        Integer status = v.getStatus();
+        return (status == null || UserStatus.NORMAL.equals(status)) && StringUtils.hasText(v.getPhoneHash());
+    }
+
+    /**
      * 志愿者是否「活跃 + 已标记管理团队」（一次查库）。供志愿者端 RBAC <b>读取路径</b>用——
      * 取消 manager_flag（降级）后立即失效，与授权写入门槛 {@code manager_flag=1} 一致，避免 stale 授权继续生效。
      *
@@ -389,6 +470,21 @@ public class VolunteerQueryService {
     }
 
     /**
+     * 用户人数（Row 79 平台数据第一项）：<b>含还没实名的游客</b>，与 {@link #countRegistered} 是两个数。
+     *
+     * <p>游客也是用户——收了验证码登录进来、看得到活动与公示，把他们排除掉会让「用户人数」比实际小一截。</p>
+     */
+    public long countAllUsers() {
+        return volunteerMapper.selectCount(null);
+    }
+
+    /** 封号人数（Row 79 举报数据里的「封号人数」）：账号被禁用的志愿者；注销是本人退出，不算被封。 */
+    public long countDisabled() {
+        return volunteerMapper.selectCount(Wrappers.<Volunteer>lambdaQuery()
+                .eq(Volunteer::getStatus, UserStatus.BANNED));
+    }
+
+    /**
      * 「管理团队」志愿者人数：{@code manager_flag=1} 且<b>已实名、未停用/注销</b>，与 {@link #isActiveManager}
      * 读取口径一致——游客态/禁用/注销上的管理团队标记不计入。供 data 域数据看板「管理团队人数」。
      */
@@ -397,6 +493,39 @@ public class VolunteerQueryService {
                 .eq(Volunteer::getManagerFlag, 1)
                 .isNotNull(Volunteer::getRegisterTime)
                 .eq(Volunteer::getStatus, UserStatus.NORMAL));
+    }
+
+    /**
+     * 社区名片（昵称 / 头像 / 注册时间 / 状态），一次查库；不存在（含逻辑删除）的不在返回里。
+     * 只取这几列，<b>不解密也不返回任何实名信息</b>（V4 社区核心批）。
+     */
+    public Map<Long, com.hengde.auth.vo.VolunteerSocialCardView> listSocialCardsByIds(Collection<Long> volunteerIds) {
+        if (volunteerIds == null || volunteerIds.isEmpty()) {
+            return Map.of();
+        }
+        return volunteerMapper.selectList(Wrappers.<Volunteer>lambdaQuery()
+                        .select(Volunteer::getId, Volunteer::getNickName, Volunteer::getAvatarUrl,
+                                Volunteer::getRegisterTime, Volunteer::getStatus)
+                        .in(Volunteer::getId, volunteerIds))
+                .stream().collect(Collectors.toMap(Volunteer::getId, v -> new com.hengde.auth.vo.VolunteerSocialCardView(
+                        v.getId(), v.getNickName(), v.getAvatarUrl(), v.getRegisterTime(), v.getStatus())));
+    }
+
+    /**
+     * 一批志愿者里被标记为「管理团队」（{@code manager_flag=1}）的那些，一次查库。供活动名单公示「优先展示管理团队」（Row 13 F）排序用。
+     *
+     * @param volunteerIds 志愿者 id 集合
+     * @return 其中的管理团队 id；入参为空返回空集
+     */
+    public Set<Long> filterManagers(Collection<Long> volunteerIds) {
+        if (volunteerIds == null || volunteerIds.isEmpty()) {
+            return Set.of();
+        }
+        return volunteerMapper.selectList(Wrappers.<Volunteer>lambdaQuery()
+                        .select(Volunteer::getId)
+                        .in(Volunteer::getId, volunteerIds)
+                        .eq(Volunteer::getManagerFlag, 1))
+                .stream().map(Volunteer::getId).collect(Collectors.toSet());
     }
 
     /**

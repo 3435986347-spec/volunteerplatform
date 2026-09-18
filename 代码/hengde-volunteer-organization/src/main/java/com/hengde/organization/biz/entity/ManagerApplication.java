@@ -20,6 +20,8 @@ public class ManagerApplication extends BaseEntity {
     private String reason;
     private String experience;
     private String expectDepartment;
+    /** 随申请提交的问卷答卷（V64）；该场景没有收集中的问卷时为空 */
+    private Long formSubmissionId;
     /** 0待审核/1已通过/2已驳回 */
     private Integer status;
     private String rejectReason;

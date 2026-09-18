@@ -32,8 +32,17 @@ public class MallOrderVO {
     @Schema(description = "商品规格（下单时快照）")
     private String specName;
 
-    @Schema(description = "所需积分（下单时快照）")
+    @Schema(description = "实际扣除积分（下单时快照；用卷后可能低于标价，兑换卷为 0）")
     private Integer points;
+
+    @Schema(description = "规格标价积分（下单时快照）")
+    private Integer originalPoints;
+
+    @Schema(description = "所用卷名称（下单时快照；未用卷为空）")
+    private String couponName;
+
+    @Schema(description = "卷抵扣积分（下单时快照）")
+    private Integer couponDeductPoints;
 
     @Schema(description = "状态码 0待审核/1已通过待领取/2已驳回/3已领取/4已取消")
     private Integer status;
@@ -73,6 +82,58 @@ public class MallOrderVO {
     @Schema(description = "是否已评价（Row 8 C「我的兑换」要展示评价状态）")
     private Boolean reviewed;
 
+    // ---- 商城快递批：现金与快递 ----
+
+    @Schema(description = "领取方式中文名")
+    private String deliveryTypeLabel;
+
+    @Schema(description = "商品现金部分【分】")
+    private Integer goodsCashFen;
+
+    @Schema(description = "快递费【分】（下单时快照）")
+    private Integer shippingFeeFen;
+
+    @Schema(description = "快递费支付方式 1现金/2积分抵扣")
+    private Integer shippingPayType;
+
+    private String shippingPayTypeLabel;
+
+    @Schema(description = "快递费折成的积分（已计入 points）")
+    private Integer shippingPoints;
+
+    @Schema(description = "积分抵扣汇率快照：1 元折多少积分")
+    private Integer pointsPerYuan;
+
+    @Schema(description = "应付现金【分】")
+    private Integer payCashFen;
+
+    @Schema(description = "应付现金【元】，展示用——前端不要自己除以 100")
+    private String payCashYuan;
+
+    @Schema(description = "付款截止（仅待支付）")
+    private LocalDateTime payExpireTime;
+
+    @Schema(description = "付款成功时间")
+    private LocalDateTime paidTime;
+
+    @Schema(description = "收件人（本人与后台可见）")
+    private String recvName;
+
+    @Schema(description = "收件电话，明文（本人与后台可见）")
+    private String recvPhone;
+
+    @Schema(description = "收件地址（本人与后台可见）")
+    private String recvAddress;
+
+    @Schema(description = "快递公司")
+    private String expressCompany;
+
+    @Schema(description = "快递单号")
+    private String expressNo;
+
+    @Schema(description = "发货时间")
+    private LocalDateTime shipTime;
+
     // ---- 以下仅管理端返回 ----
 
     @Schema(description = "兑换人 id（仅管理端）")
@@ -80,4 +141,20 @@ public class MallOrderVO {
 
     @Schema(description = "兑换人姓名（仅管理端）")
     private String volunteerName;
+
+    /**
+     * 核销人类型：1 管理员 / 2 核销员（志愿者）；未核销为空。
+     * 核销人 id 一列同时装两类账号的 id，不带类型就分不清是谁（跨域同号错认那一类问题）。
+     */
+    @Schema(description = "核销人类型 1管理员/2核销员/3本人确认收货/4系统自动确认收货（仅管理端；未核销为空）")
+    private Integer pickupOperatorType;
+
+    @Schema(description = "付款成功的交易单 id（仅管理端；到收付页查流水、重试退款用）")
+    private Long tradeOrderId;
+
+    @Schema(description = "驳回后发起的现金退款单号（仅管理端）")
+    private String cashRefundNo;
+
+    @Schema(description = "现金退款发起失败的原因（仅管理端；非空说明钱还没退出去，要到收付页重试）")
+    private String cashRefundError;
 }

@@ -74,6 +74,8 @@ public class ActivityAttendance extends BaseEntity {
 
     /** 确认到家上报经度（第2批） */
     private BigDecimal confirmHomeLng;
+    /** 确认到家时上报的详细地址（V83，Row 63；只对持 activity:home-address 的账号下发） */
+    private String confirmHomeAddress;
 
     /** 负责人对该志愿者评价（第2批） */
     private String leaderEvaluation;

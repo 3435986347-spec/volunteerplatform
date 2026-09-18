@@ -49,6 +49,18 @@ public class SquadQueryService {
                 .stream().collect(Collectors.toMap(VolunteerSquad::getId, VolunteerSquad::getName));
     }
 
+    /**
+     * 启用中的分队名；不存在、已删除或已停用返回 null。供活动「指定分队报名」发布时校验（V4 活动补全批）——
+     * 停用的分队志愿者端不可达，把活动限定给它等于谁也报不了。
+     */
+    public String findEnabledName(Long squadId) {
+        if (squadId == null) {
+            return null;
+        }
+        VolunteerSquad squad = squadMapper.selectById(squadId);
+        return squad == null || !Integer.valueOf(1).equals(squad.getStatus()) ? null : squad.getName();
+    }
+
     /** 分队总数（逻辑删除由 {@code @TableLogic} 自动排除）。供 data 域数据看板「分队数量」。 */
     public long count() {
         return squadMapper.selectCount(null);

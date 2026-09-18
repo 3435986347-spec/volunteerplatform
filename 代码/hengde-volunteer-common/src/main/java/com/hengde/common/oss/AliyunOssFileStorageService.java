@@ -1,9 +1,11 @@
 package com.hengde.common.oss;
 
 import com.aliyun.oss.ClientBuilderConfiguration;
+import com.aliyun.oss.HttpMethod;
 import com.aliyun.oss.OSS;
 import com.aliyun.oss.OSSClientBuilder;
 import com.aliyun.oss.model.CannedAccessControlList;
+import com.aliyun.oss.model.GeneratePresignedUrlRequest;
 import com.aliyun.oss.model.ObjectMetadata;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.result.ResultCode;
@@ -20,6 +22,8 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Date;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -184,6 +188,43 @@ public class AliyunOssFileStorageService implements FileStorageService {
         String prefix = StringUtils.hasText(dir) ? trimSlash(dir) + "/" : "";
         return prefix + LocalDate.now().format(DATE_FMT) + "/"
                 + UUID.randomUUID().toString().replace("-", "") + ext;
+    }
+
+    /** 阿里云 V1 签名不含 Content-Length，声明的大小在这一侧约束不住，只能靠前端（火山那一侧会进签名）。 */
+    @Override
+    public PresignedUpload presignPut(String dir, String extension, long contentLength, Duration ttl) {
+        FileStorageService.requireValidTtl(ttl, properties.getPresignMaxTtlSeconds());
+        String objectName = buildObjectName(dir, "upload." + extension);
+        String contentType = FileValidator.contentTypeOf(objectName);
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("Content-Type", contentType);
+        if (properties.isPublicRead()) {
+            headers.put("x-oss-object-acl", "public-read");
+        }
+        if (!properties.isEnabled()) {
+            log.info("[OSS-MOCK] 未启用真实直传签名，objectName={} size={}", objectName, contentLength);
+            return new PresignedUpload("[oss-disabled]/" + objectName + "?expires=" + ttl.toSeconds(), "PUT", headers,
+                    "[oss-disabled]/" + objectName, objectName);
+        }
+        try {
+            GeneratePresignedUrlRequest req = new GeneratePresignedUrlRequest(properties.getBucket(), objectName, HttpMethod.PUT);
+            req.setExpiration(new Date(System.currentTimeMillis() + ttl.toMillis()));
+            req.setContentType(contentType);
+            if (properties.isPublicRead()) {
+                req.addHeader("x-oss-object-acl", "public-read");
+            }
+            return new PresignedUpload(client().generatePresignedUrl(req).toString(), "PUT", headers, url(objectName), objectName);
+        } catch (Exception e) {
+            log.error("[OSS] 生成直传签名失败 objectName={}", objectName, e);
+            throw new BusinessException(ResultCode.SERVER_ERROR.getCode(), "上传准备失败，请稍后重试");
+        }
+    }
+
+    @Override
+    public boolean isOwnUpload(String url, String dir) {
+        // 未启用真实存储时 upload 返回的是占位 URL，前缀要与之对得上，本地联调才走得通
+        String base = properties.isEnabled() ? url("").replaceAll("/$", "") : "[oss-disabled]";
+        return FileStorageService.matchesUploadedName(url, base, dir);
     }
 
     /** 拼接可公开访问 URL：优先用配置的 urlPrefix，否则按「桶名 + endpoint」拼默认外网域名 */

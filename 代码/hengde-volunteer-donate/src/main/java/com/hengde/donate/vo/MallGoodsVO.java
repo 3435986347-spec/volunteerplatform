@@ -30,6 +30,12 @@ public class MallGoodsVO {
     @Schema(description = "赞助方名称")
     private String sponsorName;
 
+    @Schema(description = "必须使用的卷定义 id；为空=不要求（Row 8 F「没有卷就不能兑换」）")
+    private Long requireCouponId;
+
+    @Schema(description = "必须使用的卷名称")
+    private String requireCouponName;
+
     @Schema(description = "状态码 0草稿/1待审核/2已上架/3已停用/4驳回")
     private Integer status;
 

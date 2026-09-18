@@ -6,6 +6,7 @@ import com.hengde.activity.vo.RankingRowView;
 import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.lock.DistributedLockSupport;
+import com.hengde.donate.service.DonateRankingQueryService;
 import com.hengde.honor.config.HonorProperties;
 import com.hengde.honor.constant.RankPeriodType;
 import com.hengde.honor.constant.RankType;
@@ -32,7 +33,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 排行榜：活动次数 / 活动时长 / 积分 × 月 / 年 / 总。
+ * 排行榜：活动次数 / 活动时长 / 积分 / 微心愿（V3 起） × 月 / 年 / 总。
  *
  * <p><b>核心设计：当期实时聚合，往期读冻结快照。</b>需求要一个下拉框能回看历史月份的排行，
  * 而志愿者的历史数据事后是会变的——活动补录、考勤修正、积分手工调整都会改动往月的底数。
@@ -81,6 +82,7 @@ public class RankingService {
     private HonorRankingSnapshotBatchMapper batchMapper;
     private RedissonClient redissonClient;
     private ActivityRankingQueryService activityRankingQueryService;
+    private DonateRankingQueryService donateRankingQueryService;
     private VolunteerQueryService volunteerQueryService;
     private HonorProperties honorProperties;
     private TransactionTemplate transactionTemplate;
@@ -103,6 +105,12 @@ public class RankingService {
     @Autowired
     public void setActivityRankingQueryService(ActivityRankingQueryService activityRankingQueryService) {
         this.activityRankingQueryService = activityRankingQueryService;
+    }
+
+    /** 微心愿板块的数据源（V3 微心愿批放行 rank_type = 4）。口径收在 donate，honor 不拼 where。 */
+    @Autowired
+    public void setDonateRankingQueryService(DonateRankingQueryService donateRankingQueryService) {
+        this.donateRankingQueryService = donateRankingQueryService;
     }
 
     @Autowired
@@ -278,10 +286,6 @@ public class RankingService {
     // ================= helpers =================
 
     private int requireAvailableRankType(Integer rankType) {
-        if (rankType != null && rankType == RankType.WISH) {
-            // 有码没数据源。放行只会静默产出空榜单，把「功能未开放」伪装成「没人上榜」。
-            throw new BusinessException("微心愿排行尚未开放");
-        }
         if (rankType == null || !RankType.AVAILABLE.contains(rankType)) {
             throw new BusinessException("未知的榜单类型");
         }
@@ -303,6 +307,8 @@ public class RankingService {
                     activityRankingQueryService.topByServiceMinutes(period.from(), period.to(), limit);
             case RankType.POINTS ->
                     activityRankingQueryService.topByEarnedPoints(period.from(), period.to(), limit);
+            case RankType.WISH ->
+                    donateRankingQueryService.topByRealizedWishes(period.from(), period.to(), limit);
             default -> throw new BusinessException("未知的榜单类型");
         };
     }

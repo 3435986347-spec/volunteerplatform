@@ -23,6 +23,8 @@ import com.hengde.common.lock.DistributedLockSupport;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
 import com.hengde.organization.biz.service.GroupQueryService;
+import com.hengde.organization.exam.service.TempLeaderQueryService;
+import com.hengde.organization.biz.service.SquadQueryService;
 import org.redisson.api.RedissonClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,6 +41,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
 import java.util.Objects;
 import java.util.Map;
 import java.util.function.Function;
@@ -88,6 +92,18 @@ public class EnrollmentService {
     private VolunteerQueryService volunteerQueryService;
     private SmsNotifyService smsNotifyService;
     private GroupQueryService groupQueryService;
+    private SquadQueryService squadQueryService;
+    private TempLeaderQueryService tempLeaderQueryService;
+
+    @Autowired
+    public void setTempLeaderQueryService(TempLeaderQueryService tempLeaderQueryService) {
+        this.tempLeaderQueryService = tempLeaderQueryService;
+    }
+
+    @Autowired
+    public void setSquadQueryService(SquadQueryService squadQueryService) {
+        this.squadQueryService = squadQueryService;
+    }
     private RedissonClient redissonClient;
     private TransactionTemplate transactionTemplate;
 
@@ -155,6 +171,34 @@ public class EnrollmentService {
                 () -> transactionTemplate.execute(s -> doEnroll(activityId, distinctSlotIds, volunteerId)));
     }
 
+    /**
+     * 这批人里有没有人还没到报名开放时间（V8 三个开放时间，V4 临时负责人考试批起全部生效）。
+     *
+     * <p><b>志愿者开放时间是底线</b>：留空＝即刻开放，这时谁都不用再查。管理团队（{@code manager_flag=1}）与活动临时负责人
+     * （现在有效的资格，{@link TempLeaderQueryService}）<b>若活动另设了自己那一档的时间，按更早的那个算</b>。
+     * 角色那一档<b>留空＝没有提前</b>，不是「即时可报」——此前这两列从没生效过，只填了志愿者时间的存量活动若按「留空即时」解读，
+     * 管理团队与临时负责人会在上线那一刻突然能报所有还没开放的活动。</p>
+     */
+    private boolean notOpenYet(Activity activity, List<Long> volunteerIds, LocalDateTime now) {
+        LocalDateTime base = activity.getEnrollOpenVolunteer();
+        if (base == null || !now.isBefore(base)) {
+            return false;
+        }
+        boolean managerOpen = activity.getEnrollOpenManager() != null && !now.isBefore(activity.getEnrollOpenManager());
+        boolean leaderOpen = activity.getEnrollOpenLeader() != null && !now.isBefore(activity.getEnrollOpenLeader());
+        if (!managerOpen && !leaderOpen) {
+            return true;
+        }
+        Set<Long> early = new HashSet<>();
+        if (managerOpen) {
+            early.addAll(volunteerQueryService.filterManagers(volunteerIds));
+        }
+        if (leaderOpen) {
+            early.addAll(tempLeaderQueryService.filterTempLeaders(volunteerIds));
+        }
+        return !early.containsAll(volunteerIds);
+    }
+
     private int doEnroll(Long activityId, List<Long> slotIds, Long volunteerId) {
         // 处置闸门（V32）：被「限制参加活动」或「拒绝使用本程序」的人不得报名。
         // 【在锁与事务之内】口径是「审核通过即刻生效」，若放在锁外，
@@ -166,7 +210,7 @@ public class EnrollmentService {
         if (activity == null || !Integer.valueOf(STATUS_ACTIVITY_PUBLISHED).equals(activity.getStatus())) {
             throw new BusinessException("活动不存在");
         }
-        if (activity.getEnrollOpenVolunteer() != null && now.isBefore(activity.getEnrollOpenVolunteer())) {
+        if (notOpenYet(activity, List.of(volunteerId), now)) {
             throw new BusinessException("尚未开放报名");
         }
         // 报名截止：留空/脏数据按活动结束时间兜底（活动结束只改 run_status、status 仍=已发布，否则会允许活动后继续报名）
@@ -385,8 +429,8 @@ public class EnrollmentService {
         if (activity == null || !Integer.valueOf(STATUS_ACTIVITY_PUBLISHED).equals(activity.getStatus())) {
             throw new BusinessException("活动不存在");
         }
-        // 代报名也属于「志愿者端报名」语义，被代者按志愿者角色受同一道开放时间约束
-        if (activity.getEnrollOpenVolunteer() != null && now.isBefore(activity.getEnrollOpenVolunteer())) {
+        // 代报名也属于「志愿者端报名」语义：被代的每个人按<b>他自己</b>的身份受开放时间约束，有一个没到就整批不报
+        if (notOpenYet(activity, targets, now)) {
             throw new BusinessException("尚未开放报名");
         }
         // 报名截止：留空/脏数据按活动结束时间兜底（与自助报名同口径）
@@ -569,6 +613,15 @@ public class EnrollmentService {
     // ---------- 内部辅助 ----------
 
     private void checkEligibility(Activity activity, VolunteerProfileView profile, Long volunteerId) {
+        // 指定分队（V4 活动补全批）：只认报名这一刻的归属分队。profile 来自当前读（FOR SHARE），
+        // 与「审批加入 / 退出分队」改 volunteer.squad_id 的写入串行，不会拿着刚退队前的快照放行。
+        // 后台手动补录（manualEnroll）不走这里，照旧越权。
+        if (Integer.valueOf(1).equals(activity.getEnrollScope())
+                && (activity.getTargetSquadId() == null || !activity.getTargetSquadId().equals(profile.squadId()))) {
+            String squad = activity.getTargetSquadId() == null ? null
+                    : squadQueryService.listNamesByIds(List.of(activity.getTargetSquadId())).get(activity.getTargetSquadId());
+            throw new BusinessException("本活动仅限「" + (squad == null ? "指定分队" : squad) + "」的成员报名");
+        }
         // 年龄
         if (activity.getRequireMinAge() != null || activity.getRequireMaxAge() != null) {
             if (profile.birthday() == null) {

@@ -10,6 +10,7 @@ import com.hengde.activity.dto.MarkAttendanceDTO;
 import com.hengde.activity.dto.ViolationDTO;
 import com.hengde.activity.service.ActivityLeaderService;
 import com.hengde.activity.service.AttendanceService;
+import com.hengde.activity.service.HomeConfirmationService;
 import com.hengde.activity.vo.ActivityLeaderVO;
 import com.hengde.auth.config.StpAdminUtil;
 import com.hengde.common.result.Result;
@@ -41,6 +42,7 @@ public class ActivityManageAdminController {
 
     private ActivityLeaderService activityLeaderService;
     private AttendanceService attendanceService;
+    private HomeConfirmationService homeConfirmationService;
 
     @Autowired
     public void setActivityLeaderService(ActivityLeaderService activityLeaderService) {
@@ -50,6 +52,23 @@ public class ActivityManageAdminController {
     @Autowired
     public void setAttendanceService(AttendanceService attendanceService) {
         this.attendanceService = attendanceService;
+    }
+
+    @Autowired
+    public void setHomeConfirmationService(HomeConfirmationService homeConfirmationService) {
+        this.homeConfirmationService = homeConfirmationService;
+    }
+
+    /**
+     * 到家名单（Row 63）。挂 {@code activity:manage}（现场管理的人要知道谁还没到家），
+     * <b>详细地址与坐标另看 {@code activity:home-address}</b>——没有那个点的账号拿到的响应里根本没有地址。
+     */
+    @Operation(summary = "到家名单（详细地址仅 activity:home-address 可见，其余只显示「已到家」）")
+    @SaCheckPermission(value = PermissionCode.ACTIVITY_MANAGE, type = "admin")
+    @GetMapping("/activities/{id}/home-confirmations")
+    public Result<java.util.List<com.hengde.activity.vo.HomeConfirmationVO>> homeConfirmations(@PathVariable Long id) {
+        boolean withAddress = StpAdminUtil.STP_LOGIC.hasPermission(PermissionCode.ACTIVITY_HOME_ADDRESS);
+        return Result.ok(homeConfirmationService.list(id, withAddress));
     }
 
     @Operation(summary = "指派活动负责人（志愿者或管理团队）")

@@ -523,7 +523,7 @@ public class AttendanceService {
      * 超时（结束 1h 后）不在此拒绝——仅由视图层派生标记，故此处只要求该场次已结束。
      */
     @Transactional(rollbackFor = Exception.class)
-    public void confirmHome(Long activityId, Long slotId, Long volunteerId, BigDecimal lat, BigDecimal lng) {
+    public void confirmHome(Long activityId, Long slotId, Long volunteerId, BigDecimal lat, BigDecimal lng, String address) {
         Activity a = requirePublished(activityId);
         ActivitySlot slot = requireSlotOfActivity(activityId, slotId);
         if (!isSlotEnded(a, slot)) {
@@ -537,6 +537,10 @@ public class AttendanceService {
         att.setConfirmHomeTime(LocalDateTime.now());
         att.setConfirmHomeLat(lat);
         att.setConfirmHomeLng(lng);
+        if (org.springframework.util.StringUtils.hasText(address)) {
+            String text = address.trim();
+            att.setConfirmHomeAddress(text.length() > 255 ? text.substring(0, 255) : text);
+        }
         attendanceMapper.updateById(att);
     }
 

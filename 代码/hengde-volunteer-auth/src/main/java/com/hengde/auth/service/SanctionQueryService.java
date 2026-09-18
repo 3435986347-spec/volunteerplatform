@@ -130,7 +130,7 @@ public class SanctionQueryService {
      */
     private void throwIfBlocked(Long volunteerId, int scope, String action) {
         VolunteerSanction s = sanctionMapper.selectBlockingForShare(
-                volunteerId, scope, SanctionScope.ALL, LocalDateTime.now());
+                volunteerId, SanctionScope.implying(scope), LocalDateTime.now());
         if (s == null) {
             return;
         }
@@ -216,8 +216,8 @@ public class SanctionQueryService {
         return sanctionMapper.selectOne(Wrappers.<VolunteerSanction>lambdaQuery()
                 .eq(VolunteerSanction::getVolunteerId, volunteerId)
                 .eq(VolunteerSanction::getStatus, VolunteerSanction.STATUS_ACTIVE)
-                // 「拒绝使用本程序」蕴含所有能力域
-                .in(VolunteerSanction::getScope, scope, SanctionScope.ALL)
+                // 「拒绝使用本程序」蕴含所有能力域，「限制发布社区」蕴含发帖 / 评论 / 点赞——集合只从 SanctionScope.implying 取
+                .in(VolunteerSanction::getScope, SanctionScope.implying(scope))
                 .le(VolunteerSanction::getEffectiveTime, now)
                 .and(w -> w.isNull(VolunteerSanction::getExpireTime)
                         .or().gt(VolunteerSanction::getExpireTime, now))

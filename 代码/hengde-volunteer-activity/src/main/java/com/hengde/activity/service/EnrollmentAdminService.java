@@ -22,6 +22,7 @@ import com.hengde.common.exception.BusinessException;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
 import com.hengde.common.sms.SmsNotifyTemplate;
+import com.hengde.organization.exam.service.TempLeaderQueryService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -30,6 +31,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -61,6 +63,12 @@ public class EnrollmentAdminService {
     private VolunteerQueryService volunteerQueryService;
     private EnrollmentService enrollmentService;
     private SmsNotifyService smsNotifyService;
+    private TempLeaderQueryService tempLeaderQueryService;
+
+    @Autowired
+    public void setTempLeaderQueryService(TempLeaderQueryService tempLeaderQueryService) {
+        this.tempLeaderQueryService = tempLeaderQueryService;
+    }
 
     @Autowired
     public void setEnrollmentMapper(ActivityEnrollmentMapper enrollmentMapper) {
@@ -137,7 +145,18 @@ public class EnrollmentAdminService {
         Map<Long, ActivitySlot> slotById = loadSlots(records);
         Map<Long, Activity> activityById = loadActivities(records);
 
-        List<EnrollmentAdminVO> vos = records.stream().map(e -> toAdminVO(e, volunteerById, slotById, activityById)).toList();
+        List<EnrollmentAdminVO> vos = new ArrayList<>(records.stream().map(e -> toAdminVO(e, volunteerById, slotById, activityById)).toList());
+        // Row 13 F「优先展示管理团队和考试通过活动临时负责人的志愿者」：标出身份，页内管理团队在前、临时负责人其次，
+        // 同组内保持报名先后（sort 稳定）。⚠️ 排序只在这一页之内——身份在别的域，跨页排序要拼外域表；一场活动的报名一页拉完即整体有序
+        Set<Long> ids = new HashSet<>();
+        records.forEach(e -> ids.add(e.getVolunteerId()));
+        Set<Long> managers = volunteerQueryService.filterManagers(ids);
+        Set<Long> tempLeaders = tempLeaderQueryService.filterTempLeaders(ids);
+        for (EnrollmentAdminVO vo : vos) {
+            vo.setManager(managers.contains(vo.getVolunteerId()));
+            vo.setTempLeader(tempLeaders.contains(vo.getVolunteerId()));
+        }
+        vos.sort(Comparator.comparingInt((EnrollmentAdminVO vo) -> vo.isManager() ? 0 : vo.isTempLeader() ? 1 : 2));
         return PageResult.of(vos, page.getTotal(), page.getCurrent(), page.getSize());
     }
 

@@ -25,6 +25,7 @@ import com.hengde.activity.vo.ActivityVolunteerDetailVO;
 import com.hengde.activity.vo.RecommendActivityVO;
 import com.hengde.auth.service.SmsNotifyService;
 import com.hengde.auth.service.VolunteerQueryService;
+import com.hengde.organization.biz.service.SquadQueryService;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
@@ -102,6 +103,12 @@ public class ActivityService {
     private ActivityEnrollmentMapper activityEnrollmentMapper;
     private VolunteerQueryService volunteerQueryService;
     private SmsNotifyService smsNotifyService;
+    private SquadQueryService squadQueryService;
+
+    @Autowired
+    public void setSquadQueryService(SquadQueryService squadQueryService) {
+        this.squadQueryService = squadQueryService;
+    }
 
     @Autowired
     public void setVolunteerQueryService(VolunteerQueryService volunteerQueryService) {
@@ -361,6 +368,10 @@ public class ActivityService {
         }
         applyDefaults(activity);
         activityMapper.updateById(activity);
+        // 报名范围从「指定分队」改回「全平台」时 targetSquadId 是 null，updateById 会跳过它、库里留着旧分队——显式写
+        activityMapper.update(null, Wrappers.<Activity>lambdaUpdate()
+                .eq(Activity::getId, id)
+                .set(Activity::getTargetSquadId, dto.getTargetSquadId()));
         // updateById 默认跳过 null 字段，无法把 serviceGuarantees 清成 null，故清空场景显式 set null
         if (clearGuarantees) {
             activityMapper.update(null, Wrappers.<Activity>lambdaUpdate()
@@ -508,6 +519,9 @@ public class ActivityService {
         copy.setSummaryBy(null);
         copy.setSummaryTime(null);
         copy.setIsHistorical(0);
+        // 名单公示是「组织部确认了这一场的名单」，副本还没有报名，不继承
+        copy.setRosterPublishTime(null);
+        copy.setRosterPublishBy(null);
         activityMapper.insert(copy);
         copy.setSerialNo(copy.getId());
         activityMapper.updateById(copy);
@@ -629,7 +643,12 @@ public class ActivityService {
         BeanUtils.copyProperties(activity, vo);
         vo.setSlots(loadSlotVOs(activity.getId()));
         vo.setServiceGuarantees(ServiceGuarantee.fromCsv(activity.getServiceGuarantees()));
+        vo.setTargetSquadName(squadName(activity.getTargetSquadId()));
         return vo;
+    }
+
+    private String squadName(Long squadId) {
+        return squadId == null ? null : squadQueryService.listNamesByIds(List.of(squadId)).get(squadId);
     }
 
     /**
@@ -643,6 +662,7 @@ public class ActivityService {
         ActivityVolunteerDetailVO vo = new ActivityVolunteerDetailVO();
         BeanUtils.copyProperties(activity, vo);
         vo.setServiceGuarantees(ServiceGuarantee.fromCsv(activity.getServiceGuarantees()));
+        vo.setTargetSquadName(squadName(activity.getTargetSquadId()));
         List<ActivitySlotVO> slots = loadSlotVOs(id);
         vo.setSlots(slots);
         // 招募名额：任一时间段不限(need_count=0/空)则整场视为不限、返回 0（前端显示「不限」），与列表 has_quota 口径一致；
@@ -763,10 +783,17 @@ public class ActivityService {
         if (!start.isBefore(end)) {
             throw new BusinessException("活动开始时间必须早于结束时间");
         }
-        // 指定分队报名依赖分队模块（排期在 activity 之后），V1 尚不能真正限定。
-        // 直接拒绝 enrollScope=1，避免「看似限定分队、实际全平台放行」的配置错觉；分队模块就绪后放开并校验 targetSquadIds。
-        if (dto.getEnrollScope() != null && dto.getEnrollScope() == 1) {
-            throw new BusinessException("V1 暂不支持指定分队报名，enrollScope 仅可为 0");
+        // 指定分队报名（V4 活动补全批）：限定单个启用中的分队；全平台报名填了分队报错而不是静默丢掉——
+        // 静默丢掉最糟：发布的人以为限定了，实际全平台都能报。
+        if (Integer.valueOf(1).equals(dto.getEnrollScope())) {
+            if (dto.getTargetSquadId() == null) {
+                throw new BusinessException("指定分队报名请选择分队");
+            }
+            if (squadQueryService.findEnabledName(dto.getTargetSquadId()) == null) {
+                throw new BusinessException("所选分队不存在或已停用");
+            }
+        } else if (dto.getTargetSquadId() != null) {
+            throw new BusinessException("全平台报名不需要指定分队（要限定分队请把报名范围改为指定分队）");
         }
         // GPS 签到坐标：经纬度须同时提供或同时留空（留空=本活动不启用 GPS 签到）
         if ((dto.getLat() == null) != (dto.getLng() == null)) {

@@ -47,6 +47,13 @@
             <artifactId>hengde-volunteer-activity</artifactId>
         </dependency>
 
+        <!-- 捐赠域：微心愿排行的数据源（DonateRankingQueryService，V3 微心愿批）。
+             方向 honor → donate，donate 不依赖 honor，不成环；父 POM <modules> 里 donate 本就排在 honor 之前 -->
+        <dependency>
+            <groupId>com.hengde</groupId>
+            <artifactId>hengde-volunteer-donate</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>io.swagger.core.v3</groupId>
             <artifactId>swagger-annotations-jakarta</artifactId>

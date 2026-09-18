@@ -3,6 +3,8 @@ package com.hengde.common.constant;
 import com.baomidou.mybatisplus.annotation.EnumValue;
 import lombok.Getter;
 
+import java.time.LocalDate;
+
 /**
  * 年级。code 为**有序编码**，每年 9 月的年级自动升级 job 直接取 {@link #next()} 即可（毕业封顶）。
  *
@@ -51,6 +53,23 @@ public enum Grade {
             }
         }
         return null;
+    }
+
+    /**
+     * 学年：以 9 月 1 日为界（2026-09-01 起是 2026 学年，2026-08-31 还是 2025 学年）。
+     * 年级自动升级按学年幂等：{@code volunteer.grade_upgrade_year} 小于当前学年的才升（V67）。
+     */
+    public static int schoolYearOf(LocalDate date) {
+        return date.getMonthValue() >= 9 ? date.getYear() : date.getYear() - 1;
+    }
+
+    /**
+     * 这一级读完之后通常要换学校或可能毕业（Row 25：六年级、九年级、高三、大三、大四、大五）——
+     * 升级任务不替他升到下一级，而是提示他自己改学校和年级。
+     */
+    public boolean isStageEnd() {
+        return this == GRADE_6 || this == GRADE_9 || this == SENIOR_3
+                || this == COLLEGE_3 || this == COLLEGE_4 || this == COLLEGE_5;
     }
 
     /** 升一级；已是「毕业」则保持不变。供年级自动升级 job 使用。 */

@@ -51,7 +51,7 @@ public interface MallGoodsSpecMapper extends BaseMapper<MallGoodsSpec> {
     @Update("UPDATE mall_goods_spec s JOIN mall_goods g ON g.id = s.goods_id "
             + "SET s.stock = s.stock - 1, s.update_time = NOW() "
             + "WHERE s.id = #{specId} AND s.is_deleted = 0 AND s.stock >= 1 "
-            + "AND g.status = #{onSaleStatus} AND g.hidden = 0 AND g.is_deleted = 0")
+            + "AND g.status = #{onSaleStatus} AND g.hidden = 0 AND g.is_deleted = 0 AND g.sponsor_suspended = 0")
     int deductStock(@Param("specId") Long specId, @Param("onSaleStatus") int onSaleStatus);
 
     /**

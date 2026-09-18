@@ -57,6 +57,9 @@ public class AdminVolunteerListVO {
     /** 所在小组名（可空=无小组） */
     private String group;
 
+    /** 组织架构里的位置「部门 · 职位」（V4 组织架构维护批，Row 5 F；不在架构里为空） */
+    private String position;
+
     /** 服务时长（小时，由已确认分钟换算，保留 1 位小数） */
     private Double hours;
 

@@ -7,6 +7,11 @@ import com.hengde.common.exception.BusinessException;
 import com.hengde.common.oss.FileStorageService;
 import com.hengde.common.oss.FileValidator;
 import com.hengde.common.oss.OssProperties;
+import com.hengde.common.oss.PresignedUpload;
+import com.hengde.social.constant.SocialCodes;
+import com.hengde.social.service.SocialGateService;
+import com.hengde.social.service.SocialMediaService;
+import cn.dev33.satoken.stp.StpUtil;
 import com.hengde.common.result.Result;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -54,8 +59,23 @@ public class VolunteerFileUploadController {
 
     private static final String DIR_GROUP = "group";
 
+    /** 问卷文件题的附件（V4 问卷引擎批）；目录名与 {@code FormSubmissionService.FILE_DIR} 一致——提交时按它校验 URL 是本系统传的 */
+    private static final String DIR_FORM = "form";
+
     private FileStorageService fileStorageService;
     private OssProperties ossProperties;
+    private SocialMediaService socialMediaService;
+    private SocialGateService socialGateService;
+
+    @Autowired
+    public void setSocialMediaService(SocialMediaService socialMediaService) {
+        this.socialMediaService = socialMediaService;
+    }
+
+    @Autowired
+    public void setSocialGateService(SocialGateService socialGateService) {
+        this.socialGateService = socialGateService;
+    }
 
     @Autowired
     public void setFileStorageService(FileStorageService fileStorageService) {
@@ -121,6 +141,52 @@ public class VolunteerFileUploadController {
     public Result<FileUploadVO> uploadAppealImage(@RequestParam("file") MultipartFile file) {
         FileValidator.validate(file, FileValidator.IMAGE_EXTENSIONS, ossProperties.getMaxFileSize());
         return Result.ok(store(file, DIR_APPEAL));
+    }
+
+    /**
+     * 上传问卷文件题的附件（简历、证书扫描件之类）：图片与常见文档（扩展名白名单同后台「文件下载」）。
+     *
+     * <p>任意登录志愿者；上传得到的 {@code url} 随答卷提交，提交时服务端核对它确实是传到 {@code form/} 下的对象，
+     * 客户端自己拼一个外链进答卷是交不上去的。</p>
+     */
+    @Operation(summary = "上传问卷附件（任意登录志愿者；图片与常见文档）")
+    @PostMapping("/form-file")
+    public Result<FileUploadVO> uploadFormFile(@RequestParam("file") MultipartFile file) {
+        FileValidator.validate(file, ossProperties.getAllowedExtensions(), ossProperties.getMaxFileSize());
+        return Result.ok(store(file, DIR_FORM));
+    }
+
+    /**
+     * 活动相册照片（V4 活动相册批，Row 11「默认上传原图」）：只做图片类型与大小校验，不压缩；传完把 url 交给
+     * {@code POST /v/activity/albums/{id}/photos}（那里核对能不能往这个相册传）。已实名才能传。
+     */
+    @Operation(summary = "上传活动相册照片（已实名志愿者；原图，限图片）")
+    @PostMapping("/album-photo")
+    public Result<FileUploadVO> uploadAlbumPhoto(@RequestParam("file") MultipartFile file) {
+        socialGateService.requireActor(StpUtil.getLoginIdAsLong());
+        FileValidator.validate(file, FileValidator.IMAGE_EXTENSIONS, ossProperties.getMaxFileSize());
+        return Result.ok(store(file, "album"));
+    }
+
+    /** 社区帖子图片（V4 社区核心批）：已实名才能发帖，所以也只有已实名的人能传；限图片。发帖时核对 URL 在 {@code social/} 下。 */
+    @Operation(summary = "上传社区帖子图片（已实名志愿者；限图片）")
+    @PostMapping("/social-image")
+    public Result<FileUploadVO> uploadSocialImage(@RequestParam("file") MultipartFile file) {
+        socialGateService.requireActor(StpUtil.getLoginIdAsLong());
+        FileValidator.validate(file, FileValidator.IMAGE_EXTENSIONS, ossProperties.getMaxFileSize());
+        return Result.ok(store(file, SocialCodes.DIR_IMAGE));
+    }
+
+    /**
+     * 社区帖子视频直传签名（Q11：不经服务端中转）。拿到的 {@code uploadUrl} 用 {@code method} 带上全部 {@code headers} 直传，
+     * 传完把 {@code url} 作为发帖的 {@code videoUrl}。
+     */
+    @Operation(summary = "社区帖子视频直传签名（已实名志愿者；extension=mp4|mov，size=字节数）")
+    @PostMapping("/social-video/presign")
+    public Result<PresignedUpload> presignSocialVideo(@RequestParam("extension") String extension,
+                                                      @RequestParam("size") long size) {
+        socialGateService.requireActor(StpUtil.getLoginIdAsLong());
+        return Result.ok(socialMediaService.presignVideo(extension, size));
     }
 
     private FileUploadVO store(MultipartFile file, String dir) {

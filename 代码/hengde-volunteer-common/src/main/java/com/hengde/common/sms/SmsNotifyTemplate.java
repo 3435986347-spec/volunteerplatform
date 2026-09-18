@@ -172,10 +172,21 @@ public enum SmsNotifyTemplate {
     /** 「您的${activityName}请假申请未通过，原因：${reason}。」<b>不接</b>：同上。 */
     LEAVE_REJECTED("leave-rejected", "activityName", "reason"),
 
-    /** 「您兑换的${goodsName}订单审核${status}。${remark}」<b>不接</b>：积分商城属 donate，模块未建。 */
+    /**
+     * 「您兑换的${goodsName}订单审核${status}。${remark}」
+     *
+     * <p><b>落点</b>（V3 卷批补接；商城批当时漏接）：{@code MallOrderService.approve}（通过，remark 写去哪儿领）
+     * 与 {@code MallOrderService.reject}（未通过，remark 写原因与「积分 / 卷已退回」）。
+     * 志愿者<b>自己取消</b>不发——自己刚点完的事不必再花一条短信（同自助报名不发的口径）。</p>
+     */
     POINTS_ORDER_REVIEW("points-order-review", "goodsName", "status", "remark"),
 
-    /** 「您提交的投诉建议（编号：${submissionNumber}）已处理，回复：${replyContent}。」<b>不接</b>：投诉建议（Row 43）未开发。 */
+    /**
+     * 「您提交的投诉建议（编号：${submissionNumber}）已处理，回复：${replyContent}。」
+     *
+     * <p><b>落点</b>（V4 投诉建议批）：{@code ComplaintService.reply}（答复即办结）。{@code replyContent} 只放答复的开头
+     * （{@code hengde.data.complaint.sms-reply-max-chars}，默认 30 字）——短信变量有长度限制，全文在小程序的工单详情里。</p>
+     */
     COMPLAINT_REPLIED("complaint-replied", "submissionNumber", "replyContent");
 
     private final String key;

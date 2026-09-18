@@ -66,11 +66,21 @@ public class SmsNotifyService {
             SmsNotifyTemplate.REWARD_PUNISH,
             SmsNotifyTemplate.ACTIVITY_VIOLATION,
             SmsNotifyTemplate.ORG_JOIN_RESULT,
-            SmsNotifyTemplate.GROUP_JOIN_RESULT);
+            SmsNotifyTemplate.GROUP_JOIN_RESULT,
+            // V3 卷批补接的商城审核结果——当时漏了登记到这里（也漏了 yaml 与部署模板），配置缺失时启动不报警
+            SmsNotifyTemplate.POINTS_ORDER_REVIEW,
+            // V4 投诉建议批
+            SmsNotifyTemplate.COMPLAINT_REPLIED);
 
     private VolunteerQueryService volunteerQueryService;
     private SmsProperties smsProperties;
     private SmsDispatcher smsDispatcher;
+    private NotifyPreferenceService notifyPreferenceService;
+
+    @Autowired
+    public void setNotifyPreferenceService(NotifyPreferenceService notifyPreferenceService) {
+        this.notifyPreferenceService = notifyPreferenceService;
+    }
 
     @Autowired
     public void setVolunteerQueryService(VolunteerQueryService volunteerQueryService) {
@@ -115,7 +125,10 @@ public class SmsNotifyService {
             return;
         }
 
-        List<String> phones = resolvePhones(volunteerIds);
+        // 用户在「订阅通知」里关掉了这个话题的，在取号码之前统一剔除（不可关闭的话题这里恒为空集）
+        Set<Long> optedOut = notifyPreferenceService.optedOut(volunteerIds, template);
+        List<String> phones = resolvePhones(optedOut.isEmpty() ? volunteerIds
+                : volunteerIds.stream().filter(id -> !optedOut.contains(id)).toList());
         if (phones.isEmpty()) {
             log.debug("[SMS-NOTIFY] 模板 {} 无有效手机号，跳过", template.getKey());
             return;

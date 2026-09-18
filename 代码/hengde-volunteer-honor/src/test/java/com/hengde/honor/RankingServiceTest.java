@@ -16,6 +16,9 @@ import com.hengde.auth.entity.Volunteer;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.testsupport.RedisTestcontainersConfig;
 import com.hengde.common.testsupport.TestcontainersConfig;
+import com.hengde.donate.constant.WishFlow;
+import com.hengde.donate.dao.DonateWishClaimMapper;
+import com.hengde.donate.entity.DonateWishClaim;
 import com.hengde.honor.config.HonorProperties;
 import com.hengde.honor.constant.RankPeriodType;
 import com.hengde.honor.constant.RankType;
@@ -73,6 +76,8 @@ class RankingServiceTest {
     private ActivityMapper activityMapper;
     @Autowired
     private ActivitySlotMapper slotMapper;
+    @Autowired
+    private DonateWishClaimMapper wishClaimMapper;
     private ActivityAttendanceMapper attendanceMapper;
     private PointRecordMapper pointRecordMapper;
     private HonorRankingSnapshotMapper snapshotMapper;
@@ -607,12 +612,44 @@ class RankingServiceTest {
 
     // ================= 入参校验与出参 =================
 
+    /**
+     * 微心愿板块（V3 微心愿批放行）：<b>只数「已实现」、按实现时间切周期</b>（《协会待确认清单-v3》⑯ 默认）。
+     *
+     * <p>四类干扰各放一条，任何一条被算进去都会让名次或数值变：认领中的、已取消但带着实现时间的
+     * （脏数据也不该算——口径看状态不看时间列有没有值）、恰好落在下月第一秒的（左闭右开）、上月最后一秒的。
+     * 用 1998 年：别的用例占的是 2001 / 2004 年，排行是全库聚合，年份错开才能写绝对断言。</p>
+     */
     @Test
-    void wishRanking_isRejectedRatherThanReturningEmpty() {
-        BusinessException e = assertThrows(BusinessException.class,
-                () -> rankingService.ranking(RankType.WISH, RankPeriodType.TOTAL, null, 10));
-        assertTrue(e.getMessage().contains("微心愿"),
-                "微心愿有码没数据源，放行只会把「功能未开放」伪装成「没人上榜」");
+    void wishRanking_countsRealizedClaimsOnly_byRealizeTime() {
+        LocalDateTime inMonth = LocalDateTime.of(1998, 3, 15, 10, 0);
+        Long top = volunteer("圆梦第一");
+        Long second = volunteer("圆梦第二");
+        wishClaim(top, WishFlow.CLAIM_REALIZED, inMonth);
+        wishClaim(top, WishFlow.CLAIM_REALIZED, inMonth.plusDays(3));
+        wishClaim(second, WishFlow.CLAIM_REALIZED, inMonth);
+        wishClaim(second, WishFlow.CLAIM_ACTIVE, null);
+        wishClaim(second, WishFlow.CLAIM_CANCELLED, inMonth);
+        wishClaim(second, WishFlow.CLAIM_REALIZED, LocalDateTime.of(1998, 4, 1, 0, 0));
+        wishClaim(second, WishFlow.CLAIM_REALIZED, LocalDateTime.of(1998, 2, 28, 23, 59, 59));
+
+        RankingVO vo = month(RankType.WISH, "1998-03");
+        List<RankingEntryVO> entries = vo.getEntries();
+        assertEquals(2, entries.size());
+        assertEquals(top, entries.get(0).getVolunteerId());
+        assertEquals(2L, entries.get(0).getMetricValue());
+        assertEquals(second, entries.get(1).getVolunteerId());
+        assertEquals(1L, entries.get(1).getMetricValue(), "认领中 / 已取消 / 月外的都不算");
+        assertEquals("微心愿排行", vo.getRankTypeLabel());
+        assertEquals("个", vo.getUnit());
+
+        SnapshotResultVO frozen = rankingService.generateSnapshot(RankPeriodType.MONTH, "1998-03", false);
+        assertTrue(frozen.getFrozen().contains(RankType.labelOf(RankType.WISH)),
+                "微心愿板块要跟另外三个一起冻结（frozen 装的是板块名不是码——拿码去 contains 恒为 false）：" + frozen.getFrozen());
+        wishClaim(second, WishFlow.CLAIM_REALIZED, inMonth);
+        wishClaim(second, WishFlow.CLAIM_REALIZED, inMonth);
+        RankingVO after = month(RankType.WISH, "1998-03");
+        assertTrue(after.getFromSnapshot());
+        assertEquals(top, after.getEntries().get(0).getVolunteerId(), "冻结之后补进来的实现记录不改往期名次");
     }
 
     @Test
@@ -737,6 +774,17 @@ class RankingServiceTest {
         v.setStatus(0);
         volunteerMapper.insert(v);
         return v.getId();
+    }
+
+    /** 直接落一条认领记录（心愿 id 取一个不会撞 uk_active_wish 的号——排行只看认领表）。 */
+    private void wishClaim(Long volunteerId, int status, LocalDateTime realizeTime) {
+        DonateWishClaim c = new DonateWishClaim();
+        c.setWishId(700_000_000L + SEQ.incrementAndGet());
+        c.setVolunteerId(volunteerId);
+        c.setStatus(status);
+        c.setClaimTime(realizeTime == null ? LocalDateTime.now() : realizeTime.minusDays(5));
+        c.setRealizeTime(realizeTime);
+        wishClaimMapper.insert(c);
     }
 
     private Long activity(int status) {

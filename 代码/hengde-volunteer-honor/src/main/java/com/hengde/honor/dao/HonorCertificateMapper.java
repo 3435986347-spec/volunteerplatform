@@ -63,6 +63,26 @@ public interface HonorCertificateMapper extends BaseMapper<HonorCertificate> {
     HonorCertificate selectByIdIncludeDeleted(@Param("id") Long id);
 
     /**
+     * 按业务来源键取证书（<b>含已软删</b>），用于捐赠证书这类没有场次的类型。
+     *
+     * <p>{@code uk_slot_cert} 对它们不起作用（slot_id 为 NULL，MySQL 视多个 NULL 互不相同），
+     * 幂等靠 V54 的 {@code uk_cert_biz_ref}；这条查询走的就是那个键。</p>
+     */
+    @Select("SELECT * FROM honor_certificate WHERE active_biz_ref = CONCAT(#{type}, ':', #{bizRef})")
+    HonorCertificate selectByBizRefIncludeDeleted(@Param("type") int type, @Param("bizRef") String bizRef);
+
+    /**
+     * 同上，但<b>当前读</b>（共享锁）——撞唯一键之后取回赢家那一行必须用它。
+     *
+     * <p>RR 下快照在事务第一次 SELECT 就定死，普通读看不见赢家后来提交的行，
+     * 会把 {@code uk_cert_biz_ref} 冲突误判成 {@code uk_cert_no} 冲突（换号重试到耗尽）。
+     * 用 {@code FOR SHARE} 而非 {@code FOR UPDATE}：报重复键时 InnoDB 已给冲突行加了 S 锁，
+     * 多个 loser 再抢 X 会互等成死锁（{@code PointRecordLockOrderTest} 已把这条钉死）。</p>
+     */
+    @Select("SELECT * FROM honor_certificate WHERE active_biz_ref = CONCAT(#{type}, ':', #{bizRef}) FOR SHARE")
+    HonorCertificate selectByBizRefForShare(@Param("type") int type, @Param("bizRef") String bizRef);
+
+    /**
      * 批量取「已存在证书」的 {@code volunteerId:slotId} 组合键，<b>含已软删</b>。
      *
      * <p>给补偿扫描用：它每轮要过一遍全部已确认考勤，逐行 select 会变成 N 次查询，

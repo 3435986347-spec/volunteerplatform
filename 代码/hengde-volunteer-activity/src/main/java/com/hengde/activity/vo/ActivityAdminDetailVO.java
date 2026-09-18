@@ -62,8 +62,14 @@ public class ActivityAdminDetailVO {
     /** 报名范围 0全平台/1指定分队 */
     private Integer enrollScope;
 
-    /** 指定分队id列表 */
-    private String targetSquadIds;
+    /** 指定分队 id（enrollScope=1 时） */
+    private Long targetSquadId;
+
+    /** 指定分队名称（分队已删除时为 null） */
+    private String targetSquadName;
+
+    /** 名单公示开始时间（为空＝还没确认名单） */
+    private LocalDateTime rosterPublishTime;
 
     /** 最小年龄要求 */
     private Integer requireMinAge;

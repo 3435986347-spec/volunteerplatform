@@ -542,7 +542,7 @@ class ActivityAttendanceServiceTest {
         approveEnroll(aid, vid);
         attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, 2);
 
-        attendanceService.confirmHome(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG);
+        attendanceService.confirmHome(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, "雷州市某某小区 3 栋");
         ActivityAttendance att = findAtt(aid, vid);
         assertNotNull(att.getConfirmHomeTime(), "应记录确认到家时间");
         assertEquals(0, ACT_LAT.compareTo(att.getConfirmHomeLat()));
@@ -555,7 +555,7 @@ class ActivityAttendanceServiceTest {
         approveEnroll(aid, vid);
         attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, 2);
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> attendanceService.confirmHome(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG));
+                () -> attendanceService.confirmHome(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, null));
         assertTrue(ex.getMessage().contains("尚未结束"));
     }
 
@@ -565,7 +565,7 @@ class ActivityAttendanceServiceTest {
         Long vid = insertVolunteer();
         approveEnroll(aid, vid);   // 报名但没签到
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> attendanceService.confirmHome(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG));
+                () -> attendanceService.confirmHome(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, null));
         assertTrue(ex.getMessage().contains("未签到"));
     }
 
@@ -576,7 +576,7 @@ class ActivityAttendanceServiceTest {
         approveEnroll(aid, vid);
         attendanceService.checkIn(aid, slotOf(aid, vid), vid, ACT_LAT, ACT_LNG, 2);
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> attendanceService.confirmHome(aid, slotOf(aid, vid), vid, ACT_LAT.add(BigDecimal.valueOf(360)), ACT_LNG));
+                () -> attendanceService.confirmHome(aid, slotOf(aid, vid), vid, ACT_LAT.add(BigDecimal.valueOf(360)), ACT_LNG, null));
         assertTrue(ex.getMessage().contains("坐标"));
     }
 

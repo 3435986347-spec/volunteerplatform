@@ -37,8 +37,19 @@ public class MallOrder extends BaseEntity {
     private String goodsName;
     /** 下单时快照：规格名 */
     private String specName;
-    /** 下单时快照：所需积分 */
+    /**
+     * 下单时快照：<b>实际扣除的积分</b>（卷批 V48 起）。退分金额以它为准，与 {@code point_record} 对得上。
+     * 没用卷时等于 {@link #originalPoints}；用了兑换卷时为 0。
+     */
     private Integer points;
+    /** 下单时快照：规格标价积分（V48） */
+    private Integer originalPoints;
+    /** 所用的卷发放记录 id；退单时凭它 CAS 归还（V48） */
+    private Long couponGrantId;
+    /** 下单时快照：所用卷名称（V48） */
+    private String couponName;
+    /** 下单时快照：卷抵扣了多少积分（V48） */
+    private Integer couponDeductPoints;
     /** 状态，见 {@code MallOrderStatus} */
     private Integer status;
     /** 领取方式，见 {@code MallDeliveryType} */
@@ -53,12 +64,50 @@ public class MallOrder extends BaseEntity {
     private String pickupCode;
     /** 核销时间 */
     private LocalDateTime pickupTime;
-    /** 核销人 admin_user.id */
+    /**
+     * 核销人 id——<b>管理员核销时是 admin_user.id，核销员核销时是 volunteer.id</b>，
+     * 必须配合 {@link #pickupOperatorType} 读，否则两类账号同号时会认错人（V48）。
+     */
     private Long pickupOperator;
+    /** 核销人类型 1 管理员 / 2 核销员（志愿者）；未核销为 null，见 {@code PickupOperatorType}（V48） */
+    private Integer pickupOperatorType;
     /** 审核人 admin_user.id */
     private Long reviewBy;
     /** 审核时间 */
     private LocalDateTime reviewTime;
     /** 驳回原因 */
     private String rejectReason;
+
+    // ---- V58 商城快递批：现金与快递 ----
+
+    /** 下单时快照：商品现金部分【分】 */
+    private Integer goodsCashFen;
+    /** 下单时快照：快递费【分】（计价器输出）；自提为 0 */
+    private Integer shippingFeeFen;
+    /** 快递费支付方式，见 {@code MallShippingPayType}；自提为 null */
+    private Integer shippingPayType;
+    /** 下单时快照：积分抵扣汇率（1 元折多少积分） */
+    private Integer pointsPerYuan;
+    /** 下单时快照：快递费折成的积分（已并入 points） */
+    private Integer shippingPoints;
+    /** 应付现金【分】 */
+    private Integer payCashFen;
+    /** 付款截止（仅待支付） */
+    private LocalDateTime payExpireTime;
+    /** 付款成功的交易单 id */
+    private Long tradeOrderId;
+    private LocalDateTime paidTime;
+    /** 驳回后发起的现金退款单号（已受理） */
+    private String cashRefundNo;
+    /** 现金退款发起失败的原因 */
+    private String cashRefundError;
+    private String recvName;
+    /** 收件电话（密文） */
+    private String recvPhone;
+    private String recvAddress;
+    private String expressCode;
+    private String expressCompany;
+    private String expressNo;
+    private LocalDateTime shipTime;
+    private Long shipBy;
 }

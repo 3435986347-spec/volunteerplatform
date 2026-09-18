@@ -48,8 +48,9 @@ class OrganizationRbacTest {
 
     @Test
     void permissionsSeeded() {
-        assertEquals(57L, permissionMapper.selectCount(null),
-                "可分配权限点：V2 23 + V4 enroll-view + V10 活动 6 + V12 manager-flag + V16 补录 2 "
+        assertEquals(96L, permissionMapper.selectCount(null),
+                "可分配权限点（V81 爱心企业批社区段 +1 enterprise:review、V83 系统治理批 +4 system:log/system:config/system:file/activity:home-address；V82 私信批 +1 social:chat-view；V79 爱心企业批商品段 +1 enterprise:points；V77 爱心企业批 +3 enterprise:manage/enterprise:audit/enterprise:export；V75 临时负责人考试批 +3 org:exam/org:exam-grade/org:temp-leader；V74 活动相册批 +5 activity:album/album-delete/album-photo-delete/album-download/album-points-audit；V72 社区治理批 +6 social:post-manage/review/review-setting/report/ban/real-name；V71 社区核心批 +2 social:official/social:official-all；V69 组织架构维护批 +1 org:structure；V66 个人中心补全批 +1 user:center-content；V65 投诉建议批 +2 data:complaint/data:complaint-all；V63 问卷引擎批 +2 org:form/org:form-data；V46 卷批 +1 donate:coupon；V50 捐书批 +2 donate:item/item-export；"
+                        + "V51 微心愿 +1 donate:wish；V52 结对批 +1 donate:project；V55 trade 批 +2 trade:order/trade:refund）：V2 23 + V4 enroll-view + V10 活动 6 + V12 manager-flag + V16 补录 2 "
                         + "+ V19 发布审核 1 + V24 积分 2（points-view/points-adjust）"
                         + "+ V25 排行榜 2（ranking-view/ranking-snapshot）"
                         + "+ V28 勋章榜样 5（medal/medal-audit/medal-grant/medal-grant-audit/role-model）"

@@ -20,6 +20,7 @@ public record VolunteerProfileView(
         Integer gender,
         LocalDate birthday,
         Integer grade,
-        Integer status
+        Integer status,
+        Long squadId
 ) {
 }

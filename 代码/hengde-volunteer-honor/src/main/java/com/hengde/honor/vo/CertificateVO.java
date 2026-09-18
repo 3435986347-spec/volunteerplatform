@@ -37,6 +37,18 @@ public class CertificateVO {
     private LocalDateTime slotStartTime;
     private LocalDateTime slotEndTime;
 
+    /**
+     * 证书来源的一句话说明：捐赠证书＝结对项目名。
+     *
+     * <p>活动证书为空——它有 {@code activityTitle} / {@code slotProjectName}。
+     * 不复用 {@code activityTitle} 装项目名：前端按字段名理解含义，
+     * 把一个结对项目塞进「活动名」里迟早被读成「他参加过这个活动」。</p>
+     */
+    private String sourceTitle;
+
+    /** 业务来源键（捐赠证书＝{@code pair:{结对登记id}}；活动证书为空） */
+    private String bizRef;
+
     /** 来源 1系统生成/2后台批量上传/3i志愿导出上传 */
     private Integer source;
 

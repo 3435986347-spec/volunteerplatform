@@ -36,6 +36,13 @@ public class MallGoods extends BaseEntity {
     private Long sponsorEnterpriseId;
     /** 赞助方名称快照 */
     private String sponsorName;
+    /** 赞助企业当前不可用（暂停 / 删除，V78）：1=志愿者不可见、不可兑换；由 enterprise 模块整批置位 */
+    private Integer sponsorSuspended;
+    /**
+     * 必须使用的卷定义 id（V47，Row 8 F「商品只能使用指定卷才能兑换，没有卷就不能兑换」）。
+     * null = 不要求。它是「谁能买、花多少」的一部分，改它与改价格一样要退回重审。
+     */
+    private Long requireCouponId;
     /** 审核 / 上架状态，见 {@code MallGoodsStatus} */
     private Integer status;
     /** 隐藏 0否/1是；与 status 正交，改它不触发重审 */

@@ -7,6 +7,7 @@ import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
 import com.hengde.common.result.Result;
 import com.hengde.donate.constant.PermissionCode;
+import com.hengde.donate.dto.ExpressDTO;
 import com.hengde.donate.dto.MallOrderVerifyDTO;
 import com.hengde.donate.dto.RejectReasonDTO;
 import com.hengde.donate.service.MallOrderService;
@@ -53,7 +54,7 @@ public class AdminMallOrderController {
         return Result.ok(orderService.listForAdmin(query, status, keyword));
     }
 
-    @Operation(summary = "兑换审核通过（生成取货码并快照自提点）")
+    @Operation(summary = "兑换审核通过（自提：生成取货码并快照自提点；快递：进入待发货）")
     @SaCheckPermission(value = PermissionCode.DONATE_ORDER_AUDIT, type = "admin")
     @PostMapping("/orders/{id}/approve")
     public Result<Void> approve(@PathVariable Long id) {
@@ -61,11 +62,22 @@ public class AdminMallOrderController {
         return Result.ok();
     }
 
-    @Operation(summary = "兑换审核驳回（退分 + 还库存）")
+    @Operation(summary = "兑换审核驳回（退分 + 还库存 + 还卷；已付款的原路退款，发起失败记在单上）")
     @SaCheckPermission(value = PermissionCode.DONATE_ORDER_AUDIT, type = "admin")
     @PostMapping("/orders/{id}/reject")
     public Result<Void> reject(@PathVariable Long id, @Valid @RequestBody RejectReasonDTO dto) {
         orderService.reject(id, dto.getReason(), StpAdminUtil.getLoginIdAsLong());
+        return Result.ok();
+    }
+
+    /**
+     * 快递单登记发货。权限与现场核销同一个点：两者都是「把东西交出去」这一步。
+     */
+    @Operation(summary = "快递单登记发货（仅快递且待发货的单；CAS 一次性）")
+    @SaCheckPermission(value = PermissionCode.DONATE_VERIFY, type = "admin")
+    @PostMapping("/orders/{id}/ship")
+    public Result<Void> ship(@PathVariable Long id, @Valid @RequestBody ExpressDTO dto) {
+        orderService.ship(id, dto, StpAdminUtil.getLoginIdAsLong());
         return Result.ok();
     }
 

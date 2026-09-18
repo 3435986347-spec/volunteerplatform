@@ -119,6 +119,13 @@ public class AdminCertificateController {
         return Result.ok(reconcileJob.reconcile(since, activityId));
     }
 
+    @Operation(summary = "补发某条结对的捐赠证书（幂等）——出证事件丢失时的人工救济")
+    @SaCheckPermission(value = PermissionCode.HONOR_CERTIFICATE, type = "admin")
+    @PostMapping("/certificates/pairs/{pairRecordId}")
+    public Result<Long> reissueDonation(@PathVariable Long pairRecordId) {
+        return Result.ok(certificateService.createForDonation(pairRecordId));
+    }
+
     @Operation(summary = "后台下载（同样只返回短期签名 URL）")
     @SaCheckPermission(value = PermissionCode.HONOR_CERTIFICATE, type = "admin")
     @GetMapping("/certificates/{id}/file")

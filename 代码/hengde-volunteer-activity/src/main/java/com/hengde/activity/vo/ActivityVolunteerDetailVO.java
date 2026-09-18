@@ -113,8 +113,14 @@ public class ActivityVolunteerDetailVO {
     /** 临时负责人报名开放时间（内部展示「活动报名时间-临时负责人」；V1 角色未落地，可能为 null） */
     private LocalDateTime enrollOpenLeader;
 
-    /** 报名范围 0全平台/1指定分队（内部展示「报名限制」；V1 恒为 0=全平台） */
+    /** 报名范围 0全平台/1指定分队（内部展示「报名限制」） */
     private Integer enrollScope;
+
+    /** 指定分队 id（enrollScope=1 时；只有这个分队的成员能报名） */
+    private Long targetSquadId;
+
+    /** 指定分队名称 */
+    private String targetSquadName;
 
     /** 活动地点纬度（内部展示「定位」+ 前端「到点自动签到」距离预判用） */
     private BigDecimal lat;

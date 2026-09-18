@@ -50,7 +50,10 @@ public final class FileValidator {
             Map.entry("doc", "application/msword"),
             Map.entry("docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
             Map.entry("xls", "application/vnd.ms-excel"),
-            Map.entry("xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+            Map.entry("xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+            // 帖子视频直传（V4 社区核心批）：只用于推导直传签名里的 Content-Type，上传白名单不受影响
+            Map.entry("mp4", "video/mp4"),
+            Map.entry("mov", "video/quicktime"));
 
     /** 扩展名 → 文件头特征匹配规则；未收录的扩展名跳过魔数校验（仍受扩展名白名单约束） */
     private static final Map<String, Predicate<byte[]>> MAGIC = Map.ofEntries(

@@ -10,12 +10,15 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
 
 /**
  * 志愿者端-我的资料（{@code /v/user/profile}）。本人查看 / 修改自己的资料。
@@ -47,6 +50,20 @@ public class MyProfileController {
     @PatchMapping("/profile")
     public Result<Void> update(@RequestBody @Valid MyProfileUpdateDTO dto) {
         myProfileService.updateMyProfile(StpUtil.getLoginIdAsLong(), dto);
+        return Result.ok();
+    }
+
+    @Operation(summary = "设置安全中心手写签名板（body {url}；先经 /v/files/profile-image?dir=signature 上传；与注册协议签名分开）")
+    @PutMapping("/pad-signature")
+    public Result<Void> setPadSignature(@RequestBody Map<String, String> body) {
+        myProfileService.setPadSignature(StpUtil.getLoginIdAsLong(), body == null ? null : body.get("url"));
+        return Result.ok();
+    }
+
+    @Operation(summary = "清除安全中心手写签名板")
+    @DeleteMapping("/pad-signature")
+    public Result<Void> clearPadSignature() {
+        myProfileService.clearPadSignature(StpUtil.getLoginIdAsLong());
         return Result.ok();
     }
 

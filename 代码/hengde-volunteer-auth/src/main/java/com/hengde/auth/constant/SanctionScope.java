@@ -1,5 +1,7 @@
 package com.hengde.auth.constant;
 
+import java.util.List;
+
 /**
  * 处置措施的能力域。
  *
@@ -25,11 +27,7 @@ public final class SanctionScope {
     /**
      * 限制发布社区（P109「限制发布社区」）。
      *
-     * <p>⚠️ <b>当前是空转的</b>：社区（social）模块全项目未建（见 {@code 文档/功能清单.md} 第七节
-     * 「社区交流 ⬜ 未实现」），没有可限的对象。取值先定下来是为了让 P109 画到的处罚能<b>如实记录</b>，
-     * 而不是被迫塞进别的能力域。social 上线时必须回到
-     * {@code SanctionQueryService} 把这条闸门真正接上——{@link #assertKnown} 的存在就是为了让
-     * 这个待办在代码里留有实体，而不是只活在文档里。</p>
+     * <p>自 V4 社区核心批起接通：<b>蕴含下面三个细粒度域</b>（发帖 / 评论 / 点赞），社区的三个写入口都挡。</p>
      */
     public static final int COMMUNITY = 2;
 
@@ -42,6 +40,32 @@ public final class SanctionScope {
      */
     public static final int ALL = 3;
 
+    /** 禁止发帖（Row 23 F「禁止发帖几天」，V4 社区核心批）——挡发帖与修改帖子 */
+    public static final int COMMUNITY_POST = 4;
+
+    /** 禁止评论（Row 23 F「禁止评论几天」） */
+    public static final int COMMUNITY_COMMENT = 5;
+
+    /** 禁止点赞（Row 23 F「禁止点赞几天」） */
+    public static final int COMMUNITY_LIKE = 6;
+
+    /** 禁止私信（V4 私信批）——挡发私信，不挡收；与上面三个同属「社区写入」 */
+    public static final int COMMUNITY_CHAT = 7;
+
+    /**
+     * 哪些能力域的处置会挡住 {@code scope}：它自己 + 蕴含它的。
+     *
+     * <p><b>蕴含关系只写在这里</b>（V4规划承重条款 1）：{@code ALL} 蕴含一切，{@code COMMUNITY} 蕴含发帖 / 评论 / 点赞。
+     * 闸门的两份查询（快照读与当前读）都从这里取集合——少写一处，「拒绝使用」就会管得比「禁言」还少。</p>
+     */
+    public static List<Integer> implying(int scope) {
+        return switch (scope) {
+            case COMMUNITY_POST, COMMUNITY_COMMENT, COMMUNITY_LIKE, COMMUNITY_CHAT -> List.of(scope, COMMUNITY, ALL);
+            case ALL -> List.of(ALL);
+            default -> List.of(scope, ALL);
+        };
+    }
+
     /** 中文名，供出参直接展示（前端不必再维护一份映射）。 */
     public static String labelOf(Integer scope) {
         if (scope == null) {
@@ -51,13 +75,18 @@ public final class SanctionScope {
             case ACTIVITY -> "限制参加活动";
             case COMMUNITY -> "限制发布社区";
             case ALL -> "拒绝使用本程序";
+            case COMMUNITY_POST -> "禁止发帖";
+            case COMMUNITY_COMMENT -> "禁止评论";
+            case COMMUNITY_LIKE -> "禁止点赞";
+            case COMMUNITY_CHAT -> "禁止私信";
             default -> "未知";
         };
     }
 
     /** 落库前校验取值合法——未知能力域一律拒绝，避免写进一条永远不会被任何闸门认出的处置。 */
     public static void assertKnown(Integer scope) {
-        if (scope == null || (scope != ACTIVITY && scope != COMMUNITY && scope != ALL)) {
+        // ⚠️ 新增能力域要同步这里的上界：漏改的话那一档写不进库，而 implying / labelOf 看着都齐全
+        if (scope == null || scope < ACTIVITY || scope > COMMUNITY_CHAT) {
             throw new IllegalArgumentException("未知的处置能力域：" + scope);
         }
     }
