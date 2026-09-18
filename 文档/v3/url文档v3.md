@@ -86,6 +86,7 @@
 | POST | /a/donate/goods/{id}/reject | 审核驳回 | 需登录（donate:goods-audit） |
 | GET | /a/donate/exchange-rules | 兑换规则当前值（与志愿者端同一份，无内部字段） | 需登录（donate:goods） |
 | PUT | /a/donate/exchange-rules | 保存兑换规则（**覆盖式、无版本**；图片走 `/a/files/upload?dir=exchange-rule`） | 需登录（donate:goods） |
+| GET | /a/donate/goods/{id}/reviews | 某商品的评价（仅正常项；**控制台 V3 批补**：此前只有志愿者端能列评价，后台下架入口够不着） | 需登录（donate:goods 或 donate:goods-audit） |
 | DELETE | /a/donate/reviews/{id} | 下架不当评价（逻辑删除，**不新增权限点**，同活动留言下架） | 需登录（donate:goods） |
 | GET | /a/donate/orders | 兑换单列表（`?keyword=` 订单号 / 商品名 / 兑换人姓名或手机号，Row 8 F） | 需登录（donate:order **或** donate:order-audit） |
 | POST | /a/donate/orders/{id}/approve | 兑换审核通过（自提：生成取货码并快照自提点；**快递：进入待发货、没有取货码**） | 需登录（donate:order-audit） |

@@ -16,6 +16,7 @@ import com.hengde.donate.service.MallGoodsService;
 import com.hengde.donate.service.MallReviewService;
 import com.hengde.donate.vo.ExchangeRuleVO;
 import com.hengde.donate.vo.MallGoodsVO;
+import com.hengde.donate.vo.MallReviewVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -162,6 +163,18 @@ public class AdminMallGoodsController {
     public Result<Void> saveExchangeRules(@Valid @RequestBody ExchangeRuleSaveDTO dto) {
         exchangeRuleService.save(dto, StpAdminUtil.getLoginIdAsLong());
         return Result.ok();
+    }
+
+    /**
+     * 后台要下架评价，得先看得到评价——此前只有志愿者端 {@code /v/donate/goods/{id}/reviews}，
+     * 管理端 token 过不了 {@code /v/**}，下架入口因此在控制台上够不着（控制台 V3 商城批补上）。
+     */
+    @Operation(summary = "某商品的评价（仅正常项；下架用 DELETE /a/donate/reviews/{id}）")
+    @SaCheckPermission(value = {PermissionCode.DONATE_GOODS, PermissionCode.DONATE_GOODS_AUDIT},
+            mode = SaMode.OR, type = "admin")
+    @GetMapping("/goods/{id}/reviews")
+    public Result<PageResult<MallReviewVO>> reviews(@PathVariable Long id, PageQuery query) {
+        return Result.ok(reviewService.listByGoods(id, query));
     }
 
     @Operation(summary = "下架不当评价（逻辑删除，不新增权限点）")
