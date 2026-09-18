@@ -86,6 +86,48 @@ class AdminConsoleGapsApiTest {
     }
 
     /**
+     * 企业赞助的商品，赞助方名称是企业名称的快照。后台在「商品管理」里编辑时表单里带着赞助方名称一栏，
+     * 此前 update 会照单全收——改了就与企业脱钩、清空就没了名字。现在只有平台自营的商品才按表单写；
+     * 出参补 sponsorEnterpriseId，控制台据此把这一栏锁住。
+     */
+    @Test
+    void editingSponsoredGoodsKeepsTheEnterpriseNameSnapshot() {
+        ApiStressClient c = new ApiStressClient(port);
+        String admin = c.adminLogin(adminUser, adminPass);
+        String tag = Long.toString(System.nanoTime(), 36);
+
+        Map<String, Object> ent = new java.util.HashMap<>();
+        ent.put("name", "赞助快照企业-" + tag);
+        ent.put("creditCode", cn.hutool.core.util.CreditCodeUtil.randomCreditCode());
+        ent.put("leaderName", "张三");
+        ent.put("leaderPhone", "13900000000");
+        ent.put("username", "sp_" + tag);
+        ent.put("password", "abc12345");
+        long enterpriseId = ok(c.post("/a/enterprise/enterprises", admin, ent, "代建企业")).dataAsLong();
+
+        List<Map<String, Object>> specs = List.of(Map.of("name", "标准", "points", 10, "stock", 5));
+        long sponsored = ok(c.post("/a/enterprise/enterprises/" + enterpriseId + "/goods", admin,
+                Map.of("name", "赞助商品-" + tag, "specs", specs), "代发布")).dataAsLong();
+        long own = ok(c.post("/a/donate/goods", admin,
+                Map.of("name", "自营商品-" + tag, "sponsorName", "原赞助方", "specs", specs), "自营")).dataAsLong();
+
+        JsonNode before = ok(c.get("/a/donate/goods/" + sponsored, admin, "详情")).data();
+        assertEquals(enterpriseId, before.get("sponsorEnterpriseId").asLong(), "后台要知道这是哪家企业赞助的：" + before);
+        assertEquals("赞助快照企业-" + tag, before.get("sponsorName").asText());
+
+        Map<String, Object> edit = new java.util.HashMap<>(Map.of("name", "改名-" + tag, "sponsorName", "冒名企业"));
+        ok(c.put("/a/donate/goods/" + sponsored, admin, edit, "改企业商品"));
+        JsonNode after = ok(c.get("/a/donate/goods/" + sponsored, admin, "改后")).data();
+        assertEquals("改名-" + tag, after.get("name").asText(), "其它字段照改");
+        assertEquals("赞助快照企业-" + tag, after.get("sponsorName").asText(), "企业赞助的，名称不随表单改");
+
+        ok(c.put("/a/donate/goods/" + own, admin, edit, "改自营商品"));
+        JsonNode ownAfter = ok(c.get("/a/donate/goods/" + own, admin, "自营改后")).data();
+        assertEquals("冒名企业", ownAfter.get("sponsorName").asText(), "平台自营的赞助方名称照常按表单写");
+        assertTrue(ownAfter.path("sponsorEnterpriseId").isMissingNode() || ownAfter.get("sponsorEnterpriseId").isNull());
+    }
+
+    /**
      * 请求本身不对时的状态码。此前三类都落进兜底 → 500「服务器内部错误」+ ERROR 堆栈，
      * 控制台拼错路径时看到「服务器内部错误」，会让人去查服务端而不是查调用方。
      */

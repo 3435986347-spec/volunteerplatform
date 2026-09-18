@@ -30,6 +30,9 @@ public class MallGoodsVO {
     @Schema(description = "赞助方名称")
     private String sponsorName;
 
+    @Schema(description = "赞助企业 id；为空＝平台自营。非空时赞助方名称是企业名称快照，后台修改商品不会改它（仅管理端）")
+    private Long sponsorEnterpriseId;
+
     @Schema(description = "必须使用的卷定义 id；为空=不要求（Row 8 F「没有卷就不能兑换」）")
     private Long requireCouponId;
 

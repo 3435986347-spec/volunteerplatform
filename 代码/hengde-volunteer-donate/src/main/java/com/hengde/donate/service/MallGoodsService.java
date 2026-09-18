@@ -168,7 +168,11 @@ public class MallGoodsService {
                 .set(MallGoods::getName, values.getName())
                 .set(MallGoods::getCoverUrl, values.getCoverUrl())
                 .set(MallGoods::getDetail, values.getDetail())
-                .set(sponsorScope == null, MallGoods::getSponsorName, values.getSponsorName())
+                // 赞助方名称只对【平台自营】的商品按表单写：企业赞助的，名称是企业名称的快照，
+                // 后台在商品管理里顺手改（或清空）会让它与企业脱钩——条件写进 SET，与上面的 CAS 同一条语句
+                .setSql(sponsorScope == null,
+                        "sponsor_name = CASE WHEN sponsor_enterprise_id IS NULL THEN {0} ELSE sponsor_name END",
+                        values.getSponsorName())
                 // 显式 set（含 null）：取消「必须持卷」要能真的写成 NULL，updateById 会跳过 null
                 .set(sponsorScope == null, MallGoods::getRequireCouponId, values.getRequireCouponId())
                 // 已上架 / 已停用 → 退回待审核；草稿与驳回稿保持原状（它们本就没过审）
@@ -581,6 +585,7 @@ public class MallGoodsService {
         vo.setSort(goods.getSort());
         vo.setCreateTime(goods.getCreateTime());
         if (forAdmin) {
+            vo.setSponsorEnterpriseId(goods.getSponsorEnterpriseId());
             vo.setRejectReason(goods.getRejectReason());
             vo.setReviewBy(goods.getReviewBy());
             vo.setReviewTime(goods.getReviewTime());
