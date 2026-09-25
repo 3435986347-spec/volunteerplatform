@@ -151,6 +151,18 @@ class SystemGovernanceApiFlowTest {
         assertTrue(interceptorLogged, "拦截器要把 /a/** 的写操作记下来：" 
                 + logs.toString().substring(0, Math.min(500, logs.toString().length())));
         assertTrue(logs.toString().contains("文件网盘-" + tag), "前端上报的页面访问也在");
+        // 一次上报只记一条（页面访问），拦截器不再另记一条「操作」——否则每切一次页面日志多两行。
+        // ⚠️ 要按 uri 单独查：上面那次查询带着 keyword=文件，拦截器那条的动作名与 uri 里都没有「文件」，
+        // 在那份结果里断言「没有」是空转的（去掉修复照样绿）
+        JsonNode pings = ok(c.get("/a/system/logs?page=1&size=50&logType=1&keyword=page-views", root, "查上报请求本身")).data().get("records");
+        assertEquals(0, pings.size(), "上报页面访问这个请求本身不该再记成一条操作：" + pings);
+        int pageViewRows = 0;
+        for (JsonNode log : logs) {
+            if (log.toString().contains("文件网盘-" + tag)) {
+                pageViewRows++;
+            }
+        }
+        assertEquals(1, pageViewRows, "一次页面访问只记一条：" + logs);
 
         long viewerId = ok(c.post("/a/organization/sub-accounts", root, Map.of("username", "lg" + tag, "password", "pass1234",
                 "realName", "看日志的人", "department", "监察部"), "建子账号")).dataAsLong();

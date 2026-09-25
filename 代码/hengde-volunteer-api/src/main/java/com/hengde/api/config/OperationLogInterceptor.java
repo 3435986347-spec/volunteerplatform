@@ -39,6 +39,8 @@ public class OperationLogInterceptor implements HandlerInterceptor {
      *
      * <p>新增这类端点时要往这里加一条——漏加的后果是「谁看过」查不到，而那正是 Row 62 要解决的问题。</p>
      */
+    private static final String PAGE_VIEW_PATH = "/a/system/page-views";
+
     private static final List<String> SENSITIVE_READS = List.of(
             "/a/**/export",                 // 各域的 xlsx 导出（名单、报名、物资、企业…）
             "/a/user/volunteers/*",         // 志愿者详情（明文手机号、身份证尾号）
@@ -77,6 +79,11 @@ public class OperationLogInterceptor implements HandlerInterceptor {
     /** 这条路径 + 方法要不要记（静态、只看字符串，用例可以直接问它，不必起一个容器）。 */
     public static boolean shouldLog(String uri, String method) {
         String path = stripContext(uri);
+        // 页面访问上报本身是 POST /a/**，但它由控制器记成一条「页面访问」；拦截器再记一条「操作」的话，
+        // 后台每切一次页面日志里就多出两行，「操作」那一栏被页面访问刷满（控制台接上报时撞出来的）
+        if (PAGE_VIEW_PATH.equals(path)) {
+            return false;
+        }
         if (path.startsWith("/a/") && !"GET".equalsIgnoreCase(method)) {
             return true;
         }
