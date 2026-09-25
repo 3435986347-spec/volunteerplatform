@@ -71,6 +71,18 @@ public class ActivityAdminDetailVO {
     /** 名单公示开始时间（为空＝还没确认名单） */
     private LocalDateTime rosterPublishTime;
 
+    /** 运行状态 0未开始/1进行中/2已结束（现场管理的开始 / 结束改的就是它） */
+    private Integer runStatus;
+
+    /** 活动总结文字（活动结束后上传；控制台 V4 批补出参——此前能写不能读） */
+    private String summaryText;
+
+    /** 活动总结图片，逗号分隔 */
+    private String summaryImages;
+
+    /** 活动总结上传时间 */
+    private LocalDateTime summaryTime;
+
     /** 最小年龄要求 */
     private Integer requireMinAge;
 

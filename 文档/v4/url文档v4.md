@@ -623,6 +623,7 @@
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
 | GET | /a/activity/activities/{id}/home-confirmations | **✅ 系统治理批** · 到家名单（列签过到的人；**详细地址与坐标只对持 `activity:home-address` 的账号下发**，其余只看得到「已到家」与时间） | 需登录（activity:manage） |
+| GET | /a/activity/activities/{id}/attendance-roster | **✅ 控制台 V4 批补** · 现场考勤名单（已通过的报名 × 考勤：签到签退 / 到位 / 时长 / 违规数；**名单从报名来**，没签到的人也在，才标得了缺席——服务记录只列考勤行，不能拿它当现场名单） | 需登录（activity:manage） |
 
 > 志愿者确认到家时可带 `address`（`POST /v/activity/activities/{id}/confirm-home` 的新字段，可空）。
 > **可见性做在字段上**：没有那个权限点的账号拿到的响应里根本没有地址——前端打码挡不住看响应体的人。

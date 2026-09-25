@@ -641,6 +641,20 @@ public class AttendanceService {
         }).filter(java.util.Objects::nonNull).toList();
     }
 
+    /**
+     * 后台现场考勤名单：与负责人视图同一份（已通过的报名 × 考勤行），供后台标记到位、记违规。
+     *
+     * <p><b>名单从报名来、不从考勤行来</b>：到位状态的「缺席」恰恰是给没来签到的人标的——
+     * 只列考勤行的话，这些人根本不在列表里，也就标不了（控制台接现场考勤时撞出来的）。</p>
+     */
+    public List<AttendanceRosterVO> adminRoster(Long activityId) {
+        Activity a = activityMapper.selectById(activityId);
+        if (a == null || ActivityStatus.isUnderReview(a.getStatus())) {
+            throw new BusinessException("活动不存在");
+        }
+        return buildRoster(activityId);
+    }
+
     /** 负责人「活动详情」：活动概要 + 志愿者考勤名单（名字/电话/学校 + 签到签退/到位/时长/违规数）。 */
     public ManagedActivityDetailVO leaderDetail(Long activityId) {
         Activity a = activityMapper.selectById(activityId);

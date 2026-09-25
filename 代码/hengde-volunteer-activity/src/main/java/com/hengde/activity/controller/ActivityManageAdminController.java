@@ -71,6 +71,13 @@ public class ActivityManageAdminController {
         return Result.ok(homeConfirmationService.list(id, withAddress));
     }
 
+    @Operation(summary = "现场考勤名单（已通过的报名 × 考勤：签到签退 / 到位 / 时长 / 违规数；没签到的人也在，才标得了缺席）")
+    @SaCheckPermission(value = PermissionCode.ACTIVITY_MANAGE, type = "admin")
+    @GetMapping("/activities/{id}/attendance-roster")
+    public Result<List<com.hengde.activity.vo.AttendanceRosterVO>> attendanceRoster(@PathVariable Long id) {
+        return Result.ok(attendanceService.adminRoster(id));
+    }
+
     @Operation(summary = "指派活动负责人（志愿者或管理团队）")
     @SaCheckPermission(value = PermissionCode.ACTIVITY_LEADER_ASSIGN, type = "admin")
     @PostMapping("/activities/{id}/leaders")

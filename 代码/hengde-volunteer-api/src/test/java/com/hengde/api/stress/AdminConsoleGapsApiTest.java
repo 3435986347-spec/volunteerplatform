@@ -128,6 +128,75 @@ class AdminConsoleGapsApiTest {
     }
 
     /**
+     * 活动总结能写不能读：{@code POST /a/activity/activities/{id}/summary} 早就有，可后台详情出参里没有总结，
+     * 控制台上传过一次之后再打开，看到的永远是空的。详情补 runStatus / summaryText / summaryImages / summaryTime。
+     */
+    @Test
+    void adminDetailShowsRunStatusAndTheSummaryThatWasUploaded() {
+        ApiStressClient c = new ApiStressClient(port);
+        String admin = c.adminLogin(adminUser, adminPass);
+        String tag = Long.toString(System.nanoTime(), 36);
+        java.time.format.DateTimeFormatter fmt = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        java.time.LocalDateTime start = java.time.LocalDateTime.now().plusDays(1).withNano(0);
+        long aid = ok(c.post("/a/activity/activities", admin, Map.of(
+                "title", "总结用例-" + tag, "location", "雷州市西湖公园",
+                "startTime", fmt.format(start), "endTime", fmt.format(start.plusHours(2)),
+                "slots", List.of(Map.of("projectName", "上午场", "startTime", fmt.format(start),
+                        "endTime", fmt.format(start.plusHours(2)), "needCount", 5))), "发布活动")).dataAsLong();
+        assertEquals(0, ok(c.get("/a/activity/activities/" + aid, admin, "详情")).data().get("runStatus").asInt());
+
+        ok(c.post("/a/activity/activities/" + aid + "/start", admin, null, "开始"));
+        ok(c.post("/a/activity/activities/" + aid + "/finish", admin, null, "结束"));
+        ok(c.post("/a/activity/activities/" + aid + "/summary", admin,
+                Map.of("summaryText", "到场 5 人，清理垃圾 12 袋", "summaryImages", "https://example.com/a.jpg"), "上传总结"));
+
+        JsonNode d = ok(c.get("/a/activity/activities/" + aid, admin, "结束后详情")).data();
+        assertEquals(2, d.get("runStatus").asInt(), d.toString());
+        assertEquals("到场 5 人，清理垃圾 12 袋", d.path("summaryText").asText(), "上传的总结要读得回来：" + d);
+        assertEquals("https://example.com/a.jpg", d.path("summaryImages").asText());
+        assertTrue(d.hasNonNull("summaryTime"));
+    }
+
+    /**
+     * 后台现场考勤名单要从<b>报名</b>来，不能从考勤行来：「缺席」恰恰是给没来签到的人标的，
+     * 只列考勤行（服务记录）的话这个人根本不在列表里。补 GET /a/activity/activities/{id}/attendance-roster。
+     */
+    @Test
+    void attendanceRosterListsNoShowsSoTheyCanBeMarkedAbsent() {
+        ApiStressClient c = new ApiStressClient(port);
+        String admin = c.adminLogin(adminUser, adminPass);
+        String tag = Long.toString(System.nanoTime(), 36);
+        java.time.format.DateTimeFormatter fmt = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        java.time.LocalDateTime start = java.time.LocalDateTime.now().plusDays(1).withNano(0);
+        long aid = ok(c.post("/a/activity/activities", admin, Map.of(
+                "title", "考勤名单用例-" + tag, "location", "雷州市西湖公园", "needAudit", 0,
+                "startTime", fmt.format(start), "endTime", fmt.format(start.plusHours(2)),
+                "slots", List.of(Map.of("projectName", "上午场", "startTime", fmt.format(start),
+                        "endTime", fmt.format(start.plusHours(2)), "needCount", 5))), "发布活动")).dataAsLong();
+        long slotId = ok(c.get("/a/activity/activities/" + aid, admin, "详情")).data().get("slots").get(0).get("id").asLong();
+        String key = "roster-" + tag;
+        String vol = c.devLogin(key);
+        long vid = jdbc.queryForObject("SELECT id FROM volunteer WHERE openid = ?", Long.class, "dev:" + key);
+        ok(c.post("/v/activity/activities/" + aid + "/enroll", vol, Map.of("slotIds", List.of(slotId)), "报名"));
+
+        JsonNode roster = ok(c.get("/a/activity/activities/" + aid + "/attendance-roster", admin, "考勤名单")).data();
+        assertEquals(1, roster.size(), "没签到的人也要在名单里：" + roster);
+        assertEquals(vid, roster.get(0).get("volunteerId").asLong());
+        assertTrue(roster.get(0).path("checkInTime").isNull() || roster.get(0).path("checkInTime").isMissingNode());
+        assertEquals(0, ok(c.get("/a/activity/service-records?activityId=" + aid, admin, "服务记录")).data().get("total").asInt(),
+                "服务记录只列考勤行——这正是不能拿它当现场名单的原因");
+
+        ok(c.call("PATCH", "/a/activity/activities/" + aid + "/attendances/" + vid, admin,
+                Map.of("slotId", slotId, "attendStatus", 4), "标缺席"));
+        JsonNode after = ok(c.get("/a/activity/activities/" + aid + "/attendance-roster", admin, "标完再看")).data().get(0);
+        assertEquals(4, after.get("attendStatus").asInt(), after.toString());
+        assertEquals(0, after.get("serviceMinutes").asInt(), "缺席时长记 0");
+        assertEquals(1, after.get("violationCount").asInt(), "缺席自动生成一条违规");
+
+        assertEquals(401, new ApiStressClient(port).get("/a/activity/activities/" + aid + "/attendance-roster", null, "未登录").http());
+    }
+
+    /**
      * 请求本身不对时的状态码。此前三类都落进兜底 → 500「服务器内部错误」+ ERROR 堆栈，
      * 控制台拼错路径时看到「服务器内部错误」，会让人去查服务端而不是查调用方。
      */
