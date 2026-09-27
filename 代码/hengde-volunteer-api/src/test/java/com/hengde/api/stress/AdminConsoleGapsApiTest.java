@@ -249,6 +249,33 @@ class AdminConsoleGapsApiTest {
     }
 
     /**
+     * 后台改心愿要把上报单位 id 原样带回（修改是全量语义，不带＝清空），可出参里只有单位名称没有 id——
+     * 控制台照着详情回填表单再保存一次，上报单位就被清空了。出参补 reportOrgId（仅管理端）。
+     */
+    @Test
+    void editingAWishFromItsOwnDetailKeepsTheReportingOrg() {
+        ApiStressClient c = new ApiStressClient(port);
+        String admin = c.adminLogin(adminUser, adminPass);
+        String tag = Long.toString(System.nanoTime(), 36);
+        long orgId = ok(c.post("/a/donate/recipient-orgs", admin, Map.of("name", "上报小学-" + tag), "建受赠单位")).dataAsLong();
+        long wishId = ok(c.post("/a/donate/wishes", admin, Map.of("title", "一个书包-" + tag, "childName", "小明",
+                "childAge", 9, "reportOrgId", orgId), "建心愿")).dataAsLong();
+
+        JsonNode w = ok(c.get("/a/donate/wishes/" + wishId, admin, "详情")).data().get("wish");
+        assertEquals(orgId, w.path("reportOrgId").asLong(), "后台要拿得到上报单位 id：" + w);
+
+        // 照着详情回填再保存（控制台的编辑就是这么做的），只改标题
+        Map<String, Object> body = new java.util.HashMap<>();
+        body.put("title", "一个新书包-" + tag);
+        body.put("childName", w.get("childName").asText());
+        body.put("childAge", w.get("childAge").asInt());
+        body.put("reportOrgId", w.path("reportOrgId").isMissingNode() || w.get("reportOrgId").isNull() ? null : w.get("reportOrgId").asLong());
+        ok(c.put("/a/donate/wishes/" + wishId, admin, body, "改标题"));
+        JsonNode after = ok(c.get("/a/donate/wishes/" + wishId, admin, "改后")).data().get("wish");
+        assertEquals("上报小学-" + tag, after.path("reportOrgName").asText(), "只改了标题，上报单位不能丢：" + after);
+    }
+
+    /**
      * 请求本身不对时的状态码。此前三类都落进兜底 → 500「服务器内部错误」+ ERROR 堆栈，
      * 控制台拼错路径时看到「服务器内部错误」，会让人去查服务端而不是查调用方。
      */

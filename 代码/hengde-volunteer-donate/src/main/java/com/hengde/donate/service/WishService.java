@@ -283,6 +283,7 @@ public class WishService {
         return PageResult.of(page.convert(w -> {
             WishVOs.Wish vo = toVO(w, true);
             vo.setRemark(w.getRemark());
+            vo.setReportOrgId(w.getReportOrgId());
             DonateWishClaim c = live.get(w.getId());
             if (c != null) {
                 vo.setClaimId(c.getId());
@@ -298,6 +299,7 @@ public class WishService {
         DonateWish w = requireWish(id);
         WishVOs.Wish vo = toVO(w, true);
         vo.setRemark(w.getRemark());
+        vo.setReportOrgId(w.getReportOrgId());
         List<DonateWishClaim> claims = claimMapper.selectList(Wrappers.<DonateWishClaim>lambdaQuery()
                 .eq(DonateWishClaim::getWishId, id)
                 .orderByDesc(DonateWishClaim::getId));

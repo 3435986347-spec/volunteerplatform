@@ -38,6 +38,9 @@ public final class WishVOs {
         private String childGrade;
         @Schema(description = "上报单位")
         private String reportOrgName;
+
+        @Schema(description = "上报单位 id（仅管理端）——修改心愿时要原样带回；不给的话后台编辑一次就把上报单位清空了")
+        private Long reportOrgId;
         private String remark;
         private Integer status;
         private String statusLabel;
