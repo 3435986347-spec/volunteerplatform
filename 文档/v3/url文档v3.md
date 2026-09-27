@@ -220,7 +220,7 @@
 | POST | /a/donate/donations/{id}/refund | **✅ 捐款批** · 退一笔已到账的捐款（**先 CAS 并减回已筹 / 已付，提交后原路退款**；原路退款失败不回滚、原因记 `cashRefundError`；**已开票的须先作废发票**） | 需登录（donate:project **且** trade:refund） |
 | POST | /a/donate/donations/{id}/invoice | **✅ 捐款批** · 登记开票（清单⑦只预留：发票在系统外开，这里记发票号；仅已到账且需要发票的） | 需登录（donate:project） |
 | GET | /a/donate/pair-projects/{id}/letters | **✅ 结对批** · 来信列表（后台看全部，含写给某个结对人的） | 需登录（donate:project） |
-| POST | /a/donate/pair-projects/{id}/letters | **✅ 结对批** · 录入受助方来信（不填收信人=项目公开信） | 需登录（donate:project） |
+| POST | /a/donate/pair-projects/{id}/letters | **✅ 结对批** · 录入受助方来信（不填收信人=项目公开信；指定收信人时**只能是已成立的结对**，待确认 / 已取消的拒绝） | 需登录（donate:project） |
 | DELETE | /a/donate/letters/{id} | **✅ 结对批** · 删除来信 | 需登录（donate:project） |
 | GET | /a/donate/crowdfunds | **✅ 结对批** · 众筹项目列表 | 需登录（donate:project） |
 | POST | /a/donate/crowdfunds | **✅ 结对批** · 新建众筹项目（落草稿）；**捐款批起** body 加 `acceptMoney`（不传＝收）/ `acceptGoods`（不传＝不收）/ `goodsNeeded` / `recvName` / `recvPhone` / `recvAddress`：两个开关至少开一个，收物时收件三项必填、不收物时不许填 | 需登录（donate:project） |
