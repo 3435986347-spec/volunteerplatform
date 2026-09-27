@@ -197,6 +197,58 @@ class AdminConsoleGapsApiTest {
     }
 
     /**
+     * 捐书活动封面、结对 / 众筹项目封面与来信配图此前没有上传目录：只有 donate:item 或 donate:project 的账号
+     * 在后台传不了任何图（通用上传按 dir 核权限，没有一个 dir 认这两个权限点）。补 dir=book / dir=project，各认各的。
+     */
+    @Test
+    void bookAndProjectUploadDirsFollowTheirOwnPermissions() throws Exception {
+        ApiStressClient c = new ApiStressClient(port);
+        String root = c.adminLogin(adminUser, adminPass);
+        String tag = Long.toString(System.nanoTime(), 36);
+        long accId = ok(c.post("/a/organization/sub-accounts", root, Map.of("username", "bk" + tag, "password", "pass1234",
+                "realName", "捐书仓库", "department", "秘书部"), "建子账号")).dataAsLong();
+        ok(c.put("/a/organization/sub-accounts/" + accId + "/permissions", root,
+                Map.of("permissionIds", List.of(permissionId(c, root, "donate:item"))), "只授 donate:item"));
+        String book = c.adminLogin("bk" + tag, "pass1234");
+
+        java.net.http.HttpResponse<String> ok1 = upload("/a/files/upload", book, "book", "cover.png");
+        assertEquals(200, ok1.statusCode(), ok1.body());
+        assertTrue(ok1.body().contains("\"url\""), ok1.body());
+        java.net.http.HttpResponse<String> no1 = upload("/a/files/upload", book, "project", "cover.png");
+        assertEquals(403, no1.statusCode(), "没有 donate:project 不能往 project 目录传：" + no1.body());
+        java.net.http.HttpResponse<String> ok2 = upload("/a/files/upload", root, "project", "cover.png");
+        assertEquals(200, ok2.statusCode(), ok2.body());
+    }
+
+    private static long permissionId(ApiStressClient c, String root, String code) {
+        for (JsonNode p : ok(c.get("/a/organization/permissions", root, "权限点列表")).data()) {
+            if (code.equals(p.get("code").asText())) {
+                return p.get("id").asLong();
+            }
+        }
+        throw new AssertionError("没有权限点 " + code);
+    }
+
+    private java.net.http.HttpResponse<String> upload(String path, String token, String dir, String filename) throws Exception {
+        byte[] png = java.util.Base64.getDecoder().decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
+        String boundary = "----gaptest" + System.nanoTime();
+        java.io.ByteArrayOutputStream body = new java.io.ByteArrayOutputStream();
+        body.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"dir\"\r\n\r\n" + dir + "\r\n")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        body.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + filename
+                + "\"\r\nContent-Type: image/png\r\n\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        body.write(png);
+        body.write(("\r\n--" + boundary + "--\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://localhost:" + port + "/api" + path))
+                .timeout(java.time.Duration.ofSeconds(30))
+                .header("Authorization", token)
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofByteArray(body.toByteArray())).build();
+        return java.net.http.HttpClient.newHttpClient().send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+    }
+
+    /**
      * 请求本身不对时的状态码。此前三类都落进兜底 → 500「服务器内部错误」+ ERROR 堆栈，
      * 控制台拼错路径时看到「服务器内部错误」，会让人去查服务端而不是查调用方。
      */

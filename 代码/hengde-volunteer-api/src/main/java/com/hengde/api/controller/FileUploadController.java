@@ -39,6 +39,8 @@ import java.util.Set;
  *   <tr><td>goods</td><td>donate:goods</td><td>图片</td><td>积分商品图片</td></tr>
  *   <tr><td>exchange-rule</td><td>donate:goods</td><td>图片</td><td>兑换规则配图（与商品同权限，另起目录只为对象存储可读）</td></tr>
  *   <tr><td>wish</td><td>donate:wish</td><td>图片</td><td>微心愿图片与物资发放反馈图</td></tr>
+ *   <tr><td>book</td><td>donate:item</td><td>图片</td><td>捐书活动封面</td></tr>
+ *   <tr><td>project</td><td>donate:project</td><td>图片</td><td>结对 / 众筹项目封面、受助方来信配图</td></tr>
  *   <tr><td>file</td><td>pub:file</td><td>图片+文档</td><td>文件下载板块</td></tr>
  * </table>
  *
@@ -107,6 +109,10 @@ public class FileUploadController {
             case "goods" -> StpAdminUtil.STP_LOGIC.checkPermission("donate:goods");
             case "exchange-rule" -> StpAdminUtil.STP_LOGIC.checkPermission("donate:goods");
             case "wish" -> StpAdminUtil.STP_LOGIC.checkPermission("donate:wish");
+            // 捐书活动封面（V3 捐书批只做了接口没有上传目录——只有 donate:item 的账号此前传不了任何图，控制台 V4 批补）
+            case "book" -> StpAdminUtil.STP_LOGIC.checkPermission("donate:item");
+            // 结对项目 / 众筹项目封面与受助方来信配图（同上，donate:project）
+            case "project" -> StpAdminUtil.STP_LOGIC.checkPermission("donate:project");
             // 个人中心内容（我的保险图片 / 客服二维码，V4 个人中心补全批）
             case "center" -> StpAdminUtil.STP_LOGIC.checkPermission("user:center-content");
             // 官方帖图片（V4 社区核心批）
