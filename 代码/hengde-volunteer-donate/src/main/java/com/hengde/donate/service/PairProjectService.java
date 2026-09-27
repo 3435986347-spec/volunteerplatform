@@ -213,6 +213,11 @@ public class PairProjectService {
             if (r == null || !projectId.equals(r.getProjectId())) {
                 throw new BusinessException("收信的结对登记不属于这个项目");
             }
+            // 私信里往往有受助方的具体情况：只能写给协会已确认的结对人。
+            // 待确认的登记还没被协会认可（可能被驳回），已取消的已经不是结对人了
+            if (!Objects.equals(r.getStatus(), PairFlow.PAIR_ESTABLISHED)) {
+                throw new BusinessException("私信只能写给已成立的结对（当前：" + PairFlow.pairLabel(r.getStatus()) + "）");
+            }
         }
         DonatePairLetter l = new DonatePairLetter();
         l.setProjectId(projectId);

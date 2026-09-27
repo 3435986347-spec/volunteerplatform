@@ -194,6 +194,18 @@ class PairServiceTest {
         assertTrue(assertThrows(BusinessException.class,
                 () -> projectService.addLetter(id, letter(999_999_999L, "张冠李戴"), ADMIN))
                 .getMessage().contains("不属于这个项目"));
+
+        // 私信只写给协会已确认的结对人：待确认的与已取消的都不行
+        PairVOs.PairRecord pending = pairService.register(id, other, register(PairFlow.AMOUNT_PARTIAL, "100", null));
+        assertTrue(assertThrows(BusinessException.class,
+                () -> projectService.addLetter(id, letter(pending.getId(), "写给还没确认的人"), ADMIN))
+                .getMessage().contains("已成立"));
+        pairService.cancel(pending.getId(), "测试", ADMIN);
+        assertTrue(assertThrows(BusinessException.class,
+                () -> projectService.addLetter(id, letter(pending.getId(), "写给已取消的人"), ADMIN))
+                .getMessage().contains("已成立"));
+        assertEquals(1, projectService.lettersForVolunteer(id, other, new PageQuery()).getRecords().size(),
+                "被拒的私信没有落库");
     }
 
     @Test
