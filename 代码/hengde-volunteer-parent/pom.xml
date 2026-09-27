@@ -405,6 +405,19 @@
 					<artifactId>commons-compress</artifactId>
 					<version>1.27.1</version>
 				</dependency>
+				<!--
+					commons-io 同理：POI 5.4.0 声明的是 2.18.0，依赖调解却选中了 2.14.0。
+					【2026-09-27 控制台接微心愿批量导入时撞出来】读 xlsx 时 POI 调 BoundedInputStream.builder()，
+					2.14 里没有这个方法，于是【所有 Excel 导入】（微心愿导入、小组批量导入）都以 NoSuchMethodError 失败，
+					对用户只显示「Excel 解析失败，请检查文件格式」——像是文件的问题。
+					构建与测试全绿，因为没有任何用例真的读过一个 xlsx（导出那次也是这样漏过去的）。
+					升级 poi.version 时连同这里一起改，并跑 AdminConsoleGapsApiTest 里导入那条用例。
+				-->
+				<dependency>
+					<groupId>commons-io</groupId>
+					<artifactId>commons-io</artifactId>
+					<version>2.18.0</version>
+				</dependency>
 				<dependency>
 					<groupId>com.itextpdf</groupId>
 					<artifactId>itext-core</artifactId>

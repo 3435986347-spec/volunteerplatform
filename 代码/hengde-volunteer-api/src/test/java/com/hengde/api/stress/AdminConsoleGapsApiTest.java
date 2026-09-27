@@ -276,6 +276,49 @@ class AdminConsoleGapsApiTest {
     }
 
     /**
+     * <b>真的读一次 xlsx</b>。依赖调解选中了 commons-io 2.14.0，而 POI 5.4.0 读 xlsx 要调 2.18 才有的
+     * {@code BoundedInputStream.builder()}——所有 Excel 导入都以 NoSuchMethodError 失败，对用户只显示
+     * 「Excel 解析失败，请检查文件格式」。此前没有任何用例读过一个 xlsx，所以构建与测试一直是绿的。
+     */
+    @Test
+    void excelImportActuallyReadsAnXlsx() throws Exception {
+        ApiStressClient c = new ApiStressClient(port);
+        String admin = c.adminLogin(adminUser, adminPass);
+        String tag = Long.toString(System.nanoTime(), 36);
+        ok(c.post("/a/donate/recipient-orgs", admin, Map.of("name", "导入小学-" + tag), "建受赠单位"));
+
+        com.hengde.donate.dto.WishDTOs.ImportRow row = new com.hengde.donate.dto.WishDTOs.ImportRow();
+        row.setTitle("导入心愿-" + tag);
+        row.setChildName("小导");
+        row.setChildAge(9);
+        row.setReportOrgName("导入小学-" + tag);
+        java.io.ByteArrayOutputStream xlsx = new java.io.ByteArrayOutputStream();
+        com.alibaba.excel.EasyExcel.write(xlsx, com.hengde.donate.dto.WishDTOs.ImportRow.class).sheet("心愿").doWrite(List.of(row));
+
+        java.net.http.HttpResponse<String> resp = uploadFile("/a/donate/wishes/import", admin, "wishes.xlsx", xlsx.toByteArray(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        assertEquals(200, resp.statusCode(), "导入读不了 xlsx：" + resp.body());
+        assertTrue(resp.body().contains("\"imported\":1"), resp.body());
+        assertEquals(1, ok(c.get("/a/donate/wishes?page=1&size=5&keyword=" + java.net.URLEncoder.encode("导入心愿-" + tag,
+                java.nio.charset.StandardCharsets.UTF_8), admin, "查导入的心愿")).data().get("total").asInt());
+    }
+
+    private java.net.http.HttpResponse<String> uploadFile(String path, String token, String filename, byte[] content, String mime) throws Exception {
+        String boundary = "----gapfile" + System.nanoTime();
+        java.io.ByteArrayOutputStream body = new java.io.ByteArrayOutputStream();
+        body.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + filename
+                + "\"\r\nContent-Type: " + mime + "\r\n\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        body.write(content);
+        body.write(("\r\n--" + boundary + "--\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://localhost:" + port + "/api" + path))
+                .timeout(java.time.Duration.ofSeconds(30))
+                .header("Authorization", token)
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofByteArray(body.toByteArray())).build();
+        return java.net.http.HttpClient.newHttpClient().send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+    }
+
+    /**
      * 请求本身不对时的状态码。此前三类都落进兜底 → 500「服务器内部错误」+ ERROR 堆栈，
      * 控制台拼错路径时看到「服务器内部错误」，会让人去查服务端而不是查调用方。
      */
