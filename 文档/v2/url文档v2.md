@@ -68,7 +68,7 @@
 
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
-| POST | /v/auth/sms/codes | 发送短信验证码；body `{phone, scene}`，scene 白名单 `register`(默认)/`login`/`volunteer-password-reset`/`change-phone`，越界拒绝；复用发码限流+错满作废 | 公开 |
+| POST | /v/auth/sms/codes | 发送短信验证码；body `{phone, scene}`，scene 白名单 `register`(默认)/`login`/`volunteer-password-reset`/`change-phone`，越界拒绝；复用发码限流+错满作废；2026-09-27 起另收 `account-deactivate`（申请注销） | 公开 |
 | POST | /v/auth/login/sms | **手机号+验证码登录**（`{phone, smsCode}`，scene=login）；陌生手机号自动建游客账号（之后再实名）；**注销拒登，禁用照发 token**（协会 2026-08-11 第 5 条「只给禁用账号开个小口子」，token 拿到后仅 `BannedAccountGate.EXEMPT_PATHS` 五条可用，其余 `/v/**` 一律 403） | 公开 |
 | POST | /v/auth/login/password | **手机号+密码登录**（`{phone, password}`，账号=手机号）；接防爆破（phoneHash/IP 计数），账号不存在/未设密码/密码错统一报错不泄露存在性 | 公开 |
 | PUT | /v/auth/password | **设置/修改登录密码**（`{oldPassword?, newPassword}`）；首次设密码原密码可空，已有密码须校验原密码；账号须已绑手机号 | 需登录 |
@@ -107,6 +107,10 @@
 |---|---|---|---|
 | GET | /v/user/profile | 获取本人完整资料（`no` 编号[=志愿者 id 字符串，「我的」页顶部展示]/姓名/昵称/手机号/身份证完整号[本人查看自己]/政治面貌/学校/年级/地址/紧急联系方式 + 时长/积分/参与活动数/所在小组/归属分队）；游客也可取（实名字段为空、`registered:false`） | 需登录 |
 | PATCH | /v/user/profile | 更新可修改项（头像/i志愿者码/昵称[全局唯一去重]/学校/年级/政治面貌/通讯地址/紧急联系方式，**部分更新**仅传非空字段）；**手机号走 `PUT /v/user/phone`**；姓名/身份证「不可修改」（实名字段仅后台超管 `PUT /a/user/volunteers/{id}` 可改） | 需登录 |
+| POST | /v/user/profile/school-confirm | **每年确认一次学校和年级**（2026-09-27 补，协会 2026-09-16「每年由志愿者确认学校和年级即可，审核自动通过，原则上不影响报名」）：body `{school, grade}`，确认即通过，同时把年级对应到本学年、清掉「请改学校和年级」提示；`GET /v/user/profile` 的 `schoolConfirmPending` 为真时提示（已实名、账号正常、本学年还没确认过） | 需登录 |
+| GET | /v/user/deactivation | **注销状态**（2026-09-27 补，协会 2026-09-16：注销＝退出协会、7 天冷静期）：`pending` / `requestTime` / `effectiveTime` / `coolingDays` | 需登录 |
+| POST | /v/user/deactivation | 申请注销：body `{smsCode}`（先 `POST /v/auth/sms/codes` scene=`account-deactivate`，发到本人手机号）；进入冷静期，期内账号照常可用、手机号不释放；**到期按时间现算**，之后第一次碰到这个账号（请求闸门 / 登录 / 按手机号查找）即落定：status=2、清手机号与密码、合成 openid 换成 `deactivated:{id}`，身份证哈希不动（不能再注册） | 需登录 |
+| DELETE | /v/user/deactivation | 冷静期内撤销注销（到期后撤销不了，按已注销处理） | 需登录 |
 | PUT | /v/user/phone | 修改/换绑手机号（`{phone, smsCode}`，新号需 scene=change-phone 短信验证；查重不可撞其它账号；账号=手机号，同步改 phone 密文+phoneHash） | 需登录 |
 
 ### 管理端 `/a/user`
@@ -119,6 +123,7 @@
 | PATCH | /a/user/volunteers/{id}/status | 暂停/恢复志愿者账号（body: `{"status": 0/1}`，仅 0正常/1禁用）。⚠️ **禁用不再等于「登不进来」**：他仍能登录，但只能访问退出登录 / 奖惩记录 / 申诉 / 处置查看 / 站内提示这五条 | `user:status` |
 | DELETE | /a/user/volunteers/{id} | 删除志愿者（逻辑删除） | `user:delete` |
 | POST | /a/user/volunteers/{id}/password/reset | 重置志愿者密码=**清空** `password`（V20 起有密码列；管理员不设/不知明文，志愿者之后用手机号验证码登录再自设新密码） | `user:pwd-reset` |
+| POST | /a/user/volunteers/{id}/restore | **恢复已注销的账号**（2026-09-27 补，协会 2026-09-16「账号恢复 → 理事会」）：body `{phone}`——注销时手机号已释放、可能已被别人注册，所以填一个当前没被占用的号；恢复后账号正常、没有密码，本人用这个号收验证码登录 | 需登录（user:restore） |
 | GET | /a/user/volunteers/export | 批量导出志愿者（Excel，支持与列表相同的筛选参数） | `user:export` |
 
 ---
@@ -195,7 +200,8 @@
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
 | GET | /v/honor/certificates | 我的证书列表（软删的不返回）。**V43 起分页**（`page`/`size`，响应改为 `{records,total,…}`，破坏性改动）。每行带 `certNo`/活动/**场次(`slotId`/`slotProjectName`/岗位起止)**/`downloadCount`/`fileReady`。**不返回 `fileKey`**——前端只需知道能否下载，取文件走下面的接口 | 需登录 |
-| GET | /v/honor/certificates/{id}/file | 预览/下载：校验归属 → **文件缺失时懒渲染并回填** → **计数即闸门**（`UPDATE … WHERE is_deleted=0` 影响 0 行即拒发，堵住「渲染期间证书被撤销」的竞态；被拒的请求不计数）→ 返回**短期签名 URL**（默认 120s，受 `hengde.oss.presign-max-ttl-seconds` 二次约束）。渲染按 certificate_id 加分布式锁 + `WHERE file_key IS NULL` 的 CAS 回填，并发下不会渲染两份也不会覆盖。**渲染把协会电子样本 PDF 当底图套印**——公章在样本上；**未配置样本、或样本文件读不出，一律拒绝生成**（不退化成一张无章的证书）。归属不符与不存在**返回同一句话**，避免枚举他人证书 | 需登录 |
+| GET | /v/honor/certificates/{id}/file | **下载**（计一次下载次数；预览走下面的 `/preview`）：校验归属 → **文件缺失时懒渲染并回填** → **计数即闸门**（`UPDATE … WHERE is_deleted=0` 影响 0 行即拒发，堵住「渲染期间证书被撤销」的竞态；被拒的请求不计数）→ 返回**短期签名 URL**（默认 120s，受 `hengde.oss.presign-max-ttl-seconds` 二次约束）。渲染按 certificate_id 加分布式锁 + `WHERE file_key IS NULL` 的 CAS 回填，并发下不会渲染两份也不会覆盖。**渲染把协会电子样本 PDF 当底图套印**——公章在样本上；**未配置样本、或样本文件读不出，一律拒绝生成**（不退化成一张无章的证书）。归属不符与不存在**返回同一句话**，避免枚举他人证书 | 需登录 |
+| GET | /v/honor/certificates/{id}/preview | **预览**（2026-09-27 补，协会 2026-08-11「先预览，再由用户决定是否下载」）：与 `/file` 同一条懒渲染与签名链路，**不计下载次数**；闸门换成带 `is_deleted=0` 的计数查询，渲染期间被撤销的证书同样拒发 | 需登录 |
 
 ### 活动现场负责人 — 志愿者端 `/v/activity/managed-activities`
 
@@ -338,7 +344,7 @@
 |---|---|---|---|
 | GET | /a/honor/certificates | 证书汇总查询（分页，可按 `volunteerId`/`activityId` 筛选；带志愿者姓名与活动/场次）。**`includeDeleted=true` 可连已软删的一起返回**（行上带 `deleted`/`deletedReason`/`deletedTime`）——缺了它删完就再也找不回 id，下面的「撤销删除」将无从调用 | honor:certificate |
 | POST | /a/honor/certificates/batch | **批量上传 PDF 证书**（Row 36 F ①）。`activityId` + `slotId` 指定本批归属（一场活动一个证书），`files` 多文件。**文件 ↔ 志愿者按文件名里的 11 位手机号匹配**（`13800138000.pdf` 或 `13800138000_张三.pdf`），**不按姓名——重名必错配**；手机号换 id 走 auth 窄接口，honor 不接触 PII 密文。**该志愿者必须在这一场次有「秘书部已确认」的参加记录**，否则该行失败——手机号写成另一个真实用户时，绝不能凭空给他发一张能下载的证书。**逐条返回成败明细，单条匹配不上不整批失败**。已存在的证书会被复用并挂上文件（落 `certificate/upload/` 前缀，**与系统渲染件不同 key，互不覆盖**），来源改为「后台上传」，此后不再参与懒渲染 | honor:certificate |
-| GET | /a/honor/certificates/{id}/file | 后台下载（同样只返回短期签名 URL） | honor:certificate |
+| GET | /a/honor/certificates/{id}/file | 后台查看（同样只返回短期签名 URL；自 2026-09-27 起**不计下载次数**——那个数是志愿者自己下载的次数） | honor:certificate |
 | DELETE | /a/honor/certificates/{id} | **软删**指定某人证书（Row 36 F ②），body `reason` **必填**，记删除人/时间/原因 | honor:certificate-delete |
 | POST | /a/honor/certificates/{id}/restore | 撤销软删。与「重跑时恢复原记录」口径配套的显式入口：软删行**仍占用** `uk_slot_cert`，重新触发自动创建会**复活原行并保留原编号与文件**，而不是另发新编号 | honor:certificate-delete |
 | POST | /a/honor/certificates/reconcile | **人工补发缺失的证书**，回 `{created, failed, hasMore}`。⚠️ **「真的补完了」的判据是 `hasMore=false` 且 `failed=0`**，不是只看前者：补发逐条 catch（单条坏数据不能挡住后面所有人），只报 `created` 的话失败就只剩一行没人读的日志，而接口等于告诉管理员「补完了」。`since`（只补该时刻之后被秘书部确认的考勤）/ `activityId`（只补该活动），**两者至少给一个，都不给直接报错**。<br>⚠️ `since` **须用 ISO 的 `T` 分隔**（`2026-07-01T00:00:00`）——而**所有响应里的时间是空格格式**，从响应复制粘过来会 400。这是项目既有惯例（同 `/a/activity/points`），不是本接口的特例。<br>**为什么必须有**：自动补偿扫描只覆盖回看窗口（默认 72h），窗口外是有洞的——「事件丢失 + 应用停机超过窗口」叠加时证书永久缺失且无人发现，本接口是唯一救济。<br>**为什么不接受无边界全量**：那等于让一次调用替协会答复「改造前的历史活动是否补发」（见 `协会待确认清单.md` 1-追）。⚠️ 但要看清这道守卫的作用范围——**它防的是误触、不是规模**：`since=1970-01-01T00:00:00` 同样通过、效果与全量一致，这是刻意允许的（人显式敲下 1970 是他的决定，cron 不声不响地发不是）。<br>**单次封顶**（`reconcile-max-creates-per-run`，默认 1000）：本接口同步执行而网关 `proxy_read_timeout` 是 60s，一次几千张会在网关 504、服务端却还在跑，管理员看到失败又点一次就两轮重叠白烧。补发幂等，故正确用法是**重复调用直到 `hasMore=false`**；不引入异步任务与任务 id，那买不到比「再点一次」更多的东西 | honor:certificate |
@@ -473,6 +479,10 @@
 | GET | /v/organization/squads | 分队列表 | 需登录 |
 | GET | /v/organization/squads/{id} | 分队详情（未归属只看负责人信息；已归属看同分队成员） | 需登录 |
 | POST | /v/organization/squads/{id}/applications | 申请加入分队 | 需登录 |
+| GET | /v/organization/squads/led | **分队负责人**（2026-09-27 补，协会 2026-09-02「分队自己审，也可以由部门审核通过」、Row 60「由上述分队进行审核」）：我负责的分队，只列启用中的 | 需登录 |
+| GET | /v/organization/squads/{id}/applications | 分队负责人看本分队的加入申请（`status` 不传只看待审；不是这个分队的负责人、分队停用一律拒） | 需登录 |
+| POST | /v/organization/squads/applications/{applicationId}/approve | 分队负责人批准加入（只能审自己负责的分队、不能审自己的申请；与部门审核共用同一条 CAS，同时审只成一个；审核人记 volunteer.id + 类型 2） | 需登录 |
+| POST | /v/organization/squads/applications/{applicationId}/reject | 分队负责人拒绝加入（body `reason` 可选，≤255 字） | 需登录 |
 
 ### 组织架构 — 志愿者端
 

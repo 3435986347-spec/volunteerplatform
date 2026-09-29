@@ -67,6 +67,7 @@
 ## 投诉建议 —— `/v/data/complaints` · `/a/data/complaints`（投诉建议批）
 
 > Row 43「类似于问卷收集 / 投诉默认到监察部，后续监察部可根据工作需要选择流转到其他部门，含处理进度」。
+> ⚠️ **2026-09-27 起按类别进部门**（协会 2026-09-02：活动类 → 组织部 / 协会内部类 → 秘书部 / 社区类 → 宣传部；协会 2026-09-16：监察部一年前已撤销）——提交时必须选类别，不再有「默认监察部」。部门名走配置 `hengde.data.complaint.routes.*`。
 > **工单在谁手上谁看**：只持 `data:complaint` 的账号只看得到、只动得了当前在**本部门**（`admin_user.department`）的工单；
 > 持 `data:complaint-all` 的看全部、可代任何部门处理。部门是后台账号上的那段文字，流转只能转给**当前有启用账号**的部门。
 > 状态：0 待受理 / 1 处理中 / 2 已办结；流转后回到待受理。进度动作：1 提交 / 2 受理 / 3 流转 / 4 答复办结 / 5 内部备注。
@@ -75,7 +76,7 @@
 
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
-| POST | /v/data/complaints | **✅ 投诉建议批** · 提交（body `type` 1投诉/2建议、`content` ≤2000、可选 `images` ≤6 张（先经 `POST /v/files/form-file`，只收本系统上传的）、可选 `answers`（协会为场景 5 发布了问卷时必填，先调 `GET /v/organization/forms/scenes/5/current`））；进默认部门（监察部）；**24 小时内条数有上限**（默认 5）；游客也能提，禁用 / 注销的账号不能 | 需登录 |
+| POST | /v/data/complaints | **✅ 投诉建议批** · 提交（body `type` 1投诉/2建议、`content` ≤2000、可选 `images` ≤6 张（先经 `POST /v/files/form-file`，只收本系统上传的）、可选 `answers`（协会为场景 5 发布了问卷时必填，先调 `GET /v/organization/forms/scenes/5/current`）、**必填 `category` 1活动类/2协会内部类/3社区类**（V84））；按类别进部门（活动类 → 组织部 / 协会内部类 → 秘书部 / 社区类 → 宣传部）；**24 小时内条数有上限**（默认 5）；游客也能提，禁用 / 注销的账号不能 | 需登录 |
 | GET | /v/data/complaints/mine | **✅ 投诉建议批** · 我的投诉建议 | 需登录 |
 | GET | /v/data/complaints/{id} | **✅ 投诉建议批** · 详情（含处理进度——**只含对志愿者可见的几步**，流转理由与内部备注不下发；答复；问卷答卷）；别人的与不存在同一句话 | 需登录 |
 
@@ -83,7 +84,7 @@
 
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | /a/data/complaints | **✅ 投诉建议批** · 工单列表（`?status=&type=&department=&keyword=`，keyword 试编号精确 / 内容模糊；**只有 `data:complaint` 时 `department` 无效、恒为本部门**，没填部门的账号列表为空） | 需登录（data:complaint 或 data:complaint-all） |
+| GET | /a/data/complaints | **✅ 投诉建议批** · 工单列表（`?status=&type=&category=&department=&keyword=`，`category` 1活动类/2协会内部类/3社区类，V84 之前的工单为空，keyword 试编号精确 / 内容模糊；**只有 `data:complaint` 时 `department` 无效、恒为本部门**，没填部门的账号列表为空） | 需登录（data:complaint 或 data:complaint-all） |
 | GET | /a/data/complaints/departments | **✅ 投诉建议批** · 可流转的部门（当前有启用后台账号的部门，字典序） | 需登录（data:complaint 或 data:complaint-all） |
 | GET | /a/data/complaints/{id} | **✅ 投诉建议批** · 详情（全部进度含流转理由与内部备注及操作人、提交人姓名电话、问卷答卷）；范围外的与不存在同一句话 | 需登录（data:complaint 或 data:complaint-all） |
 | POST | /a/data/complaints/{id}/accept | **✅ 投诉建议批** · 受理（待受理 → 处理中） | 需登录（data:complaint 或 data:complaint-all） |
@@ -652,7 +653,7 @@
 | `org:form` | 问卷管理（建 / 改草稿 / 发布 / 停止 / 复制 / 删草稿） | 问卷引擎批 |
 | `org:form-data` | **答卷查看与导出**——与 `org:form` 分开：答卷里有填写人的手机号，同 `user:list` / `user:export`、`donate:item` / `donate:item-export` 的先例 | 问卷引擎批 |
 | `data:complaint` | 投诉建议处理（**只限当前在本部门的工单**：受理 / 流转 / 答复 / 备注） | 投诉建议批 |
-| `data:complaint-all` | 投诉建议全部门（看全部工单并可代任何部门处理；Row 43「监察部可根据工作需要选择流转」，默认给监察部） | 投诉建议批 |
+| `data:complaint-all` | 投诉建议全部门（看全部工单并可代任何部门处理；Row 43 原写「监察部可根据工作需要选择流转」，监察部已撤销，授给谁由协会定） | 投诉建议批 |
 | `user:center-content` | 个人中心内容设置（我的保险 / 联系客服） | 个人中心补全批 |
 | `org:structure` | 组织架构维护（节点增删改、放人 / 挪人 / 移出；Row 6「均有最高权限操作」，默认只给超管） | 组织架构维护批 |
 | `social:official` | 官方帖（本部门发布 / 删除 / 以官方身份评论 / 删除本部门官方帖下的评论） | 社区核心批 |
