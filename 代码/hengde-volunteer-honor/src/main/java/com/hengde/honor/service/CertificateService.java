@@ -447,29 +447,41 @@ public class CertificateService {
     }
 
     // ---------- ③ 预览/下载：懒渲染 + 短期签名 URL + 计数 ----------
+    //
+    // 协会 2026-08-11（证书第 1 条）：「先预览，再由用户决定是否下载」。预览与下载拿到的都是短期签名 URL，
+    // 区别只在【下载才计一次下载次数】——这个数字是要给协会看的，打开看一眼不该算成一次下载。
 
     /**
-     * 取下载链接。志愿者端调用，<b>先校验归属</b>。
+     * 取下载链接（计一次下载）。志愿者端调用，<b>先校验归属</b>。
      *
      * @param certId      证书 id
      * @param volunteerId 当前登录志愿者（取自登录态，不接受入参）
      */
     public String downloadUrlForVolunteer(Long certId, Long volunteerId) {
-        HonorCertificate cert = certificateMapper.selectById(certId);
-        if (cert == null || !cert.getVolunteerId().equals(volunteerId)) {
-            // 不区分「不存在」与「不是你的」——否则可以拿这个接口枚举他人证书是否存在
-            throw new BusinessException("证书不存在");
-        }
-        return signedUrl(cert);
+        return signedUrl(requireOwn(certId, volunteerId), true);
     }
 
-    /** 后台下载：不校验归属，但同样只返回短期签名 URL。 */
+    /** 取预览链接（不计下载次数）。志愿者端调用，同样先校验归属。 */
+    public String previewUrlForVolunteer(Long certId, Long volunteerId) {
+        return signedUrl(requireOwn(certId, volunteerId), false);
+    }
+
+    /** 后台查看：不校验归属、不计下载次数（下载次数是志愿者自己下载的次数），同样只返回短期签名 URL。 */
     public String downloadUrlForAdmin(Long certId) {
         HonorCertificate cert = certificateMapper.selectById(certId);
         if (cert == null) {
             throw new BusinessException("证书不存在");
         }
-        return signedUrl(cert);
+        return signedUrl(cert, false);
+    }
+
+    private HonorCertificate requireOwn(Long certId, Long volunteerId) {
+        HonorCertificate cert = certId == null ? null : certificateMapper.selectById(certId);
+        if (cert == null || !cert.getVolunteerId().equals(volunteerId)) {
+            // 不区分「不存在」与「不是你的」——否则可以拿这个接口枚举他人证书是否存在
+            throw new BusinessException("证书不存在");
+        }
+        return cert;
     }
 
     /**
@@ -480,16 +492,21 @@ public class CertificateService {
      * 回填用 {@code UPDATE ... WHERE file_key IS NULL} 的 CAS 作最后一道保险
      * （锁失效、跨进程时钟等极端情况）。</p>
      */
-    private String signedUrl(HonorCertificate cert) {
+    private String signedUrl(HonorCertificate cert, boolean countDownload) {
         String key = cert.getFileKey();
         if (key == null) {
             key = renderAndFill(cert);
         }
         // 【删除竞态】读出证书到这里之间，管理员可能已经把它软删了（渲染还要几百毫秒，窗口是真实的）。
-        // 计数语句自带 is_deleted = 0，故拿它当【最后一道闸】：影响 0 行就说明期间被删了，
+        // 下载：计数语句自带 is_deleted = 0，拿它当【最后一道闸】——影响 0 行就说明期间被删了；
+        // 预览 / 后台查看不计数，闸门换成同样带 is_deleted = 0 的一次计数查询（@TableLogic 自动带上）。
         // 此时必须放弃签发——签名 URL 一旦交出去，在有效期内谁拿到都能取，撤不回来。
         // 顺序也必须是「先确认可发放、再签名」，不能先签好再判。
-        if (certificateMapper.incrementDownloadCount(cert.getId()) != 1) {
+        boolean stillThere = countDownload
+                ? certificateMapper.incrementDownloadCount(cert.getId()) == 1
+                : certificateMapper.selectCount(Wrappers.<HonorCertificate>lambdaQuery()
+                        .eq(HonorCertificate::getId, cert.getId())) == 1;
+        if (!stillThere) {
             throw new BusinessException("证书不存在");
         }
         Duration ttl = Duration.ofSeconds(honorProperties.getCertificate().getDownloadUrlTtlSeconds());
@@ -499,7 +516,9 @@ public class CertificateService {
             // 闸门必须在签名【之前】，但签名失败时用户其实什么也没拿到，不该记一次下载。
             // 故补偿性回退这一次计数——否则对象存储抖一下，下载次数就虚高，
             // 而这个数字是要给协会看的（Row 37 F 列「下载次数」）。
-            certificateMapper.decrementDownloadCount(cert.getId());
+            if (countDownload) {
+                certificateMapper.decrementDownloadCount(cert.getId());
+            }
             throw e;
         }
     }

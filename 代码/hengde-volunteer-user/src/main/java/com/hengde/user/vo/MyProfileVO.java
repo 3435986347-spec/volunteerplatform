@@ -66,6 +66,21 @@ public class MyProfileVO {
     /** 是否要提示他修改学校和年级（Row 25：读完六年级 / 九年级 / 高三 / 大三 / 大四 / 大五后的 9 月；改过年级即消失） */
     private Boolean gradePromptPending;
 
+    /**
+     * 这个学年要不要请他确认一次学校和年级（协会 2026-09-16「每年由志愿者确认学校和年级即可，审核自动通过，
+     * 原则上不影响报名」）。确认走 {@code POST /v/user/profile/school-confirm}；不确认也不挡任何功能。
+     */
+    private Boolean schoolConfirmPending;
+
+    /** 学校年级已确认到的学年（9 月 1 日为界，如 2026 表示 2026-2027 学年）；没确认过为空 */
+    private Integer schoolConfirmYear;
+
+    /** 申请注销的时间（冷静期内才有值，撤销即清空） */
+    private LocalDateTime deactivateRequestTime;
+
+    /** 注销生效时间（冷静期结束的时刻；到了这一刻账号注销、手机号释放，之前可以撤销） */
+    private LocalDateTime deactivateEffectiveTime;
+
     /** 安全中心手写签名板（与注册协议签名分开） */
     private String padSignatureUrl;
 

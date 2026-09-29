@@ -52,9 +52,19 @@ public class CertificateController {
      * 由前端拿这个链接直接向对象存储取，服务端不做流量中转。
      * 链接在有效期内等同凭证，故有效期很短（默认 120 秒）且不落库、不进日志。</p>
      */
-    @Operation(summary = "预览/下载：文件缺失时懒渲染并回填，返回短期签名 URL，并累加下载次数")
+    @Operation(summary = "下载：文件缺失时懒渲染并回填，返回短期签名 URL，并累加下载次数")
     @GetMapping("/certificates/{id}/file")
     public Result<String> file(@PathVariable Long id) {
         return Result.ok(certificateService.downloadUrlForVolunteer(id, StpUtil.getLoginIdAsLong()));
+    }
+
+    /**
+     * 协会 2026-08-11：「先预览，再由用户决定是否下载」——预览与下载拿到的都是短期签名 URL，
+     * 只有下载（上面的 {@code /file}）计下载次数。
+     */
+    @Operation(summary = "预览：文件缺失时懒渲染并回填，返回短期签名 URL，不计下载次数")
+    @GetMapping("/certificates/{id}/preview")
+    public Result<String> preview(@PathVariable Long id) {
+        return Result.ok(certificateService.previewUrlForVolunteer(id, StpUtil.getLoginIdAsLong()));
     }
 }

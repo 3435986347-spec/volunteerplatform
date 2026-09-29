@@ -14,6 +14,9 @@ public class SquadVO {
     private Long leaderId;
     private String leaderName;
     private String leaderPhone;
+
+    /** 负责人志愿者（leaderId）的姓名，仅后台列表填写；leaderName 是展示用的联系人文字，二者可以不同 */
+    private String leaderVolunteerName;
     private Integer memberLimit;
     private String visibleFields;
     private Integer status;

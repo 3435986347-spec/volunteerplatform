@@ -56,7 +56,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * @author hengde
  */
-@SpringBootTest(properties = "hengde.data.complaint.default-department=监察部")
+@SpringBootTest(properties = "hengde.data.complaint.routes.activity=组织部")
 @Import({TestcontainersConfig.class, RedisTestcontainersConfig.class, RecordingSmsConfig.class})
 class ComplaintConcurrencyTest {
 
@@ -77,7 +77,7 @@ class ComplaintConcurrencyTest {
 
     @BeforeEach
     void setUp() {
-        supervisor = new Scope(admin("监察部"), "监察部", false);
+        supervisor = new Scope(admin("组织部"), "组织部", false);
         admin("宣传部");
     }
 
@@ -112,9 +112,9 @@ class ComplaintConcurrencyTest {
 
     /**
      * CAS 条件里的「读到时的部门」是承重的——赛跑用例几乎撞不到这个窗口（预检读与 CAS 之间只有几微秒），
-     * 所以单独确定性地构造：裸 JDBC 事务把工单转去宣传部（回到待受理）但不提交，监察部的答复预检读到的还是
-     * 「处理中、在监察部」，CAS 被挡住；放行后工单状态是「待受理」，只看状态的 CAS 会照样命中，
-     * 让监察部把一张已经转走的工单答复办结。（变异验证撞出来的缺口：去掉部门条件时赛跑用例照样全绿。）
+     * 所以单独确定性地构造：裸 JDBC 事务把工单转去宣传部（回到待受理）但不提交，组织部的答复预检读到的还是
+     * 「处理中、在组织部」，CAS 被挡住；放行后工单状态是「待受理」，只看状态的 CAS 会照样命中，
+     * 让组织部把一张已经转走的工单答复办结。（变异验证撞出来的缺口：去掉部门条件时赛跑用例照样全绿。）
      */
     @Test
     void aReplyRacingATransfer_doesNotCloseATicketThatJustLeftTheDepartment() throws Exception {
@@ -142,7 +142,7 @@ class ComplaintConcurrencyTest {
             pool.shutdownNow();
         }
         assertEquals(ComplaintFlow.PENDING, jdbc.queryForObject("SELECT status FROM data_complaint WHERE id = ?",
-                Integer.class, id), "工单还在宣传部待受理，没被监察部答复办结");
+                Integer.class, id), "工单还在宣传部待受理，没被组织部答复办结");
     }
 
     @Test
@@ -171,7 +171,7 @@ class ComplaintConcurrencyTest {
                 assertEquals(1, ((Number) row.get("transfer_count")).intValue());
             } else {
                 replyWins++;
-                assertEquals("监察部", row.get("current_department"));
+                assertEquals("组织部", row.get("current_department"));
                 assertEquals(ComplaintFlow.CLOSED, ((Number) row.get("status")).intValue());
             }
             assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM data_complaint_log WHERE complaint_id = ? "
@@ -190,7 +190,7 @@ class ComplaintConcurrencyTest {
         ExecutorService pool = Executors.newFixedThreadPool(n);
         List<Future<Boolean>> futures = new ArrayList<>();
         for (int i = 0; i < n; i++) {
-            Scope s = new Scope(admin("监察部"), "监察部", false);
+            Scope s = new Scope(admin("组织部"), "组织部", false);
             futures.add(pool.submit(attempt(barrier, 0, () -> complaintService.accept(s, id))));
         }
         int ok = 0;
@@ -229,6 +229,7 @@ class ComplaintConcurrencyTest {
         volunteerMapper.insert(v);
         ComplaintDTOs.Submit d = new ComplaintDTOs.Submit();
         d.setType(ComplaintFlow.TYPE_COMPLAINT);
+        d.setCategory(ComplaintFlow.CATEGORY_ACTIVITY);
         d.setContent("并发工单 " + SEQ.get());
         return complaintService.submit(v.getId(), d);
     }

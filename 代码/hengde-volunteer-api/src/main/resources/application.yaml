@@ -141,8 +141,12 @@ hengde:
       code-cache-seconds: ${USER_CARD_CODE_CACHE_SECONDS:604800}
   data:
     complaint:
-      # 投诉建议（V4 投诉建议批，Row 43）。默认部门须与后台账号的「部门」一字不差，否则新工单没人看得到
-      default-department: ${DATA_COMPLAINT_DEFAULT_DEPARTMENT:监察部}
+      # 投诉建议（V4 投诉建议批，Row 43）。按类别进部门（协会 2026-09-02）：活动类 → 组织部 / 协会内部类 → 秘书部 / 社区类 → 宣传部。
+      # 部门名须与后台账号的「部门」一字不差。Row 43 原写「默认到监察部」——监察部一年前已撤销，不要再配回来
+      routes:
+        activity: ${DATA_COMPLAINT_DEPT_ACTIVITY:组织部}
+        internal: ${DATA_COMPLAINT_DEPT_INTERNAL:秘书部}
+        community: ${DATA_COMPLAINT_DEPT_COMMUNITY:宣传部}
       daily-limit: ${DATA_COMPLAINT_DAILY_LIMIT:5}            # 同一个人 24 小时内最多提交几条
       sms-reply-max-chars: ${DATA_COMPLAINT_SMS_REPLY_MAX_CHARS:30}  # 短信里答复内容最多几个字，全文在小程序
   enterprise:
@@ -217,11 +221,11 @@ hengde:
         address: ${DONATE_MALL_PICKUP_ADDRESS:}
         phone: ${DONATE_MALL_PICKUP_PHONE:}
       express:
-        # 快递寄送（商城快递批）。**默认关**：快递费与积分折算汇率协会还没给（清单③）。
+        # 快递寄送（商城快递批）。**默认关**。默认值取自原型：快递费 13 元（P84 明文）、1 元折 10 积分（P34 示例）
         # 快递费是计价器的输出、下单时快照；积分抵扣所需积分 = ⌈快递费（元）× 汇率⌉
         enabled: ${DONATE_MALL_EXPRESS_ENABLED:false}
-        fee-fen: ${DONATE_MALL_EXPRESS_FEE_FEN:1000}
-        points-per-yuan: ${DONATE_MALL_EXPRESS_POINTS_PER_YUAN:100}
+        fee-fen: ${DONATE_MALL_EXPRESS_FEE_FEN:1300}
+        points-per-yuan: ${DONATE_MALL_EXPRESS_POINTS_PER_YUAN:10}
         # 发货满这么多天未确认收货的，系统自动确认
         auto-receive-days: ${DONATE_MALL_EXPRESS_AUTO_RECEIVE_DAYS:15}
         auto-receive-cron: ${DONATE_MALL_EXPRESS_AUTO_RECEIVE_CRON:0 40 3 * * ?}

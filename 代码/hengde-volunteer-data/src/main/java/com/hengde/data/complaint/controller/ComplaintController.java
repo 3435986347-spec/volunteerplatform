@@ -35,7 +35,7 @@ public class ComplaintController {
         this.complaintService = complaintService;
     }
 
-    @Operation(summary = "提交投诉建议（默认进监察部；24 小时内条数有限；协会发布了问卷时带答卷）")
+    @Operation(summary = "提交投诉建议（按类别进部门：活动类 → 组织部 / 协会内部类 → 秘书部 / 社区类 → 宣传部；24 小时内条数有限；协会发布了问卷时带答卷）")
     @PostMapping
     public Result<Long> submit(@Valid @RequestBody ComplaintDTOs.Submit dto) {
         return Result.ok(complaintService.submit(StpUtil.getLoginIdAsLong(), dto));

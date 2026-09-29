@@ -24,7 +24,10 @@ public class MallProperties {
     private Payment payment = new Payment();
 
     /**
-     * 快递寄送。<b>默认关闭</b>：快递费多少、积分怎么折，协会都还没给（《协会待确认清单-v3》③）。
+     * 快递寄送。<b>默认关闭</b>（打开前确认快递费与汇率）。
+     *
+     * <p><b>默认值取自原型</b>（《待协会答复-2026-09-27》第三部分 ③）：P84 明文「如须快递，则需要收 13 元快递费」，
+     * P34 商品页示例「快递费：￥13 元　积分：130」⇒ 1 元折 10 积分。汇率只有示例、没有明文，上线前可再请协会看一眼。</p>
      *
      * <p>快递费是<b>计价器的输出</b>（{@code MallShippingCalculator}），当前计价器只返回 {@link #feeFen}——
      * 协会日后要按地区 / 重量计价时换计价器，订单上的快照列不用改。两个数都在<b>下单时快照进订单</b>，
@@ -36,13 +39,13 @@ public class MallProperties {
         private boolean enabled = false;
 
         /** 快递费【分】。 */
-        private int feeFen = 1000;
+        private int feeFen = 1300;
 
         /**
          * 积分抵扣快递费的汇率：<b>1 元折多少积分</b>。抵扣所需积分 = ⌈快递费（元）× 汇率⌉，向上取整——
          * 向下取整会让「差几分钱的快递费」白送。
          */
-        private int pointsPerYuan = 100;
+        private int pointsPerYuan = 10;
 
         /** 发货后满这么多天仍未确认收货的，系统自动确认（否则一张忘了点的单永远停在已发货、也评价不了）。 */
         private int autoReceiveDays = 15;

@@ -15,6 +15,7 @@ import com.hengde.data.complaint.dto.ComplaintDTOs;
 import com.hengde.data.complaint.service.ComplaintService;
 import com.hengde.data.complaint.service.ComplaintService.Scope;
 import com.hengde.data.complaint.support.ComplaintFlow;
+import com.hengde.data.complaint.support.ComplaintProperties;
 import com.hengde.data.complaint.vo.ComplaintVOs;
 import com.hengde.organization.form.dto.FormDTOs;
 import com.hengde.organization.form.service.FormService;
@@ -29,24 +30,26 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 投诉建议（V4 投诉建议批，Row 43）：默认进监察部 → 受理 → 流转 → 答复办结，处理进度对志愿者只露该露的；
+ * 投诉建议（V4 投诉建议批，Row 43）：默认进组织部 → 受理 → 流转 → 答复办结，处理进度对志愿者只露该露的；
  * 「工单在谁手上谁看」；答复发站内提示与短信；问卷场景接入；24 小时条数限制。
  *
  * <p><b>需本机 Docker</b>（MySQL + Redis）。</p>
  *
  * @author hengde
  */
-@SpringBootTest(properties = {"hengde.data.complaint.default-department=监察部",
+@SpringBootTest(properties = {"hengde.data.complaint.routes.activity=组织部",
         "hengde.data.complaint.daily-limit=3",
         "hengde.data.complaint.sms-reply-max-chars=10",
         "hengde.sms.templates.complaint-replied=T-COMPLAINT"})
@@ -69,6 +72,8 @@ class ComplaintServiceTest {
     private RecordingSmsService sms;
     @Autowired
     private JdbcTemplate jdbc;
+    @Autowired
+    private ComplaintProperties properties;
 
     private Scope supervisor;
     private Scope publicity;
@@ -78,9 +83,9 @@ class ComplaintServiceTest {
     void setUp() {
         sms.clear();
         jdbc.update("UPDATE org_form SET status = 2 WHERE scene = ? AND status = 1", FormFlow.SCENE_COMPLAINT);
-        Long sup = admin("监察部");
+        Long sup = admin("组织部");
         Long pub = admin("宣传部");
-        supervisor = new Scope(sup, "监察部", false);
+        supervisor = new Scope(sup, "组织部", false);
         publicity = new Scope(pub, "宣传部", false);
         volunteer = volunteer(true);
     }
@@ -89,7 +94,7 @@ class ComplaintServiceTest {
     void fullFlow_defaultDepartment_accept_transfer_reply_andWhatTheVolunteerSees() {
         Long id = complaintService.submit(volunteer, submit(ComplaintFlow.TYPE_COMPLAINT, "活动现场没有饮用水"));
         ComplaintVOs.Complaint c = complaintService.detailForAdmin(supervisor, id);
-        assertEquals("监察部", c.getCurrentDepartment(), "Row 43「投诉默认到监察部」");
+        assertEquals("组织部", c.getCurrentDepartment(), "活动类进组织部（协会 2026-09-02）");
         assertEquals(ComplaintFlow.PENDING, c.getStatus());
         assertTrue(c.getComplaintNo().startsWith("TS"));
         assertMessage("工单不存在", () -> complaintService.detailForAdmin(publicity, id), "还没转过去，宣传部看不到");
@@ -99,19 +104,19 @@ class ComplaintServiceTest {
         complaintService.note(supervisor, id, "这件事涉及物资采购，内部先核实");
         complaintService.transfer(supervisor, id, "宣传部", "活动由宣传部组织");
 
-        assertMessage("工单不存在", () -> complaintService.accept(supervisor, id), "转走之后监察部（无全部门权限）就碰不到了");
+        assertMessage("工单不存在", () -> complaintService.accept(supervisor, id), "转走之后组织部（无全部门权限）就碰不到了");
         ComplaintVOs.Complaint atPub = complaintService.detailForAdmin(publicity, id);
         assertEquals(ComplaintFlow.PENDING, atPub.getStatus(), "流转后回到待受理");
         assertEquals(1, atPub.getTransferCount());
 
         complaintService.reply(publicity, id, "已在下次活动配备饮用水，感谢反馈");
         assertMessage("工单已经办结", () -> complaintService.reply(publicity, id, "再答复一次"));
-        assertMessage("已办结的工单不能再流转", () -> complaintService.transfer(publicity, id, "监察部", null));
+        assertMessage("已办结的工单不能再流转", () -> complaintService.transfer(publicity, id, "组织部", null));
 
         ComplaintVOs.Complaint mine = complaintService.detailMine(id, volunteer);
         assertEquals(ComplaintFlow.CLOSED, mine.getStatus());
         assertEquals("宣传部", mine.getReplyDepartment());
-        assertEquals(List.of("已提交，由监察部受理", "监察部已受理，正在处理", "已转交宣传部处理", "宣传部已答复"),
+        assertEquals(List.of("已提交，由组织部受理", "组织部已受理，正在处理", "已转交宣传部处理", "宣传部已答复"),
                 mine.getProgress().stream().map(ComplaintVOs.Progress::getDescription).toList(),
                 "内部备注不在志愿者的进度里");
         assertTrue(mine.getProgress().stream().filter(p -> p.getAction() == ComplaintFlow.ACT_TRANSFER)
@@ -125,6 +130,60 @@ class ComplaintServiceTest {
         assertNotNull(forAdmin.getVolunteerPhone(), "处理人要联系提交人");
 
         assertMessage("工单不存在", () -> complaintService.detailMine(id, volunteer(true)), "别人的与不存在同一句话");
+    }
+
+    /**
+     * 类别决定进哪个部门（协会 2026-09-02：活动类 → 组织部 / 协会内部类 → 秘书部 / 社区类 → 宣传部）。
+     * 需求表 Row 43 原写「默认到监察部」——监察部一年前已撤销（协会 2026-09-16），默认配置里不能再出现它。
+     */
+    @Test
+    void category_decidesTheDepartment_andNothingDefaultsToTheAbolishedSupervisionDept() {
+        Map<Integer, String> expected = Map.of(
+                ComplaintFlow.CATEGORY_ACTIVITY, "组织部",
+                ComplaintFlow.CATEGORY_INTERNAL, "秘书部",
+                ComplaintFlow.CATEGORY_COMMUNITY, "宣传部");
+        for (Map.Entry<Integer, String> e : expected.entrySet()) {
+            ComplaintDTOs.Submit d = submit(ComplaintFlow.TYPE_SUGGESTION, "类别 " + e.getKey());
+            d.setCategory(e.getKey());
+            Long id = complaintService.submit(volunteer(true), d);
+            assertEquals(e.getValue(), jdbc.queryForObject(
+                    "SELECT current_department FROM data_complaint WHERE id = ?", String.class, id), "类别 " + e.getKey());
+            assertEquals(e.getKey(), jdbc.queryForObject(
+                    "SELECT category FROM data_complaint WHERE id = ?", Integer.class, id));
+            ComplaintVOs.Complaint vo = complaintService.detailForAdmin(new Scope(1L, null, true), id);
+            assertEquals(ComplaintFlow.categoryLabel(e.getKey()), vo.getCategoryLabel());
+            assertEquals("已提交，由" + e.getValue() + "受理", vo.getProgress().get(0).getDescription());
+        }
+
+        // 后台按类别筛
+        assertTrue(complaintService.listForAdmin(new Scope(1L, null, true), page(), null, null,
+                        ComplaintFlow.CATEGORY_INTERNAL, null, null).getRecords().stream()
+                .allMatch(c -> c.getCategory() == ComplaintFlow.CATEGORY_INTERNAL));
+
+        // 没选类别、选了不存在的类别，一律拒绝（不再有「默认部门」可以兜底）
+        ComplaintDTOs.Submit none = submit(ComplaintFlow.TYPE_COMPLAINT, "没选类别");
+        none.setCategory(null);
+        assertMessage("类别只能是 1活动类 / 2协会内部类 / 3社区类", () -> complaintService.submit(volunteer, none));
+        none.setCategory(4);
+        assertMessage("类别只能是 1活动类 / 2协会内部类 / 3社区类", () -> complaintService.submit(volunteer, none));
+
+        // 某一类没配受理部门：明说这一类暂不受理，而不是塞进别的部门
+        String internal = properties.getRoutes().getInternal();
+        try {
+            properties.getRoutes().setInternal(" ");
+            ComplaintDTOs.Submit d = submit(ComplaintFlow.TYPE_COMPLAINT, "没配部门");
+            d.setCategory(ComplaintFlow.CATEGORY_INTERNAL);
+            assertMessage("「协会内部类」投诉建议暂未开放（没有配置受理部门）", () -> complaintService.submit(volunteer, d));
+        } finally {
+            properties.getRoutes().setInternal(internal);
+        }
+
+        // 不配任何属性时的默认值就是协会给的对应表，里面没有监察部
+        ComplaintProperties fresh = new ComplaintProperties();
+        for (Map.Entry<Integer, String> e : expected.entrySet()) {
+            assertEquals(e.getValue(), fresh.departmentFor(e.getKey()));
+            assertNotEquals("监察部", fresh.departmentFor(e.getKey()));
+        }
     }
 
     @Test
@@ -146,9 +205,9 @@ class ComplaintServiceTest {
         Long id = complaintService.submit(volunteer, submit(ComplaintFlow.TYPE_COMPLAINT, "负责人态度不好"));
         Scope all = new Scope(admin("理事会"), "理事会", true);
         assertEquals(id, complaintService.detailForAdmin(all, id).getId(), "全部门权限看得到别的部门的工单");
-        assertTrue(complaintService.listForAdmin(all, page(), null, null, "监察部", null).getRecords().stream()
+        assertTrue(complaintService.listForAdmin(all, page(), null, null, "组织部", null).getRecords().stream()
                 .anyMatch(c -> c.getId().equals(id)));
-        assertFalse(complaintService.listForAdmin(publicity, page(), null, null, "监察部", null).getRecords().stream()
+        assertFalse(complaintService.listForAdmin(publicity, page(), null, null, "组织部", null).getRecords().stream()
                 .anyMatch(c -> c.getId().equals(id)), "没有全部门权限时 department 参数无效，只看本部门");
         assertTrue(complaintService.listForAdmin(new Scope(admin(null), null, false), page(), null, null, null, null)
                 .getRecords().isEmpty(), "没填部门的账号一条都看不到");
@@ -160,7 +219,7 @@ class ComplaintServiceTest {
         jdbc.update("UPDATE admin_user SET status = 1 WHERE id = ?", disabled);
         String disabledDept = jdbc.queryForObject("SELECT department FROM admin_user WHERE id = ?", String.class, disabled);
         assertFalse(complaintService.departments().contains(disabledDept), "只有停用账号的部门不能作为流转目标");
-        assertMessage("工单已经在「监察部」了", () -> complaintService.transfer(all, id, "监察部", null));
+        assertMessage("工单已经在「组织部」了", () -> complaintService.transfer(all, id, "组织部", null));
 
         complaintService.transfer(all, id, "宣传部", "代为转交");
         assertEquals("宣传部", complaintService.detailForAdmin(publicity, id).getCurrentDepartment());
@@ -256,6 +315,7 @@ class ComplaintServiceTest {
     private static ComplaintDTOs.Submit submit(int type, String content) {
         ComplaintDTOs.Submit d = new ComplaintDTOs.Submit();
         d.setType(type);
+        d.setCategory(ComplaintFlow.CATEGORY_ACTIVITY);
         d.setContent(content);
         return d;
     }

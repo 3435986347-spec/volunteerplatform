@@ -4,6 +4,7 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.hengde.common.result.Result;
 import com.hengde.user.dto.ChangePhoneDTO;
 import com.hengde.user.dto.MyProfileUpdateDTO;
+import com.hengde.user.dto.SchoolConfirmDTO;
 import com.hengde.user.service.MyProfileService;
 import com.hengde.user.vo.MyProfileVO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -13,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -50,6 +52,13 @@ public class MyProfileController {
     @PatchMapping("/profile")
     public Result<Void> update(@RequestBody @Valid MyProfileUpdateDTO dto) {
         myProfileService.updateMyProfile(StpUtil.getLoginIdAsLong(), dto);
+        return Result.ok();
+    }
+
+    @Operation(summary = "确认本学年的学校和年级（每年一次、确认即通过、不影响报名；GET /profile 的 schoolConfirmPending 为真时提示）")
+    @PostMapping("/profile/school-confirm")
+    public Result<Void> confirmSchool(@RequestBody @Valid SchoolConfirmDTO dto) {
+        myProfileService.confirmSchoolAndGrade(StpUtil.getLoginIdAsLong(), dto.getSchool(), dto.getGrade());
         return Result.ok();
     }
 

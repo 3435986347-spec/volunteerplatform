@@ -51,7 +51,8 @@ public class VolunteerAuthService {
 
     /** 发码允许的场景白名单（仅志愿者域，防被借道发任意场景码） */
     private static final Set<String> ALLOWED_SMS_SCENES =
-            Set.of(SmsScene.REGISTER, SmsScene.LOGIN, SmsScene.VOLUNTEER_PASSWORD_RESET, SmsScene.CHANGE_PHONE);
+            Set.of(SmsScene.REGISTER, SmsScene.LOGIN, SmsScene.VOLUNTEER_PASSWORD_RESET, SmsScene.CHANGE_PHONE,
+                    SmsScene.ACCOUNT_DEACTIVATE);
 
     private VolunteerMapper volunteerMapper;
     private WxMaService wxMaService;
@@ -61,6 +62,7 @@ public class VolunteerAuthService {
     private WeworkGroupService weworkGroupService;
     private AuthProperties authProperties;
     private LoginProtectionService loginProtectionService;
+    private VolunteerDeactivationService deactivationService;
 
     @Autowired
     public void setVolunteerMapper(VolunteerMapper volunteerMapper) {
@@ -90,6 +92,11 @@ public class VolunteerAuthService {
     @Autowired
     public void setRealNameService(RealNameService realNameService) {
         this.realNameService = realNameService;
+    }
+
+    @Autowired
+    public void setDeactivationService(VolunteerDeactivationService deactivationService) {
+        this.deactivationService = deactivationService;
     }
 
     @Autowired
@@ -246,6 +253,10 @@ public class VolunteerAuthService {
      * 不会走到这里。</p>
      */
     private void ensureLoginable(Volunteer volunteer) {
+        // 已过注销冷静期：当场落定（清手机号、换 openid），按已注销处理（协会 2026-09-16：注销＝退出协会）
+        if (deactivationService.finalizeIfDue(volunteer)) {
+            throw new BusinessException("账号已注销");
+        }
         Integer status = volunteer.getStatus();
         if (UserStatus.NORMAL.equals(status) || UserStatus.BANNED.equals(status)) {
             return;
@@ -287,6 +298,9 @@ public class VolunteerAuthService {
     }
 
     private Volunteer selectByPhoneHash(String phoneHash) {
+        // 这个号的持有者若已过注销冷静期，先把号释放出来（协会 2026-09-16：注销后手机号释放）——
+        // 否则要等到有人碰巧碰到那个账号，同号重新登录建号 / 找回密码才会查到一个「已注销」的人
+        deactivationService.releasePhoneIfDue(phoneHash);
         List<Volunteer> matches = volunteerMapper.selectList(
                 Wrappers.<Volunteer>lambdaQuery().eq(Volunteer::getPhoneHash, phoneHash));
         if (matches.size() > 1) {
@@ -414,10 +428,20 @@ public class VolunteerAuthService {
                 .eq(Volunteer::getIdCardHash, idCardHash)
                 .ne(Volunteer::getId, volunteerId));
         if (dup != null && dup > 0) {
+            // 协会 2026-09-16：注销后「身份证不能重新注册」，本人想回来由理事会在后台恢复账号——报错要说清去哪儿恢复
+            Long deactivated = volunteerMapper.selectCount(Wrappers.<Volunteer>lambdaQuery()
+                    .eq(Volunteer::getIdCardHash, idCardHash)
+                    .eq(Volunteer::getStatus, UserStatus.DELETED)
+                    .ne(Volunteer::getId, volunteerId));
+            if (deactivated != null && deactivated > 0) {
+                throw new BusinessException("该身份证对应的账号已注销，如需重新加入请联系协会恢复账号");
+            }
             throw new BusinessException("该身份证已注册");
         }
 
-        // 4.5 手机号查重（防串号）：显式查 phoneHash 排除自身，不靠 uk_phone_hash 抛 DB 异常兜底
+        // 4.5 手机号查重（防串号）：显式查 phoneHash 排除自身，不靠 uk_phone_hash 抛 DB 异常兜底；
+        //     持有者若已过注销冷静期，先把号释放出来
+        deactivationService.releasePhoneIfDue(phoneHash);
         Long phoneDup = volunteerMapper.selectCount(Wrappers.<Volunteer>lambdaQuery()
                 .eq(Volunteer::getPhoneHash, phoneHash)
                 .ne(Volunteer::getId, volunteerId));
@@ -458,6 +482,8 @@ public class VolunteerAuthService {
             // 注册时填的年级就是当前学年的年级，升级任务从下一个 9 月起才动它（V67）
             volunteer.setGradeUpgradeYear(Grade.schoolYearOf(LocalDate.now()));
         }
+        // 注册时填的学校年级就算本学年确认过（V88：每年确认一次，下一个学年再提示）
+        volunteer.setSchoolConfirmYear(Grade.schoolYearOf(LocalDate.now()));
         volunteer.setAddress(dto.getAddress());
         volunteer.setIVolunteerCodeUrl(dto.getIVolunteerCodeUrl());
         volunteer.setAvatarUrl(dto.getAvatarUrl());

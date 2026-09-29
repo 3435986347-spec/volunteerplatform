@@ -74,6 +74,24 @@ public class Volunteer extends BaseEntity {
     /** 是否挂着「请修改学校和年级」提示（V67；到了分界年级由升级任务挂上，本人改年级即清除） */
     private Integer gradePromptPending;
 
+    /** 学校年级已确认到的学年（V88；协会 2026-09-16「每年由志愿者确认学校和年级」，小于当前学年即提示确认） */
+    private Integer schoolConfirmYear;
+
+    /** 申请注销时间（V88；冷静期内可撤销，撤销即清空） */
+    private LocalDateTime deactivateRequestTime;
+
+    /** 注销生效时间＝申请时间 + 冷静期（V88；到没到期按时间现算） */
+    private LocalDateTime deactivateEffectiveTime;
+
+    /** 注销落定时间（V88：清手机号、换 openid 的那一刻） */
+    private LocalDateTime deactivatedTime;
+
+    /** 恢复账号的后台账号 admin_user.id（V88，理事会） */
+    private Long restoreBy;
+
+    /** 恢复账号时间（V88） */
+    private LocalDateTime restoreTime;
+
     /** 通讯地址 */
     private String address;
 

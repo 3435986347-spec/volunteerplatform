@@ -17,7 +17,7 @@ public final class PermissionCode {
     public static final String DATA_DASHBOARD = "data:dashboard";
 
     public static final String COMPLAINT = "data:complaint";
-    /** 投诉建议全部门：看全部工单并可代任何部门处理（V65；Row 43「监察部可根据工作需要选择流转」，默认给监察部） */
+    /** 投诉建议全部门：看全部工单并可代任何部门处理（V65）。Row 43 原写「监察部可根据工作需要选择流转」，监察部已撤销，授给谁由协会定 */
     public static final String COMPLAINT_ALL = "data:complaint-all";
 
     private PermissionCode() {

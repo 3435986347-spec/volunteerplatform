@@ -108,21 +108,24 @@ public final class PermissionCode {
     public static final String HONOR_SANCTION = "honor:sanction";
 
     /**
-     * 全部限制能力——开出「拒绝其使用本程序」({@code SanctionScope.ALL}) 的单需要额外持有本点。
+     * 开出「拒绝其使用本程序」({@code SanctionScope.ALL}) 的处罚需要本点。
      *
-     * <p><b>需求出处</b> xlsx Row 73：「…可由<b>该部门负责的同学</b>限制其使用，包括但不限制于
-     * 限制其使用指定天数、拒绝其使用本程序。<b>监察部拥有全部限制能力</b>」。
-     * 最后那句话若人人都成立，它就不成其为一句要求——而在 V32 里确实人人成立：
-     * 只要有 {@link #HONOR_REWARD_PUNISH} 就能把 {@code sanctionScope} 填成最重的一档。</p>
+     * <p><b>谁来开</b>：协会 2026-09-16——限制参加活动 → 组织部 / 限制发布社区 → 宣传部 /
+     * 拒绝使用本程序 → <b>秘书部</b> / 账号恢复 → 理事会，<b>理事会拥有全部限制权限</b>。
+     * 需求表 Row 73 原写「监察部拥有全部限制能力」——监察部一年前已撤销，以协会答复为准。
+     * 点名沿用 V36 的 {@code sanction-all}（改名会让已授权的账号全部失效），含义自 V85 起收窄为「拒绝使用本程序」这一档。</p>
      *
-     * <p><b>本点只落地了 Row 73 的一半</b>：「该部门负责的同学限制<b>其负责的</b>功能」还需要一张
-     * 「能力域 ↔ 负责部门」对应表，两份材料都没有给出（只点名了监察部）。
-     * 在协会给出映射之前，只实现能从原文直接读出的那条：<b>最重的一档不再随开单权自动获得</b>。
-     * 见《协会待确认清单》第 8 条。</p>
-     *
-     * <p>校验落在 {@code AdminRewardPunishController.create}——能否开出某一档限制是<b>授权</b>问题，
-     * 与 service 的业务规则分开；{@code @SaCheckPermission} 表达不了「取决于请求体的某个字段」，
-     * 故写成显式判断并抽出静态方法以便被用例钉住。</p>
+     * <p>三档各一个点，判定在 {@code AdminRewardPunishController.assertScopeAllowed}——能否开出某一档限制是
+     * <b>授权</b>问题，与 service 的业务规则分开；{@code @SaCheckPermission} 表达不了「取决于请求体的某个字段」。</p>
      */
     public static final String HONOR_SANCTION_ALL = "honor:sanction-all";
+
+    /** 开出「限制参加活动」({@code SanctionScope.ACTIVITY}) 的处罚（V85；协会 2026-09-16：组织部负责，理事会拥有全部限制权限）。 */
+    public static final String HONOR_SANCTION_ACTIVITY = "honor:sanction-activity";
+
+    /**
+     * 开出「限制发布社区」({@code SanctionScope.COMMUNITY}) 及其细分档（发帖 / 评论 / 点赞 / 私信）的处罚
+     * （V85；协会 2026-09-16：宣传部负责，理事会拥有全部限制权限）。社区里的禁言单另走 {@code social:ban}。
+     */
+    public static final String HONOR_SANCTION_COMMUNITY = "honor:sanction-community";
 }

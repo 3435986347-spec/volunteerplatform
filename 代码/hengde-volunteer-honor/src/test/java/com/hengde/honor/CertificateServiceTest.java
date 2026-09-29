@@ -321,6 +321,58 @@ class CertificateServiceTest {
     }
 
     /**
+     * <b>先预览，再由用户决定是否下载</b>（协会 2026-08-11 证书第 1 条）：预览同样懒渲染、同样只给短期签名 URL，
+     * 但<b>只有下载计次数</b>——这个数是要给协会看的，打开看一眼不该算成一次下载；后台查看也不算。
+     */
+    @Test
+    void preview_rendersButDoesNotCount_onlyDownloadCounts() {
+        ensureGlobalTemplate();
+        Fixture f = confirmedFixture();
+        Long certId = certificateService.createForSlot(f.volunteerId, f.activityId, f.slotId);
+
+        String preview = certificateService.previewUrlForVolunteer(certId, f.volunteerId);
+        assertTrue(preview.startsWith("https://"), "预览也是签名 URL");
+        String key = certificateMapper.selectById(certId).getFileKey();
+        assertNotNull(key, "首次预览同样懒渲染并回填");
+        certificateService.previewUrlForVolunteer(certId, f.volunteerId);
+        assertEquals(1, InMemoryFileStorageConfig.WRITE_COUNT.get(key), "预览两次只渲染一次");
+        assertEquals(0, certificateMapper.selectById(certId).getDownloadCount(), "预览不计下载次数");
+
+        certificateService.downloadUrlForAdmin(certId);
+        assertEquals(0, certificateMapper.selectById(certId).getDownloadCount(), "后台查看不计下载次数");
+
+        certificateService.downloadUrlForVolunteer(certId, f.volunteerId);
+        assertEquals(1, certificateMapper.selectById(certId).getDownloadCount(), "志愿者下载才计一次");
+    }
+
+    /** 预览同样要挡住「渲染期间被撤销」与「别人的证书」——不计数不等于不设闸。 */
+    @Test
+    void preview_ofRevokedOrOthersCertificate_isRejected() {
+        ensureGlobalTemplate();
+        Fixture f = confirmedFixture();
+        Long intruder = insertVolunteer(null);
+        Long certId = certificateService.createForSlot(f.volunteerId, f.activityId, f.slotId);
+
+        assertEquals("证书不存在", assertThrows(BusinessException.class,
+                () -> certificateService.previewUrlForVolunteer(certId, intruder)).getMessage(),
+                "不得区分「不存在」与「不是你的」");
+
+        certificateService.previewUrlForVolunteer(certId, f.volunteerId);   // 先渲染好
+        certificateService.softDelete(certId, "撤销发放", 900L);
+        assertThrows(BusinessException.class, () -> certificateService.previewUrlForVolunteer(certId, f.volunteerId),
+                "已撤销的证书不得再签出预览链接");
+        assertEquals(0, certificateMapper.selectByIdIncludeDeleted(certId).getDownloadCount());
+
+        // 渲染途中被撤销（渲染要几百毫秒，窗口是真实的）：签名 URL 一旦交出去就撤不回来，必须在签发前挡住
+        Fixture g = confirmedFixture();
+        Long racing = certificateService.createForSlot(g.volunteerId, g.activityId, g.slotId);
+        InMemoryFileStorageConfig.BEFORE_UPLOAD_PRIVATE =
+                () -> certificateMapper.softDelete(racing, 900L, "渲染途中撤销");
+        assertThrows(BusinessException.class, () -> certificateService.previewUrlForVolunteer(racing, g.volunteerId),
+                "渲染途中被撤销的证书不得签出预览链接");
+    }
+
+    /**
      * <b>删除与签发的竞态</b>：拿到证书对象后、交出签名 URL 前，管理员把它删了。
      *
      * <p>渲染要几百毫秒，这个窗口是真实的。签名 URL 一旦交出去，

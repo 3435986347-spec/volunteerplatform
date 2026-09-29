@@ -33,6 +33,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -47,6 +48,14 @@ public class SquadService {
     private static final int APPLY_PENDING = SquadApplyStatus.PENDING;
     private static final int APPLY_APPROVED = SquadApplyStatus.APPROVED;
     private static final int APPLY_REJECTED = SquadApplyStatus.REJECTED;
+
+    /** 审核人类型：后台账号（部门审核）。 */
+    public static final int AUDITOR_ADMIN = 1;
+    /**
+     * 审核人类型：分队负责人（志愿者）。协会 2026-09-02：分队加入申请「分队自己审，也可以由部门审核通过」；
+     * 需求表 Row 60 原文「由上述分队进行审核是否通过」。
+     */
+    public static final int AUDITOR_SQUAD_LEADER = 2;
 
     /** visibleFields 为空时的默认可见字段：仅姓名 */
     private static final Set<String> DEFAULT_VISIBLE_FIELDS = Set.of("realName");
@@ -86,7 +95,34 @@ public class SquadService {
         IPage<VolunteerSquad> page = squadMapper.selectPage(query.toPage(), Wrappers.<VolunteerSquad>lambdaQuery()
                 .eq(!admin, VolunteerSquad::getStatus, SQUAD_ENABLED)
                 .orderByDesc(VolunteerSquad::getId));
-        return PageResult.of(toVOList(page.getRecords()), page.getTotal(), page.getCurrent(), page.getSize());
+        List<SquadVO> records = toVOList(page.getRecords());
+        if (admin) {
+            fillLeaderVolunteerNames(records);
+        }
+        return PageResult.of(records, page.getTotal(), page.getCurrent(), page.getSize());
+    }
+
+    /**
+     * 后台列表补上「负责人志愿者」的姓名。{@code leaderName} 是展示给志愿者看的联系人文字、可以随便写，
+     * 与真正拿到审核权的那个志愿者（{@code leaderId}）不一定是同一个人——后台要看得出是谁。
+     * 只在后台列表填：志愿者端的分队卡片展示的仍是联系人文字。
+     */
+    private void fillLeaderVolunteerNames(List<SquadVO> records) {
+        Set<Long> ids = new HashSet<>();
+        for (SquadVO vo : records) {
+            if (vo.getLeaderId() != null) {
+                ids.add(vo.getLeaderId());
+            }
+        }
+        if (ids.isEmpty()) {
+            return;
+        }
+        Map<Long, String> names = volunteerQueryService.listNamesByIds(ids);
+        for (SquadVO vo : records) {
+            if (vo.getLeaderId() != null) {
+                vo.setLeaderVolunteerName(names.get(vo.getLeaderId()));
+            }
+        }
     }
 
     /**
@@ -160,6 +196,7 @@ public class SquadService {
     }
 
     public Long create(SquadDTO dto) {
+        requireEligibleLeader(dto.getLeaderId());
         VolunteerSquad squad = new VolunteerSquad();
         copy(dto, squad);
         if (squad.getStatus() == null) {
@@ -174,8 +211,31 @@ public class SquadService {
 
     public void update(Long id, SquadDTO dto) {
         VolunteerSquad squad = requireSquad(id);
+        // 只校验「换上来的」负责人：原负责人后来被停用时，改个分队名不该因此失败
+        if (dto.getLeaderId() != null && !Objects.equals(dto.getLeaderId(), squad.getLeaderId())) {
+            requireEligibleLeader(dto.getLeaderId());
+        }
         copy(dto, squad);
         squadMapper.updateById(squad);
+        // updateById 跳过 null：不显式 set 的话「取消负责人」静默无效，那个志愿者照样能审本分队的申请
+        squadMapper.update(null, Wrappers.<VolunteerSquad>lambdaUpdate()
+                .eq(VolunteerSquad::getId, id)
+                .set(VolunteerSquad::getLeaderId, dto.getLeaderId())
+                .set(VolunteerSquad::getLeaderName, dto.getLeaderName())
+                .set(VolunteerSquad::getLeaderPhone, dto.getLeaderPhone()));
+    }
+
+    /**
+     * 分队负责人会拿到「审核本分队加入申请」的权力（协会 2026-09-02），所以只收已实名且账号正常的志愿者。
+     * 不要求他已归属本分队：新建分队时负责人往往还没加入。
+     */
+    private void requireEligibleLeader(Long leaderId) {
+        if (leaderId == null) {
+            return;
+        }
+        if (volunteerQueryService.filterActiveRegistered(List.of(leaderId)).isEmpty()) {
+            throw new BusinessException("分队负责人须是已实名且账号正常的志愿者");
+        }
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -264,9 +324,83 @@ public class SquadService {
                 .toList();
     }
 
+    /** 后台（部门）批准加入。 */
     @Transactional(rollbackFor = Exception.class)
-    public void approveApplication(Long applicationId) {
+    public void approveApplication(Long applicationId, Long adminId) {
+        if (adminId == null) {
+            throw new BusinessException("操作人不能为空");
+        }
+        doApprove(requireApplication(applicationId), AUDITOR_ADMIN, adminId);
+    }
+
+    /** 后台（部门）拒绝加入。 */
+    public void rejectApplication(Long applicationId, String reason, Long adminId) {
+        if (adminId == null) {
+            throw new BusinessException("操作人不能为空");
+        }
+        doReject(applicationId, reason, AUDITOR_ADMIN, adminId);
+    }
+
+    // ---------- 分队负责人在小程序里审（协会 2026-09-02：分队自己审，也可以由部门审核） ----------
+
+    /** 我负责的分队（只列启用中的）。 */
+    public List<SquadVO> ledSquads(Long volunteerId) {
+        requireVolunteer(volunteerId);
+        return toVOList(squadMapper.selectList(Wrappers.<VolunteerSquad>lambdaQuery()
+                .eq(VolunteerSquad::getLeaderId, volunteerId)
+                .eq(VolunteerSquad::getStatus, SQUAD_ENABLED)
+                .orderByAsc(VolunteerSquad::getId)));
+    }
+
+    /** 我负责的分队的加入申请；status 为空时只看待审。 */
+    public PageResult<SquadApplicationVO> applicationsForLeader(Long volunteerId, Long squadId, Integer status,
+                                                                PageQuery query) {
+        requireLeaderOf(squadId, volunteerId);
+        IPage<SquadApplication> page = applicationMapper.selectPage(query.toPage(), Wrappers.<SquadApplication>lambdaQuery()
+                .eq(SquadApplication::getSquadId, squadId)
+                .eq(SquadApplication::getStatus, status == null ? APPLY_PENDING : status)
+                .orderByDesc(SquadApplication::getId));
+        return PageResult.of(toApplicationVOList(page.getRecords()), page.getTotal(), page.getCurrent(), page.getSize());
+    }
+
+    /** 分队负责人批准加入：只能审自己负责的、启用中的分队，不能审自己的申请。 */
+    @Transactional(rollbackFor = Exception.class)
+    public void approveByLeader(Long volunteerId, Long applicationId) {
+        SquadApplication application = requireApplicationForLeader(applicationId, volunteerId);
+        doApprove(application, AUDITOR_SQUAD_LEADER, volunteerId);
+    }
+
+    /** 分队负责人拒绝加入。 */
+    public void rejectByLeader(Long volunteerId, Long applicationId, String reason) {
+        requireApplicationForLeader(applicationId, volunteerId);
+        doReject(applicationId, reason, AUDITOR_SQUAD_LEADER, volunteerId);
+    }
+
+    private SquadApplication requireApplicationForLeader(Long applicationId, Long volunteerId) {
         SquadApplication application = requireApplication(applicationId);
+        requireLeaderOf(application.getSquadId(), volunteerId);
+        if (Objects.equals(application.getVolunteerId(), volunteerId)) {
+            throw new BusinessException("不能审核自己的申请");
+        }
+        return application;
+    }
+
+    /**
+     * 当前志愿者必须是这个分队的负责人，分队必须启用、账号必须正常。
+     * 不是负责人与分队不存在报同一句话，免得拿这个接口探别的分队。
+     */
+    private VolunteerSquad requireLeaderOf(Long squadId, Long volunteerId) {
+        requireVolunteer(volunteerId);
+        VolunteerSquad squad = squadId == null ? null : squadMapper.selectById(squadId);
+        if (squad == null || !Integer.valueOf(SQUAD_ENABLED).equals(squad.getStatus())
+                || !Objects.equals(squad.getLeaderId(), volunteerId)) {
+            throw new BusinessException("只有分队负责人可以审核本分队的加入申请");
+        }
+        return squad;
+    }
+
+    private void doApprove(SquadApplication application, int auditorType, Long auditorId) {
+        Long applicationId = application.getId();
         // 语义前置校验：非待审核（如已通过/已拒绝）直接给出准确文案，避免被后续「已归属」等校验抢先误报；
         // 后面的 CAS 更新仍作为并发兜底，二者不冲突。
         if (!Objects.equals(application.getStatus(), APPLY_PENDING)) {
@@ -295,6 +429,8 @@ public class SquadService {
         int auditRows = applicationMapper.update(null, Wrappers.<SquadApplication>lambdaUpdate()
                 .set(SquadApplication::getStatus, APPLY_APPROVED)
                 .set(SquadApplication::getAuditTime, now)
+                .set(SquadApplication::getAuditBy, auditorId)
+                .set(SquadApplication::getAuditByType, auditorType)
                 .set(SquadApplication::getUpdateTime, now)
                 .eq(SquadApplication::getId, applicationId)
                 .eq(SquadApplication::getStatus, APPLY_PENDING));
@@ -334,13 +470,18 @@ public class SquadService {
         }
     }
 
-    public void rejectApplication(Long applicationId, String reason) {
+    private void doReject(Long applicationId, String reason, int auditorType, Long auditorId) {
+        if (reason != null && reason.length() > 255) {
+            throw new BusinessException("拒绝原因不超过 255 字");
+        }
         LocalDateTime now = LocalDateTime.now();
         // CAS 条件更新：仅 status=待审核 时置为已拒绝，原子化避免并发覆盖
         int rows = applicationMapper.update(null, Wrappers.<SquadApplication>lambdaUpdate()
                 .set(SquadApplication::getStatus, APPLY_REJECTED)
                 .set(SquadApplication::getRejectReason, reason)
                 .set(SquadApplication::getAuditTime, now)
+                .set(SquadApplication::getAuditBy, auditorId)
+                .set(SquadApplication::getAuditByType, auditorType)
                 .set(SquadApplication::getUpdateTime, now)
                 .eq(SquadApplication::getId, applicationId)
                 .eq(SquadApplication::getStatus, APPLY_PENDING));
@@ -431,6 +572,8 @@ public class SquadService {
             vo.setStatus(a.getStatus());
             vo.setRejectReason(a.getRejectReason());
             vo.setApplyTime(a.getApplyTime());
+            vo.setAuditTime(a.getAuditTime());
+            vo.setAuditByType(a.getAuditByType());
             return vo;
         }).toList();
     }

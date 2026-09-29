@@ -126,7 +126,7 @@ public class AdminCertificateController {
         return Result.ok(certificateService.createForDonation(pairRecordId));
     }
 
-    @Operation(summary = "后台下载（同样只返回短期签名 URL）")
+    @Operation(summary = "后台查看（同样只返回短期签名 URL；不计下载次数）")
     @SaCheckPermission(value = PermissionCode.HONOR_CERTIFICATE, type = "admin")
     @GetMapping("/certificates/{id}/file")
     public Result<String> file(@PathVariable Long id) {

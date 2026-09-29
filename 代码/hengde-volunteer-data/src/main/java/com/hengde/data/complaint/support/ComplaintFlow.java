@@ -10,6 +10,14 @@ public final class ComplaintFlow {
     public static final int TYPE_COMPLAINT = 1;
     public static final int TYPE_SUGGESTION = 2;
 
+    /**
+     * 类别决定进哪个部门（协会 2026-09-02：活动类 → 组织部 / 协会内部类 → 秘书部 / 社区类 → 宣传部）。
+     * 需求表 Row 43 原写「默认到监察部」，监察部一年前已撤销（协会 2026-09-16），以协会答复为准。
+     */
+    public static final int CATEGORY_ACTIVITY = 1;
+    public static final int CATEGORY_INTERNAL = 2;
+    public static final int CATEGORY_COMMUNITY = 3;
+
     public static final int PENDING = 0;
     public static final int PROCESSING = 1;
     public static final int CLOSED = 2;
@@ -28,6 +36,22 @@ public final class ComplaintFlow {
 
     public static boolean isValidType(Integer t) {
         return t != null && (t == TYPE_COMPLAINT || t == TYPE_SUGGESTION);
+    }
+
+    public static boolean isValidCategory(Integer c) {
+        return c != null && c >= CATEGORY_ACTIVITY && c <= CATEGORY_COMMUNITY;
+    }
+
+    public static String categoryLabel(Integer c) {
+        if (c == null) {
+            return "";
+        }
+        return switch (c) {
+            case CATEGORY_ACTIVITY -> "活动类";
+            case CATEGORY_INTERNAL -> "协会内部类";
+            case CATEGORY_COMMUNITY -> "社区类";
+            default -> "未知";
+        };
     }
 
     public static String typeLabel(Integer t) {

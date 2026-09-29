@@ -84,7 +84,7 @@ class OrganizationSmsNotifyTest {
         Long vid = insertVolunteer("13922220001");
         Long appId = insertSquadApplication(squadId, vid);
 
-        squadService.approveApplication(appId);
+        squadService.approveApplication(appId, 900L);
 
         List<RecordingSmsService.Sent> sent = sms.byTemplateId("T-ORG-JOIN");
         assertEquals(1, sent.size());
@@ -99,7 +99,7 @@ class OrganizationSmsNotifyTest {
         Long vid = insertVolunteer("13922220002");
         Long appId = insertSquadApplication(squadId, vid);
 
-        squadService.rejectApplication(appId, "分队人数已满");
+        squadService.rejectApplication(appId, "分队人数已满", 900L);
 
         List<RecordingSmsService.Sent> sent = sms.byTemplateId("T-ORG-JOIN");
         assertEquals(1, sent.size());

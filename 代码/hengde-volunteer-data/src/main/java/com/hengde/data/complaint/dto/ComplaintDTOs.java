@@ -28,6 +28,10 @@ public final class ComplaintDTOs {
         @Schema(description = "1投诉/2建议")
         private Integer type;
 
+        @NotNull(message = "请选择类别")
+        @Schema(description = "1活动类/2协会内部类/3社区类——决定进哪个部门（活动类 → 组织部、协会内部类 → 秘书部、社区类 → 宣传部）")
+        private Integer category;
+
         @NotBlank(message = "请填写内容")
         @Size(max = 2000, message = "内容不超过 2000 字")
         private String content;

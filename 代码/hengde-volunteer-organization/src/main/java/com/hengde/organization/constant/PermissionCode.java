@@ -22,6 +22,8 @@ public final class PermissionCode {
     public static final String USER_DELETE = "user:delete";
     public static final String USER_EXPORT = "user:export";
     public static final String USER_PWD_RESET = "user:pwd-reset";
+    /** 恢复已注销的账号（V90；协会 2026-09-16：账号恢复 → 理事会） */
+    public static final String USER_RESTORE = "user:restore";
 
     // activity 活动管理
     public static final String ACTIVITY_MENU = "activity:menu";

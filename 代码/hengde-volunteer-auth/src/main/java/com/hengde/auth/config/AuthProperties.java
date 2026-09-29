@@ -71,4 +71,10 @@ public class AuthProperties {
 
     /** 初始超级管理员密码（首版默认值，上线后须立即登录修改） */
     private String superAdminPassword = "admin123";
+
+    /** 注销冷静期天数（协会 2026-09-16「能做的话建议加一个冷静期 7 天」）；期内账号照常可用、可撤销 */
+    private int deactivationCoolingDays = 7;
+
+    /** 是否每 10 分钟落定一次已过冷静期的注销（到期按时间现算、碰到即落定；这个任务只是把没人碰的也收拾掉） */
+    private boolean deactivationJobEnabled = true;
 }

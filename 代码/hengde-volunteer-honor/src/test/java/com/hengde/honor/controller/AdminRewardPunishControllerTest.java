@@ -2,7 +2,11 @@ package com.hengde.honor.controller;
 
 import com.hengde.auth.constant.SanctionScope;
 import com.hengde.common.exception.BusinessException;
+import com.hengde.honor.constant.PermissionCode;
 import org.junit.jupiter.api.Test;
+
+import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -33,29 +37,44 @@ class AdminRewardPunishControllerTest {
     }
 
     /**
-     * 「拒绝其使用本程序」只能由持有<b>全部限制能力</b>的账号开出
-     * （xlsx Row 73「监察部拥有全部限制能力」）。
+     * 每一档限制由对应部门开出（协会 2026-09-16）：限制参加活动 → 组织部 / 限制发布社区 → 宣传部 /
+     * 拒绝使用本程序 → 秘书部，理事会拥有全部。三档各一个点，谁都不蕴含谁——
+     * 秘书部能开最重的一档，不等于它能开「限制参加活动」。
      *
-     * <p>这一位判反的后果是所有部门都能下达最重的一档限制，Row 73 那句话也就失去了区分作用。</p>
+     * <p>判错的后果没有任何征兆：接口照常返回单号，只是谁都能开。</p>
      */
     @Test
-    void assertScopeAllowed_onlyAllScopeNeedsTheExtraPermission() {
-        // 最重的一档：没有权限必须被拒
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> AdminRewardPunishController.assertScopeAllowed(SanctionScope.ALL, false));
-        assertTrue(ex.getMessage().contains("拒绝其使用本程序"), "实际：" + ex.getMessage());
-
-        // 有权限则放行
-        assertDoesNotThrow(
-                () -> AdminRewardPunishController.assertScopeAllowed(SanctionScope.ALL, true));
-
-        // 其余能力域不受本点影响——若把判定挂成方法级 @SaCheckPermission，
-        // 「限制参加活动」这类日常处罚会被一并锁死，所以这条「不该收紧」的方向同样要钉住
-        assertDoesNotThrow(
-                () -> AdminRewardPunishController.assertScopeAllowed(SanctionScope.ACTIVITY, false));
-        assertDoesNotThrow(
-                () -> AdminRewardPunishController.assertScopeAllowed(SanctionScope.COMMUNITY, false));
-        // 不附带处置的单（含全部奖励）更不该被拦
-        assertDoesNotThrow(() -> AdminRewardPunishController.assertScopeAllowed(null, false));
+    void assertScopeAllowed_eachScopeNeedsItsOwnDepartmentPermission() {
+        Map<Integer, String> required = Map.of(
+                SanctionScope.ACTIVITY, PermissionCode.HONOR_SANCTION_ACTIVITY,
+                SanctionScope.COMMUNITY, PermissionCode.HONOR_SANCTION_COMMUNITY,
+                SanctionScope.COMMUNITY_POST, PermissionCode.HONOR_SANCTION_COMMUNITY,
+                SanctionScope.COMMUNITY_COMMENT, PermissionCode.HONOR_SANCTION_COMMUNITY,
+                SanctionScope.COMMUNITY_LIKE, PermissionCode.HONOR_SANCTION_COMMUNITY,
+                SanctionScope.COMMUNITY_CHAT, PermissionCode.HONOR_SANCTION_COMMUNITY,
+                SanctionScope.ALL, PermissionCode.HONOR_SANCTION_ALL);
+        for (Map.Entry<Integer, String> e : required.entrySet()) {
+            int scope = e.getKey();
+            String code = e.getValue();
+            // 没有任何限制权限：拒
+            BusinessException ex = assertThrows(BusinessException.class,
+                    () -> AdminRewardPunishController.assertScopeAllowed(scope, c -> false), "档位 " + scope);
+            assertTrue(ex.getMessage().contains(code), "报错要说清缺哪个点：" + ex.getMessage());
+            // 只有这一档的点：放行
+            assertDoesNotThrow(() -> AdminRewardPunishController.assertScopeAllowed(scope, code::equals), "档位 " + scope);
+            // 只有别的档的点：拒——三个点互不蕴含
+            for (String other : Set.copyOf(required.values())) {
+                if (!other.equals(code)) {
+                    assertThrows(BusinessException.class,
+                            () -> AdminRewardPunishController.assertScopeAllowed(scope, other::equals),
+                            "持 " + other + " 不能开档位 " + scope);
+                }
+            }
+            // 理事会（三个点都有）：放行
+            assertDoesNotThrow(() -> AdminRewardPunishController.assertScopeAllowed(scope, required::containsValue));
+        }
+        // 不附带处置的单（含全部奖励）不需要任何限制权限；未知取值交给 service 拒绝，这里不拦
+        assertDoesNotThrow(() -> AdminRewardPunishController.assertScopeAllowed(null, c -> false));
+        assertDoesNotThrow(() -> AdminRewardPunishController.assertScopeAllowed(99, c -> false));
     }
 }

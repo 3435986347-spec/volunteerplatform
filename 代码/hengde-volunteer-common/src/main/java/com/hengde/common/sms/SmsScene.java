@@ -29,6 +29,9 @@ public interface SmsScene {
     /** 修改/换绑手机号 */
     String CHANGE_PHONE = "change-phone";
 
+    /** 申请注销账号（协会 2026-09-16：注销＝退出协会，7 天冷静期；验证码发到本人手机号，防 token 被人拿去替他注销） */
+    String ACCOUNT_DEACTIVATE = "account-deactivate";
+
     /** 爱心企业入驻注册（负责人手机号验证，V4 爱心企业批） */
     String ENTERPRISE_REGISTER = "enterprise-register";
 

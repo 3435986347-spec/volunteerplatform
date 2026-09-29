@@ -6,9 +6,11 @@ import com.hengde.activity.service.ServiceRecordService;
 import com.hengde.activity.vo.VolunteerServiceStatsView;
 import com.hengde.auth.dao.VolunteerMapper;
 import com.hengde.auth.entity.Volunteer;
+import com.hengde.auth.service.VolunteerDeactivationService;
 import com.hengde.common.constant.Gender;
 import com.hengde.common.constant.Grade;
 import com.hengde.common.constant.PoliticalStatus;
+import com.hengde.common.constant.UserStatus;
 import com.hengde.common.crypto.CryptoUtil;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.oss.FileStorageService;
@@ -68,6 +70,12 @@ public class MyProfileService {
     }
     private VerifyCodeService verifyCodeService;
     private FileStorageService fileStorageService;
+    private VolunteerDeactivationService deactivationService;
+
+    @Autowired
+    public void setDeactivationService(VolunteerDeactivationService deactivationService) {
+        this.deactivationService = deactivationService;
+    }
 
     @Autowired
     public void setFileStorageService(FileStorageService fileStorageService) {
@@ -133,6 +141,10 @@ public class MyProfileService {
         vo.setGrade(gr == null ? null : gr.getCode());
         vo.setGradeName(gr == null ? null : gr.getLabel());
         vo.setGradePromptPending(Integer.valueOf(1).equals(v.getGradePromptPending()));
+        vo.setSchoolConfirmYear(v.getSchoolConfirmYear());
+        vo.setSchoolConfirmPending(schoolConfirmPending(v));
+        vo.setDeactivateRequestTime(v.getDeactivateRequestTime());
+        vo.setDeactivateEffectiveTime(v.getDeactivateEffectiveTime());
         vo.setPadSignatureUrl(v.getPadSignatureUrl());
         vo.setSchool(v.getSchool());
         vo.setAddress(v.getAddress());
@@ -290,6 +302,8 @@ public class MyProfileService {
         if (newHash.equals(v.getPhoneHash())) {
             return; // 与当前号相同，无需变更
         }
+        // 新号的持有者若已过注销冷静期，先把号释放出来（协会 2026-09-16：注销后手机号释放）
+        deactivationService.releasePhoneIfDue(newHash);
         Long clash = volunteerMapper.selectCount(Wrappers.<Volunteer>lambdaQuery()
                 .eq(Volunteer::getPhoneHash, newHash)
                 .ne(Volunteer::getId, volunteerId));
@@ -307,6 +321,51 @@ public class MyProfileService {
             // 并发竞态：两账号同时换绑同一新号，先查重后更新仍可能撞 uk_phone_hash；转明确业务错误而非 500
             throw new BusinessException("该手机号已被其他账号使用");
         }
+    }
+
+    /**
+     * 每年确认一次学校和年级（协会 2026-09-16：「每年由志愿者确认学校和年级即可，审核自动通过，原则上不影响报名」）。
+     * 原型 P6 的「待审核」三态流程作废——确认即通过，不挂任何报名限制。
+     *
+     * <p>确认的年级就是这个学年的年级：年级升级任务下个 9 月才动它，挂着的「请改学校和年级」提示一并清除
+     * （与 {@code updateMyProfile} 改年级同一口径）。</p>
+     */
+    public void confirmSchoolAndGrade(long volunteerId, String school, Integer grade) {
+        Volunteer v = volunteerMapper.selectById(volunteerId);
+        if (v == null || v.getRegisterTime() == null) {
+            throw new BusinessException("请先完成实名注册");
+        }
+        if (!UserStatus.NORMAL.equals(v.getStatus())) {
+            throw new BusinessException("账号状态异常，无法操作");
+        }
+        String s = school == null ? "" : school.trim();
+        if (s.isEmpty()) {
+            throw new BusinessException("请填写学校");
+        }
+        if (s.length() > 64) {
+            throw new BusinessException("学校名称不超过 64 字");
+        }
+        if (grade == null) {
+            throw new BusinessException("请选择年级");
+        }
+        int year = Grade.schoolYearOf(LocalDate.now());
+        volunteerMapper.update(null, Wrappers.<Volunteer>lambdaUpdate()
+                .eq(Volunteer::getId, volunteerId)
+                .set(Volunteer::getSchool, s)
+                .set(Volunteer::getGrade, parseGrade(grade))
+                .set(Volunteer::getSchoolConfirmYear, year)
+                .set(Volunteer::getGradeUpgradeYear, year)
+                .set(Volunteer::getGradePromptPending, 0)
+                .set(Volunteer::getUpdateTime, LocalDateTime.now()));
+    }
+
+    /** 已实名、账号正常、这个学年还没确认过（没记过的也算没确认）。 */
+    private static boolean schoolConfirmPending(Volunteer v) {
+        if (v.getRegisterTime() == null || !UserStatus.NORMAL.equals(v.getStatus())) {
+            return false;
+        }
+        Integer confirmed = v.getSchoolConfirmYear();
+        return confirmed == null || confirmed < Grade.schoolYearOf(LocalDate.now());
     }
 
     private PoliticalStatus parsePolitical(Integer code) {

@@ -11,6 +11,7 @@ import com.hengde.auth.dao.AdminUserMapper;
 import com.hengde.auth.dao.VolunteerMapper;
 import com.hengde.auth.entity.AdminUser;
 import com.hengde.auth.entity.Volunteer;
+import com.hengde.auth.service.VolunteerDeactivationService;
 import com.hengde.common.constant.Gender;
 import com.hengde.common.constant.Grade;
 import com.hengde.common.constant.PoliticalStatus;
@@ -60,6 +61,12 @@ public class AdminVolunteerService {
     private VolunteerMapper volunteerMapper;
     private AdminUserMapper adminUserMapper;
     private CryptoUtil cryptoUtil;
+    private VolunteerDeactivationService deactivationService;
+
+    @Autowired
+    public void setDeactivationService(VolunteerDeactivationService deactivationService) {
+        this.deactivationService = deactivationService;
+    }
     private ServiceRecordService serviceRecordService;
     private GroupQueryService groupQueryService;
     private SquadQueryService squadQueryService;
@@ -324,6 +331,8 @@ public class AdminVolunteerService {
         if (newHash.equals(current.getPhoneHash())) {
             return; // 同号未变，不重写密文（避免无谓 churn）
         }
+        // 新号的持有者若已过注销冷静期，先把号释放出来（协会 2026-09-16：注销后手机号释放）
+        deactivationService.releasePhoneIfDue(newHash);
         Long clash = volunteerMapper.selectCount(Wrappers.<Volunteer>lambdaQuery()
                 .eq(Volunteer::getPhoneHash, newHash)
                 .ne(Volunteer::getId, id));
@@ -406,6 +415,9 @@ public class AdminVolunteerService {
         vo.setActivities(s == null ? 0 : s.activityCount());
         vo.setStatus(v.getStatus());
         vo.setRegisterTime(v.getRegisterTime());
+        vo.setDeactivateEffectiveTime(v.getDeactivateEffectiveTime());
+        vo.setDeactivatedTime(v.getDeactivatedTime());
+        vo.setSchoolConfirmYear(v.getSchoolConfirmYear());
     }
 
     private String decrypt(String stored) {

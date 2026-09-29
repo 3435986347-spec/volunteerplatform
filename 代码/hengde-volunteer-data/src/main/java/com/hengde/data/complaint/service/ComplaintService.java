@@ -49,8 +49,12 @@ import java.util.stream.Collectors;
 /**
  * 投诉建议（Row 43「类似于问卷收集 / 投诉默认到监察部，后续监察部可根据工作需要选择流转到其他部门，含处理进度」，V4 投诉建议批）。
  *
+ * <p><b>进哪个部门按类别分</b>（协会 2026-09-02）：活动类 → 组织部 / 协会内部类 → 秘书部 / 社区类 → 宣传部。
+ * Row 43 写的「监察部」与分队管理部一年前已撤销（协会 2026-09-16），以协会答复为准；部门名走配置
+ * {@code hengde.data.complaint.routes.*}，须与后台账号上的部门一字不差。</p>
+ *
  * <p><b>工单在谁手上谁看</b>：持 {@code data:complaint} 的账号只看得到、只动得了「当前在本部门」的工单；
- * 持 {@code data:complaint-all}（默认给监察部）的看全部、可代任何部门处理。部门就是 {@code admin_user.department} 那段文字，
+ * 持 {@code data:complaint-all} 的看全部、可代任何部门处理。部门就是 {@code admin_user.department} 那段文字，
  * 流转只能转给<b>当前有启用账号</b>的部门——转过去一定有人看得到。</p>
  *
  * <p><b>状态迁移全是 CAS，条件里带「当前部门」</b>：受理 / 流转 / 答复并发时只有一个成功；
@@ -146,7 +150,7 @@ public class ComplaintService {
     // ================= 志愿者端 =================
 
     /**
-     * 提交一条投诉建议，进默认部门（监察部）。按人上锁：24 小时条数限制是「先数再插」，不锁的话连点能越过上限。
+     * 提交一条投诉建议，按类别进对应部门。按人上锁：24 小时条数限制是「先数再插」，不锁的话连点能越过上限。
      * 协会为「投诉建议」场景发布了问卷时，答卷与工单同一事务落库。
      */
     public Long submit(Long volunteerId, ComplaintDTOs.Submit dto) {
@@ -163,15 +167,19 @@ public class ComplaintService {
         if (content.codePointCount(0, content.length()) > 2000) {
             throw new BusinessException("内容不超过 2000 字");
         }
-        String images = checkImages(dto.getImages());
-        if (!StringUtils.hasText(properties.getDefaultDepartment())) {
-            throw new BusinessException("投诉建议暂未开放（没有配置受理部门）");
+        if (!ComplaintFlow.isValidCategory(dto.getCategory())) {
+            throw new BusinessException("类别只能是 1活动类 / 2协会内部类 / 3社区类");
         }
+        String dept = properties.departmentFor(dto.getCategory());
+        if (dept == null) {
+            throw new BusinessException("「" + ComplaintFlow.categoryLabel(dto.getCategory()) + "」投诉建议暂未开放（没有配置受理部门）");
+        }
+        String images = checkImages(dto.getImages());
         return DistributedLockSupport.runLocked(redissonClient, LOCK_PREFIX + volunteerId,
-                () -> transactionTemplate.execute(s -> doSubmit(volunteerId, dto, content, images)));
+                () -> transactionTemplate.execute(s -> doSubmit(volunteerId, dto, content, images, dept)));
     }
 
-    private Long doSubmit(Long volunteerId, ComplaintDTOs.Submit dto, String content, String images) {
+    private Long doSubmit(Long volunteerId, ComplaintDTOs.Submit dto, String content, String images, String dept) {
         if (!volunteerQueryService.isActive(volunteerId)) {
             throw new BusinessException("账号状态异常，无法提交");
         }
@@ -184,10 +192,10 @@ public class ComplaintService {
         }
         Long formSubmissionId = formSubmissionService.submitForScene(FormFlow.SCENE_COMPLAINT, volunteerId,
                 dto.getAnswers());
-        String dept = properties.getDefaultDepartment().trim();
         DataComplaint c = new DataComplaint();
         c.setVolunteerId(volunteerId);
         c.setComplaintType(dto.getType());
+        c.setCategory(dto.getCategory());
         c.setContent(content);
         c.setImages(images);
         c.setFormSubmissionId(formSubmissionId);
@@ -243,6 +251,11 @@ public class ComplaintService {
 
     public PageResult<ComplaintVOs.Complaint> listForAdmin(Scope scope, PageQuery query, Integer status, Integer type,
                                                            String department, String keyword) {
+        return listForAdmin(scope, query, status, type, null, department, keyword);
+    }
+
+    public PageResult<ComplaintVOs.Complaint> listForAdmin(Scope scope, PageQuery query, Integer status, Integer type,
+                                                           Integer category, String department, String keyword) {
         requireAdmin(scope);
         if (!scope.allDepartments()) {
             if (scope.department() == null) {
@@ -254,6 +267,7 @@ public class ComplaintService {
         IPage<DataComplaint> page = complaintMapper.selectPage(query.toPage(), Wrappers.<DataComplaint>lambdaQuery()
                 .eq(status != null, DataComplaint::getStatus, status)
                 .eq(type != null, DataComplaint::getComplaintType, type)
+                .eq(category != null, DataComplaint::getCategory, category)
                 .eq(StringUtils.hasText(department), DataComplaint::getCurrentDepartment, department)
                 .and(StringUtils.hasText(kw), w -> w.eq(DataComplaint::getComplaintNo, kw).or()
                         .like(DataComplaint::getContent, kw))
@@ -533,6 +547,8 @@ public class ComplaintService {
         vo.setComplaintNo(c.getComplaintNo());
         vo.setType(c.getComplaintType());
         vo.setTypeLabel(ComplaintFlow.typeLabel(c.getComplaintType()));
+        vo.setCategory(c.getCategory());
+        vo.setCategoryLabel(ComplaintFlow.categoryLabel(c.getCategory()));
         vo.setContent(c.getContent());
         vo.setImages(StringUtils.hasText(c.getImages()) ? new ArrayList<>(Arrays.asList(c.getImages().split(",")))
                 : new ArrayList<>());

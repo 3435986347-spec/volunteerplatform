@@ -18,4 +18,7 @@ public class SquadApplicationVO {
     private Integer status;
     private String rejectReason;
     private LocalDateTime applyTime;
+    private LocalDateTime auditTime;
+    /** 1 后台账号 / 2 分队负责人（V87 之前审核的为空） */
+    private Integer auditByType;
 }

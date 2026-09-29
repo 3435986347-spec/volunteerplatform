@@ -59,9 +59,10 @@ public class AdminComplaintController {
     public Result<PageResult<ComplaintVOs.Complaint>> list(PageQuery query,
             @Parameter(description = "0待受理/1处理中/2已办结") @RequestParam(required = false) Integer status,
             @Parameter(description = "1投诉/2建议") @RequestParam(required = false) Integer type,
+            @Parameter(description = "1活动类/2协会内部类/3社区类") @RequestParam(required = false) Integer category,
             @RequestParam(required = false) String department,
             @Parameter(description = "编号精确或内容模糊") @RequestParam(required = false) String keyword) {
-        return Result.ok(complaintService.listForAdmin(scope(), query, status, type, department, keyword));
+        return Result.ok(complaintService.listForAdmin(scope(), query, status, type, category, department, keyword));
     }
 
     @Operation(summary = "可流转的部门（当前有启用后台账号的部门）")

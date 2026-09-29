@@ -1,6 +1,7 @@
 package com.hengde.organization.biz.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.hengde.auth.config.StpAdminUtil;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
 import com.hengde.common.result.Result;
@@ -84,7 +85,7 @@ public class AdminSquadController {
     @SaCheckPermission(value = "org:squad-audit", type = "admin")
     @PostMapping("/applications/{id}/approve")
     public Result<Void> approve(@PathVariable Long id) {
-        squadService.approveApplication(id);
+        squadService.approveApplication(id, StpAdminUtil.getLoginIdAsLong());
         return Result.ok();
     }
 
@@ -92,7 +93,7 @@ public class AdminSquadController {
     @SaCheckPermission(value = "org:squad-audit", type = "admin")
     @PostMapping("/applications/{id}/reject")
     public Result<Void> reject(@PathVariable Long id, @RequestBody(required = false) GroupAuditDTO dto) {
-        squadService.rejectApplication(id, dto == null ? null : dto.getReason());
+        squadService.rejectApplication(id, dto == null ? null : dto.getReason(), StpAdminUtil.getLoginIdAsLong());
         return Result.ok();
     }
 }

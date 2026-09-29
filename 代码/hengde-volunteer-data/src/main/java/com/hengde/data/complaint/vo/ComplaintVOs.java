@@ -25,6 +25,9 @@ public final class ComplaintVOs {
         private String complaintNo;
         private Integer type;
         private String typeLabel;
+        @Schema(description = "1活动类/2协会内部类/3社区类；V84 之前提交的为空")
+        private Integer category;
+        private String categoryLabel;
         private String content;
         private List<String> images = new ArrayList<>();
         @Schema(description = "0待受理/1处理中/2已办结")

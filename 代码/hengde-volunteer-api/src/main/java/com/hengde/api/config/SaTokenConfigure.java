@@ -11,6 +11,7 @@ import com.hengde.auth.dao.AdminUserMapper;
 import com.hengde.auth.dao.VolunteerMapper;
 import com.hengde.auth.entity.AdminUser;
 import com.hengde.auth.entity.Volunteer;
+import com.hengde.auth.service.VolunteerDeactivationService;
 import com.hengde.common.constant.UserStatus;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.result.ResultCode;
@@ -24,6 +25,7 @@ public class SaTokenConfigure implements WebMvcConfigurer {
 
     private AdminUserMapper adminUserMapper;
     private VolunteerMapper volunteerMapper;
+    private VolunteerDeactivationService deactivationService;
     private DenyAllUseGate denyAllUseGate;
     private EnterpriseAccountGate enterpriseAccountGate;
 
@@ -45,6 +47,11 @@ public class SaTokenConfigure implements WebMvcConfigurer {
     @Autowired
     public void setVolunteerMapper(VolunteerMapper volunteerMapper) {
         this.volunteerMapper = volunteerMapper;
+    }
+
+    @Autowired
+    public void setDeactivationService(VolunteerDeactivationService deactivationService) {
+        this.deactivationService = deactivationService;
     }
 
     @Override
@@ -171,7 +178,9 @@ public class SaTokenConfigure implements WebMvcConfigurer {
      */
     private void checkVolunteerEnabled(String path) {
         Volunteer volunteer = volunteerMapper.selectById(StpUtil.getLoginIdAsLong());
-        Integer status = volunteer == null ? null : volunteer.getStatus();
+        // 已过注销冷静期：当场落定并按已注销处理（到没到期按时间现算，不等定时任务改状态位）
+        Integer status = volunteer == null ? null
+                : deactivationService.finalizeIfDue(volunteer) ? UserStatus.DELETED : volunteer.getStatus();
         switch (decide(status, path)) {
             case PASS -> {
             }

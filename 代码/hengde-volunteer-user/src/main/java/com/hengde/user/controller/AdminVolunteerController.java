@@ -1,11 +1,14 @@
 package com.hengde.user.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.hengde.auth.config.StpAdminUtil;
+import com.hengde.auth.service.VolunteerDeactivationService;
 import com.hengde.common.excel.ExcelUtil;
 import com.hengde.common.page.PageResult;
 import com.hengde.common.result.Result;
 import com.hengde.organization.constant.PermissionCode;
 import com.hengde.user.dto.VolunteerQueryDTO;
+import com.hengde.user.dto.VolunteerRestoreDTO;
 import com.hengde.user.dto.VolunteerStatusDTO;
 import com.hengde.user.dto.VolunteerUpdateDTO;
 import com.hengde.user.service.AdminVolunteerService;
@@ -45,6 +48,13 @@ import java.util.List;
 public class AdminVolunteerController {
 
     private AdminVolunteerService adminVolunteerService;
+
+    private VolunteerDeactivationService deactivationService;
+
+    @Autowired
+    public void setDeactivationService(VolunteerDeactivationService deactivationService) {
+        this.deactivationService = deactivationService;
+    }
 
     @Autowired
     public void setAdminVolunteerService(AdminVolunteerService adminVolunteerService) {
@@ -93,6 +103,18 @@ public class AdminVolunteerController {
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable Long id) {
         adminVolunteerService.delete(id);
+        return Result.ok();
+    }
+
+    /**
+     * 协会 2026-09-16：本人希望重新加入时由理事会在后台恢复账号；注销时手机号已经释放、可能已被别人注册，
+     * 所以恢复时填一个当前没被占用的手机号（《待协会答复》乙-3 默认 (a)）。恢复后没有密码，本人用这个号收验证码登录。
+     */
+    @Operation(summary = "恢复已注销的账号（填一个当前没被占用的手机号；理事会）")
+    @SaCheckPermission(value = PermissionCode.USER_RESTORE, type = "admin")
+    @PostMapping("/{id}/restore")
+    public Result<Void> restore(@PathVariable Long id, @RequestBody @Valid VolunteerRestoreDTO dto) {
+        deactivationService.restore(id, dto.getPhone(), StpAdminUtil.getLoginIdAsLong());
         return Result.ok();
     }
 

@@ -46,12 +46,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author hengde
  */
 @Tag("stress")
-@SpringBootTest(properties = {"hengde.data.complaint.default-department=监察部", "hengde.data.complaint.daily-limit=4"})
+@SpringBootTest(properties = {"hengde.data.complaint.routes.activity=组织部", "hengde.data.complaint.daily-limit=4"})
 @Import({TestcontainersConfig.class, RedisTestcontainersConfig.class, RecordingSmsConfig.class})
 class ComplaintStressTest {
 
     private static final int THREADS = 16;
-    private static final String[] DEPTS = {"监察部", "宣传部", "组织部"};
+    private static final String[] DEPTS = {"组织部", "宣传部", "秘书部"};
     private static final AtomicLong SEQ = new AtomicLong(System.nanoTime() % 1_000_000L + 800_000L);
 
     @Autowired
@@ -173,6 +173,7 @@ class ComplaintStressTest {
     private static ComplaintDTOs.Submit submit(String content) {
         ComplaintDTOs.Submit d = new ComplaintDTOs.Submit();
         d.setType(ComplaintFlow.TYPE_SUGGESTION);
+        d.setCategory(ComplaintFlow.CATEGORY_ACTIVITY);
         d.setContent(content);
         return d;
     }

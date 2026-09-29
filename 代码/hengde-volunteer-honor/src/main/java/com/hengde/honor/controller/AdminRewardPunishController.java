@@ -32,6 +32,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.function.Predicate;
 
 /**
  * 管理端-奖惩中心（{@code /a/honor/reward-punishes}）。
@@ -108,14 +109,13 @@ public class AdminRewardPunishController {
      * <p>处罚可由一条现场违规转来（{@code violationId}），但那条违规<b>必须已通过组织部审核</b>——
      * 未经核实的现场记录只是负责人的一面之词，不够格作为处罚依据。</p>
      *
-     * <p><b>最重的那一档限制要额外授权</b>：见 {@link #assertScopeAllowed}。</p>
+     * <p><b>每一档限制要对应部门的权限</b>：见 {@link #assertScopeAllowed}。</p>
      */
     @Operation(summary = "开一张奖惩单（落待审核；处罚可关联已审核通过的现场违规）")
     @SaCheckPermission(value = PermissionCode.HONOR_REWARD_PUNISH, type = "admin")
     @PostMapping("/reward-punishes")
     public Result<Long> create(@RequestBody @Valid RewardPunishSaveDTO dto) {
-        assertScopeAllowed(dto.getSanctionScope(),
-                StpAdminUtil.STP_LOGIC.hasPermission(PermissionCode.HONOR_SANCTION_ALL));
+        assertScopeAllowed(dto.getSanctionScope(), StpAdminUtil.STP_LOGIC::hasPermission);
         // 【快捷通道的判据是开单人的权限，不是请求体里的开关】持终审权 = 理事会开单 = 开即通过。
         // 做成开关的话，任何有开单权的人都能给自己开一条免审通道，两级审核就成了自愿参加的。
         // 与 assertScopeAllowed 同一形状：能不能这么做是【授权】问题，
@@ -126,31 +126,45 @@ public class AdminRewardPunishController {
     }
 
     /**
-     * 「拒绝其使用本程序」只能由持有<b>全部限制能力</b>的账号开出。
+     * 每一档限制由对应部门开出（协会 2026-09-16）：
+     * 限制参加活动 → 组织部（{@code honor:sanction-activity}）/ 限制发布社区及其细分档 → 宣传部
+     * （{@code honor:sanction-community}）/ 拒绝使用本程序 → 秘书部（{@code honor:sanction-all}）；
+     * <b>理事会拥有全部限制权限</b>＝三个点都授给理事会的账号。
      *
-     * <p><b>需求出处</b> xlsx Row 73：「…可由该部门负责的同学限制其使用，包括但不限制于
-     * 限制其使用指定天数、<b>拒绝其使用本程序</b>。<b>监察部拥有全部限制能力</b>」。
-     * 只要拿到开单权就能填最重的一档，等于所有部门都拥有全部限制能力，
-     * 那句话也就没有任何区分作用了。</p>
+     * <p>需求表 Row 73 原写「可由该部门负责的同学限制其使用……监察部拥有全部限制能力」——监察部一年前已撤销。
+     * 此前（V36）只拆出了最重的一档，「限制参加活动」「限制发布社区」跟着开单权走，任何能开单的人都能开。</p>
      *
-     * <p><b>为什么不能写成 {@code @SaCheckPermission}</b>：它拦的是整个方法，
-     * 而这里的判定取决于<b>请求体里的 {@code sanctionScope}</b>——挂在方法上会把
-     * 「限制参加活动」这类日常处罚也一并锁死。</p>
+     * <p><b>为什么不能写成 {@code @SaCheckPermission}</b>：它拦的是整个方法，而这里的判定取决于
+     * <b>请求体里的 {@code sanctionScope}</b>——挂在方法上会把不附带处置的单（含全部奖励）也一并锁死。</p>
      *
-     * <p><b>为什么单独成静态方法</b>：与 {@link #appealedOnly} 同一理由——这一位判反了不会有任何
-     * 编译或运行期征兆（接口照常返回单号，只是谁都能开出最重的限制），
+     * <p><b>为什么单独成静态方法</b>：这一位判错不会有任何编译或运行期征兆（接口照常返回单号，只是谁都能开），
      * 而 service 层用例根本触碰不到 controller 传的是什么。抽出来才能被直接断言。</p>
      *
-     * @param sanctionScope             请求体里的处置能力域，可为 {@code null}（不附带处置）
-     * @param hasAllSanctionPermission  是否持有 {@code honor:sanction-all}
-     * @throws BusinessException 想开最重一档却没有该权限
+     * @param sanctionScope 请求体里的处置能力域，可为 {@code null}（不附带处置）
+     * @param hasPermission 当前账号是否持有某个权限点
+     * @throws BusinessException 想开某一档限制却没有对应权限
      */
-    static void assertScopeAllowed(Integer sanctionScope, boolean hasAllSanctionPermission) {
-        if (sanctionScope != null && sanctionScope == SanctionScope.ALL && !hasAllSanctionPermission) {
+    static void assertScopeAllowed(Integer sanctionScope, Predicate<String> hasPermission) {
+        String required = requiredPermission(sanctionScope);
+        if (required != null && !hasPermission.test(required)) {
             throw new BusinessException(ResultCode.FORBIDDEN.getCode(),
-                    "「拒绝其使用本程序」属全部限制能力，需要「" + PermissionCode.HONOR_SANCTION_ALL
-                            + "」权限（Row 73：监察部拥有全部限制能力）");
+                    "开出「" + SanctionScope.labelOf(sanctionScope) + "」需要「" + required + "」权限"
+                            + "（限制参加活动由组织部、限制发布社区由宣传部、拒绝使用本程序由秘书部负责，理事会拥有全部限制权限）");
         }
+    }
+
+    /** 某一档处置要求的权限点；不附带处置或取值未知时返回 {@code null}（未知取值由 service 的 {@code assertKnown} 拒绝）。 */
+    static String requiredPermission(Integer sanctionScope) {
+        if (sanctionScope == null) {
+            return null;
+        }
+        return switch (sanctionScope) {
+            case SanctionScope.ACTIVITY -> PermissionCode.HONOR_SANCTION_ACTIVITY;
+            case SanctionScope.ALL -> PermissionCode.HONOR_SANCTION_ALL;
+            case SanctionScope.COMMUNITY, SanctionScope.COMMUNITY_POST, SanctionScope.COMMUNITY_COMMENT,
+                 SanctionScope.COMMUNITY_LIKE, SanctionScope.COMMUNITY_CHAT -> PermissionCode.HONOR_SANCTION_COMMUNITY;
+            default -> null;
+        };
     }
 
     /**

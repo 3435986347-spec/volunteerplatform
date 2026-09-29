@@ -19,7 +19,7 @@ public class SmsCodeDTO {
 
     /**
      * 场景：register（注册，默认）/ login（手机号验证码登录）/ volunteer-password-reset（忘记密码）/
-     * change-phone（换绑手机号）。service 层按白名单校验，越界拒绝。
+     * change-phone（换绑手机号）/ account-deactivate（申请注销，发到本人手机号）。service 层按白名单校验，越界拒绝。
      */
     private String scene;
 }

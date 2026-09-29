@@ -74,4 +74,13 @@ public class AdminVolunteerListVO {
 
     /** 实名注册时间 */
     private LocalDateTime registerTime;
+
+    /** 注销生效时间：有值且在将来＝注销冷静期中（期内本人可撤销）；V88 */
+    private LocalDateTime deactivateEffectiveTime;
+
+    /** 注销落定时间（已注销的账号才有）；V88 */
+    private LocalDateTime deactivatedTime;
+
+    /** 学校年级已确认到的学年（9 月 1 日为界，如 2026 表示 2026-2027 学年）；V88 */
+    private Integer schoolConfirmYear;
 }

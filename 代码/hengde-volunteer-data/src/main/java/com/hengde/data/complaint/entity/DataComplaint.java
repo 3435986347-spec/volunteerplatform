@@ -20,6 +20,8 @@ public class DataComplaint extends BaseEntity {
     private String complaintNo;
     private Long volunteerId;
     private Integer complaintType;
+    /** 1活动类/2协会内部类/3社区类（V84；之前的工单为 NULL）。 */
+    private Integer category;
     private String content;
     /** 逗号分隔 */
     private String images;
