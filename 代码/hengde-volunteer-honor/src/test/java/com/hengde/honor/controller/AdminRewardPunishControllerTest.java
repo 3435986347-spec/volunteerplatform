@@ -2,8 +2,15 @@ package com.hengde.honor.controller;
 
 import com.hengde.auth.constant.SanctionScope;
 import com.hengde.common.exception.BusinessException;
+import com.hengde.common.testsupport.RedisTestcontainersConfig;
+import com.hengde.common.testsupport.TestcontainersConfig;
+import com.hengde.honor.InMemoryFileStorageConfig;
 import com.hengde.honor.constant.PermissionCode;
+import com.hengde.honor.service.RewardPunishService;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 
 import java.util.Map;
 import java.util.Set;
@@ -14,7 +21,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 管理端奖惩控制器里两处<b>纯判定</b>的极性回归。纯单元用例，不起 Spring 上下文。
+ * 管理端奖惩控制器里几处<b>纯判定</b>的极性回归。
+ *
+ * <p>按项目约定走 {@code @SpringBootTest}（与 {@code RewardPunishServiceTest} 同一组配置，复用同一个上下文，
+ * 不多起容器）；判定本身是静态方法，另有「解除处置要先知道这张单是哪一档」那一步要用到真实的 service。</p>
  *
  * <p><b>为什么值得单独一个类</b>：这两处判反了<b>没有任何征兆</b>——接口照常 200、照常返回数据，
  * 只是把不该给的东西给了出去；而 service 层的用例根本触碰不到 controller 传的是什么值。
@@ -26,7 +36,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * @author hengde
  */
+@SpringBootTest
+@Import({TestcontainersConfig.class, RedisTestcontainersConfig.class, InMemoryFileStorageConfig.class})
 class AdminRewardPunishControllerTest {
+
+    @Autowired
+    private RewardPunishService rewardPunishService;
 
     @Test
     void appealedOnly_polarityIsPinned() {
@@ -76,5 +91,25 @@ class AdminRewardPunishControllerTest {
         // 不附带处置的单（含全部奖励）不需要任何限制权限；未知取值交给 service 拒绝，这里不拦
         assertDoesNotThrow(() -> AdminRewardPunishController.assertScopeAllowed(null, c -> false));
         assertDoesNotThrow(() -> AdminRewardPunishController.assertScopeAllowed(99, c -> false));
+    }
+
+    /**
+     * 提前解除与开出同一档要同一个权限点——否则任何持 {@code honor:sanction} 的账号都能把秘书部开的
+     * 「拒绝使用本程序」提前解掉，部门分工只管住了开单那一半。
+     */
+    @Test
+    void liftingASanction_needsTheSamePermissionAsImposingIt() {
+        for (int scope : new int[]{SanctionScope.ACTIVITY, SanctionScope.COMMUNITY, SanctionScope.ALL}) {
+            String code = AdminRewardPunishController.requiredPermission(scope);
+            BusinessException ex = assertThrows(BusinessException.class,
+                    () -> AdminRewardPunishController.assertScopeAllowed(scope, c -> false, "解除"));
+            assertTrue(ex.getMessage().startsWith("解除"), ex.getMessage());
+            assertTrue(ex.getMessage().contains(code), ex.getMessage());
+            assertDoesNotThrow(() -> AdminRewardPunishController.assertScopeAllowed(scope, code::equals, "解除"));
+        }
+        // 不附带处置的单：没什么可解除，不要求档位权限
+        assertDoesNotThrow(() -> AdminRewardPunishController.assertScopeAllowed(null, c -> false, "解除"));
+        // 解除前先按单号取档位：单不存在直接报错，不能当成「不附带处置」放过去
+        assertThrows(BusinessException.class, () -> rewardPunishService.sanctionScopeOf(-1L));
     }
 }

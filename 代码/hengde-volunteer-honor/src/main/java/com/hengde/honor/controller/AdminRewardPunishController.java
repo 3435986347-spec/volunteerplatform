@@ -145,10 +145,18 @@ public class AdminRewardPunishController {
      * @throws BusinessException 想开某一档限制却没有对应权限
      */
     static void assertScopeAllowed(Integer sanctionScope, Predicate<String> hasPermission) {
+        assertScopeAllowed(sanctionScope, hasPermission, "开出");
+    }
+
+    /**
+     * 同上，{@code action} 是报错里的动词（「开出」/「解除」）。<b>解除与开出同一档要同一个权限点</b>——
+     * 否则任何持 {@code honor:sanction} 的账号都能把秘书部开的「拒绝使用本程序」提前解掉，部门分工只管住了一半。
+     */
+    static void assertScopeAllowed(Integer sanctionScope, Predicate<String> hasPermission, String action) {
         String required = requiredPermission(sanctionScope);
         if (required != null && !hasPermission.test(required)) {
             throw new BusinessException(ResultCode.FORBIDDEN.getCode(),
-                    "开出「" + SanctionScope.labelOf(sanctionScope) + "」需要「" + required + "」权限"
+                    action + "「" + SanctionScope.labelOf(sanctionScope) + "」需要「" + required + "」权限"
                             + "（限制参加活动由组织部、限制发布社区由宣传部、拒绝使用本程序由秘书部负责，理事会拥有全部限制权限）");
         }
     }
@@ -230,10 +238,11 @@ public class AdminRewardPunishController {
         return Result.ok(sanctionQueryService.activeSanctions(volunteerId));
     }
 
-    @Operation(summary = "提前解除某张奖惩单产生的处置（须填原因）")
+    @Operation(summary = "提前解除某张奖惩单产生的处置（须填原因；还要有这一档对应部门的处置权限点）")
     @SaCheckPermission(value = PermissionCode.HONOR_SANCTION, type = "admin")
     @PostMapping("/reward-punishes/{id}/lift-sanction")
     public Result<Integer> liftSanction(@PathVariable Long id, @RequestBody @Valid RejectReasonDTO dto) {
+        assertScopeAllowed(rewardPunishService.sanctionScopeOf(id), StpAdminUtil.STP_LOGIC::hasPermission, "解除");
         return Result.ok(sanctionService.liftBySource(VolunteerSanction.SOURCE_REWARD_PUNISH, id,
                 StpAdminUtil.getLoginIdAsLong(), dto.getReason()));
     }

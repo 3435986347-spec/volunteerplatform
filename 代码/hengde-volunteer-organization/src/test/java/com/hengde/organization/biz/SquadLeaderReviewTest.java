@@ -20,6 +20,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
+
+import javax.sql.DataSource;
+import java.sql.Connection;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -28,6 +32,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -64,6 +70,10 @@ class SquadLeaderReviewTest {
     private VolunteerMapper volunteerMapper;
     @Autowired
     private CryptoUtil cryptoUtil;
+    @Autowired
+    private JdbcTemplate jdbc;
+    @Autowired
+    private DataSource dataSource;
 
     @Test
     void leaderReviewsOnlyTheirOwnEnabledSquad_andTheAuditorIsRecorded() {
@@ -199,6 +209,57 @@ class SquadLeaderReviewTest {
         dto.setMemberLimit(0);
         dto.setStatus(1);
         return dto;
+    }
+
+    /**
+     * 人数上限不能被两条审核路并发越过：部门在后台批一份、分队负责人在小程序批另一份，各自数一数都没到上限，
+     * 一起写进去就超员了。批准在事务第一条锁住分队行，同一分队的批准排成一队。
+     *
+     * <p><b>确定性构造</b>，不靠调度撞：裸 JDBC 事务模拟「另一条路正在批」——锁住分队行、写了归属、还没提交；
+     * 这时负责人批准必须<b>等着</b>（1 秒内拿不到结果），对方提交之后它要看得见那条归属、报「已达上限」。
+     * 去掉那把锁的话，负责人批准不会等、数到的是提交前的人数，直接成功，分队超员。</p>
+     */
+    @Test
+    void approvalsOfTheSameSquadAreSerialized_soTheMemberLimitHolds() throws Exception {
+        Long leader = volunteer();
+        Long squad = squad(leader, 1);
+        jdbc.update("UPDATE volunteer_squad SET member_limit = 1 WHERE id = ?", squad);
+        Long inFlight = volunteer();
+        Long app = application(squad, volunteer());
+
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try (Connection c = dataSource.getConnection()) {
+            c.setAutoCommit(false);
+            try (var lock = c.prepareStatement("SELECT id FROM volunteer_squad WHERE id = ? FOR UPDATE");
+                 var join = c.prepareStatement("UPDATE volunteer SET squad_id = ? WHERE id = ?")) {
+                lock.setLong(1, squad);
+                lock.executeQuery().close();
+                join.setLong(1, squad);
+                join.setLong(2, inFlight);
+                join.executeUpdate();
+            }
+            Future<Throwable> leaderApproves = pool.submit(() -> {
+                try {
+                    squadService.approveByLeader(leader, app);
+                    return null;
+                } catch (Throwable t) {
+                    return t;
+                }
+            });
+            assertThrows(TimeoutException.class,
+                    () -> leaderApproves.get(1, TimeUnit.SECONDS),
+                    "另一条路还没提交时，负责人的批准必须等着");
+            c.commit();
+
+            Throwable outcome = leaderApproves.get(15, TimeUnit.SECONDS);
+            assertTrue(outcome instanceof BusinessException, "应被上限挡下：" + outcome);
+            assertEquals("分队人数已达上限", outcome.getMessage());
+        } finally {
+            pool.shutdownNow();
+        }
+        assertEquals(1L, volunteerMapper.selectCount(Wrappers.<Volunteer>lambdaQuery().eq(Volunteer::getSquadId, squad)),
+                "分队没有超员");
+        assertEquals(0, applicationMapper.selectById(app).getStatus(), "被挡下的申请仍是待审");
     }
 
     /** 负责人与部门同时审同一条：CAS 只放行一个，归属只写一次。 */

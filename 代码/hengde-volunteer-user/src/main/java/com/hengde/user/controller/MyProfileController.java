@@ -76,10 +76,10 @@ public class MyProfileController {
         return Result.ok();
     }
 
-    @Operation(summary = "修改/换绑手机号（需新手机号短信验证，scene=change-phone）")
+    @Operation(summary = "修改/换绑手机号（原号与新号都要短信验证，scene=change-phone；未绑过手机号的只验新号）")
     @PutMapping("/phone")
     public Result<Void> changePhone(@RequestBody @Valid ChangePhoneDTO dto) {
-        myProfileService.changePhone(StpUtil.getLoginIdAsLong(), dto.getPhone(), dto.getSmsCode());
+        myProfileService.changePhone(StpUtil.getLoginIdAsLong(), dto.getPhone(), dto.getSmsCode(), dto.getOldSmsCode());
         return Result.ok();
     }
 }

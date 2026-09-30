@@ -213,6 +213,10 @@ public class MyProfileService {
             uw.set(Volunteer::getSchool, dto.getSchool().trim());
             any = true;
         }
+        if (StringUtils.hasText(dto.getSchool()) || dto.getGrade() != null) {
+            // 本人刚改过学校或年级，就算这个学年确认过了——否则「每年确认一次」的弹窗会在他刚改完之后又弹出来
+            uw.set(Volunteer::getSchoolConfirmYear, Grade.schoolYearOf(LocalDate.now()));
+        }
         if (StringUtils.hasText(dto.getAddress())) {
             uw.set(Volunteer::getAddress, dto.getAddress().trim());
             any = true;
@@ -289,7 +293,17 @@ public class MyProfileService {
         }
     }
 
-    public void changePhone(long volunteerId, String newPhone, String smsCode) {
+    /**
+     * 换绑手机号：<b>原手机号与新手机号都要收验证码</b>（两条都用 scene=change-phone，按号区分）。
+     *
+     * <p><b>为什么原号也要验</b>：手机号是这个账号的身份凭据——验证码登录、找回密码、申请注销都认它。
+     * 只验新号的话，拿到登录态的人（token 泄露、借手机）可以先把号换成自己的，此后验证码登录、找回密码、
+     * 申请注销的验证码全都发到他手上，账号就被整个拿走了，本人连登录都登不回来。</p>
+     *
+     * <p>还没绑过手机号的账号（微信登录建的游客）第一次绑定只验新号。原号已经停用、收不到验证码的，
+     * 由协会在后台志愿者管理里改。</p>
+     */
+    public void changePhone(long volunteerId, String newPhone, String smsCode, String oldSmsCode) {
         Volunteer v = volunteerMapper.selectById(volunteerId);
         if (v == null) {
             throw new BusinessException("登录态异常，请重新登录");
@@ -297,11 +311,18 @@ public class MyProfileService {
         if (!StringUtils.hasText(newPhone) || !newPhone.matches("^1[3-9]\\d{9}$")) {
             throw new BusinessException("手机号格式不正确");
         }
-        verifyCodeService.verify(newPhone, SmsScene.CHANGE_PHONE, smsCode);
         String newHash = cryptoUtil.hashPhone(newPhone);
         if (newHash.equals(v.getPhoneHash())) {
             return; // 与当前号相同，无需变更
         }
+        String oldPhone = decrypt(v.getPhone());
+        if (StringUtils.hasText(oldPhone)) {
+            if (!StringUtils.hasText(oldSmsCode)) {
+                throw new BusinessException("请填写原手机号收到的验证码；原手机号已不再使用的，请联系协会在后台修改");
+            }
+            verifyCodeService.verify(oldPhone, SmsScene.CHANGE_PHONE, oldSmsCode.trim());
+        }
+        verifyCodeService.verify(newPhone, SmsScene.CHANGE_PHONE, smsCode);
         // 新号的持有者若已过注销冷静期，先把号释放出来（协会 2026-09-16：注销后手机号释放）
         deactivationService.releasePhoneIfDue(newHash);
         Long clash = volunteerMapper.selectCount(Wrappers.<Volunteer>lambdaQuery()

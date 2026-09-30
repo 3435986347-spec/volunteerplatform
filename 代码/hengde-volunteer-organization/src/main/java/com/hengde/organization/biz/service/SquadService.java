@@ -26,7 +26,9 @@ import com.hengde.organization.biz.vo.SquadVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
@@ -65,6 +67,7 @@ public class SquadService {
     private VolunteerMapper volunteerMapper;
     private VolunteerQueryService volunteerQueryService;
     private SmsNotifyService smsNotifyService;
+    private TransactionTemplate transactionTemplate;
 
     @Autowired
     public void setSquadMapper(VolunteerSquadMapper squadMapper) {
@@ -84,6 +87,11 @@ public class SquadService {
     @Autowired
     public void setVolunteerQueryService(VolunteerQueryService volunteerQueryService) {
         this.volunteerQueryService = volunteerQueryService;
+    }
+
+    @Autowired
+    public void setTransactionManager(PlatformTransactionManager transactionManager) {
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
     @Autowired
@@ -215,14 +223,22 @@ public class SquadService {
         if (dto.getLeaderId() != null && !Objects.equals(dto.getLeaderId(), squad.getLeaderId())) {
             requireEligibleLeader(dto.getLeaderId());
         }
-        copy(dto, squad);
-        squadMapper.updateById(squad);
-        // updateById 跳过 null：不显式 set 的话「取消负责人」静默无效，那个志愿者照样能审本分队的申请
-        squadMapper.update(null, Wrappers.<VolunteerSquad>lambdaUpdate()
+        // 一条语句写完：负责人三列显式 set（传空＝清空——updateById 跳过 null，「取消负责人」会静默无效、
+        // 那个志愿者照样能审本分队的申请）；其余列沿用「传空不改」，与此前 updateById 的行为一致
+        int rows = squadMapper.update(null, Wrappers.<VolunteerSquad>lambdaUpdate()
                 .eq(VolunteerSquad::getId, id)
+                .set(dto.getName() != null, VolunteerSquad::getName, dto.getName())
+                .set(dto.getType() != null, VolunteerSquad::getType, dto.getType())
+                .set(dto.getMemberLimit() != null, VolunteerSquad::getMemberLimit, dto.getMemberLimit())
+                .set(dto.getVisibleFields() != null, VolunteerSquad::getVisibleFields, dto.getVisibleFields())
+                .set(dto.getStatus() != null, VolunteerSquad::getStatus, dto.getStatus())
                 .set(VolunteerSquad::getLeaderId, dto.getLeaderId())
                 .set(VolunteerSquad::getLeaderName, dto.getLeaderName())
-                .set(VolunteerSquad::getLeaderPhone, dto.getLeaderPhone()));
+                .set(VolunteerSquad::getLeaderPhone, dto.getLeaderPhone())
+                .set(VolunteerSquad::getUpdateTime, LocalDateTime.now()));
+        if (rows != 1) {
+            throw new BusinessException("分队不存在");
+        }
     }
 
     /**
@@ -325,12 +341,11 @@ public class SquadService {
     }
 
     /** 后台（部门）批准加入。 */
-    @Transactional(rollbackFor = Exception.class)
     public void approveApplication(Long applicationId, Long adminId) {
         if (adminId == null) {
             throw new BusinessException("操作人不能为空");
         }
-        doApprove(requireApplication(applicationId), AUDITOR_ADMIN, adminId);
+        approveSerialized(applicationId, AUDITOR_ADMIN, adminId, null);
     }
 
     /** 后台（部门）拒绝加入。 */
@@ -364,10 +379,30 @@ public class SquadService {
     }
 
     /** 分队负责人批准加入：只能审自己负责的、启用中的分队，不能审自己的申请。 */
-    @Transactional(rollbackFor = Exception.class)
     public void approveByLeader(Long volunteerId, Long applicationId) {
-        SquadApplication application = requireApplicationForLeader(applicationId, volunteerId);
-        doApprove(application, AUDITOR_SQUAD_LEADER, volunteerId);
+        requireApplicationForLeader(applicationId, volunteerId);
+        approveSerialized(applicationId, AUDITOR_SQUAD_LEADER, volunteerId, volunteerId);
+    }
+
+    /**
+     * 批准的两条路（部门、分队负责人）共用：<b>事务第一条语句锁住分队行</b>，同一分队的批准排成一队。
+     *
+     * <p>人数上限是「先数一数、再写归属」，两个人同时批同一分队的两份申请，各数各的都没到上限就会一起写进去。
+     * 锁放在事务第一条（而不是先读申请再锁）：REPEATABLE READ 下读视图在第一次普通读时定死，
+     * 先读了别的，拿到锁之后也看不见前一个批准刚提交的归属。</p>
+     *
+     * @param leaderVolunteerId 分队负责人的志愿者 id；部门审核传 null
+     */
+    private void approveSerialized(Long applicationId, int auditorType, Long auditorId, Long leaderVolunteerId) {
+        // 事务外只为知道锁哪个分队（申请的分队不会变）
+        Long squadId = requireApplication(applicationId).getSquadId();
+        transactionTemplate.executeWithoutResult(s -> {
+            squadMapper.selectByIdForUpdate(squadId);
+            SquadApplication application = leaderVolunteerId == null
+                    ? requireApplication(applicationId)
+                    : requireApplicationForLeader(applicationId, leaderVolunteerId);
+            doApprove(application, auditorType, auditorId);
+        });
     }
 
     /** 分队负责人拒绝加入。 */
@@ -413,8 +448,8 @@ public class SquadService {
         if (volunteer.getSquadId() != null) {
             throw new BusinessException("志愿者已归属分队");
         }
-        // 人数上限预校验（memberLimit>0 才限制；0 表示不限）。
-        // 注：单事务内预校验，未加分布式锁——V1 后台审批低并发，两条申请并发通过导致轻微超员的概率极低且可接受。
+        // 人数上限（memberLimit>0 才限制；0 表示不限）。调用方已在事务第一条锁住分队行（approveSerialized），
+        // 同一分队的批准在这里是串行的，这一次数到的已经包含前一个批准提交的归属。
         Integer limit = squad.getMemberLimit();
         if (limit != null && limit > 0) {
             Long current = volunteerMapper.selectCount(Wrappers.<Volunteer>lambdaQuery()

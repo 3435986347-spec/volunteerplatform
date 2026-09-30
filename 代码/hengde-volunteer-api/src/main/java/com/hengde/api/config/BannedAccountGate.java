@@ -60,6 +60,9 @@ public final class BannedAccountGate {
             "/v/files/appeal-image",
             "/v/honor/sanctions",
             "/v/notifications/**",
+            // 注销（查看 / 撤销）：禁用之前就申请了注销的人，要让他看得到、撤得了——被挡在这里的话，
+            // 冷静期在他够不到的地方走完、账号就注销了。新申请由 VolunteerDeactivationService 照旧拒绝。
+            "/v/user/deactivation",
     };
 
     private static final AntPathMatcher MATCHER = new AntPathMatcher();

@@ -156,3 +156,10 @@
 4. 每年一次确认学校和年级：GET /v/user/profile 里 schoolConfirmPending 为 true 时弹窗，
    填写或确认学校、年级后 POST /v/user/profile/school-confirm（body {school, grade}），确认即可，不影响报名。
 5. 投诉建议提交时加「类别」（已经在第四部分第 9 条里写了）。
+6. 换绑手机号（「基本信息」里已有的改绑弹窗，要改）：现在原手机号也要收验证码。
+   两个号都用 POST /v/auth/sms/codes 发码（scene 都是 "change-phone"），
+   PUT /v/user/phone 的 body 变成 {phone: 新号, smsCode: 新号的码, oldSmsCode: 原号的码}；
+   还没绑过手机号的账号（微信登录的游客）第一次绑定不用 oldSmsCode。
+   原号已经不用了、收不到码的，提示「请联系协会在后台修改」。
+7. 注销：被禁用、或被判「拒绝使用本程序」的账号也能打开注销页，看得到之前的注销申请、能撤销；
+   这两种账号点「申请注销」会被后端拒绝（有提示文案），页面把提示显示出来即可。

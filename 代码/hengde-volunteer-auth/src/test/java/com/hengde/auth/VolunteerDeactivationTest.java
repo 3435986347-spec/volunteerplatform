@@ -4,7 +4,10 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.hengde.auth.dao.VolunteerMapper;
 import com.hengde.auth.entity.Volunteer;
 import com.hengde.auth.service.VolunteerAuthService;
+import com.hengde.auth.constant.SanctionScope;
+import com.hengde.auth.service.SanctionService;
 import com.hengde.auth.service.VolunteerDeactivationService;
+import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.common.constant.UserStatus;
 import com.hengde.common.crypto.CryptoUtil;
 import com.hengde.common.exception.BusinessException;
@@ -65,6 +68,10 @@ class VolunteerDeactivationTest {
     private RedisUtil redisUtil;
     @Autowired
     private JdbcTemplate jdbc;
+    @Autowired
+    private VolunteerQueryService queryService;
+    @Autowired
+    private SanctionService sanctionService;
 
     @Test
     void coolingOff_keepsTheAccountUsable_andCanBeCancelled() {
@@ -183,7 +190,7 @@ class VolunteerDeactivationTest {
         assertEquals(UserStatus.NORMAL, reload(cooling.getId()).getStatus(), "还在冷静期的不动");
     }
 
-    /** 恢复：只收已注销的；手机号被占用要换一个；恢复后账号正常、换回按手机号合成的 openid。 */
+    /** 恢复：只收已注销的；手机号被占用要换一个；恢复后账号正常，openid 按 id 合成。 */
     @Test
     void restore_needsAFreePhone_andBringsTheAccountBack() {
         String phone = phone();
@@ -205,7 +212,8 @@ class VolunteerDeactivationTest {
         assertEquals(UserStatus.NORMAL, back.getStatus());
         assertEquals(cryptoUtil.hashPhone(newPhone), back.getPhoneHash());
         assertEquals(newPhone, cryptoUtil.decrypt(back.getPhone()));
-        assertEquals("p:" + cryptoUtil.hashPhone(newPhone).substring(0, 62), back.getOpenid());
+        assertEquals(VolunteerDeactivationService.RESTORED_OPENID_PREFIX + v.getId(), back.getOpenid(),
+                "按 id 合成，不按手机号——手机号合成的那个可能已被别的账号占着");
         assertEquals(900L, back.getRestoreBy());
         assertNotNull(back.getRestoreTime());
         assertNull(back.getDeactivateEffectiveTime(), "恢复后不再挂着注销申请");
@@ -231,6 +239,101 @@ class VolunteerDeactivationTest {
         makeDue(v.getId());
         deactivationService.releasePhoneIfDue(hash);
         assertNull(reload(v.getId()).getPhoneHash(), "到期就释放");
+    }
+
+    /**
+     * 恢复时填的号，正好是某个账号「用它验证码登录建号、后来换绑走了」的那个号：那个账号的 openid 还是按这个号合成的
+     * {@code p:哈希}（换绑不改 openid），而手机号查重看不到它。恢复要照样成功，不能报一句莫名其妙的「手机号已被占用」。
+     */
+    @Test
+    void restore_toANumberWhoseSyntheticOpenidIsHeldByAnotherAccount_succeeds() {
+        Volunteer leaver = registered(phone());
+        makeDue(leaver.getId());
+        assertTrue(deactivationService.finalizeIfDue(leaver.getId()));
+
+        String x = phone();
+        Volunteer movedOn = registered(x); // openid = p:hash(x)
+        String z = phone();
+        jdbc.update("UPDATE volunteer SET phone = ?, phone_hash = ? WHERE id = ?",
+                cryptoUtil.encrypt(z), cryptoUtil.hashPhone(z), movedOn.getId());
+
+        deactivationService.restore(leaver.getId(), x, 900L);
+        Volunteer back = reload(leaver.getId());
+        assertEquals(UserStatus.NORMAL, back.getStatus());
+        assertEquals(cryptoUtil.hashPhone(x), back.getPhoneHash());
+    }
+
+    /**
+     * 冷静期里被禁用：注销照样按时落定（号按时释放）；期间看得到、撤得了；但禁用期间不能<b>新</b>申请。
+     * 此前 isDue 只认账号正常，禁用把注销冻住，解禁那一刻又瞬间注销、连撤销的机会都没有。
+     */
+    @Test
+    void bannedDuringCoolingOff_canStillSeeAndCancel_andFinalizesOnTime() {
+        Volunteer cancelling = registered(phone());
+        jdbc.update("UPDATE volunteer SET deactivate_request_time = NOW(), "
+                + "deactivate_effective_time = DATE_ADD(NOW(), INTERVAL 3 DAY), status = 1 WHERE id = ?",
+                cancelling.getId());
+        assertTrue(deactivationService.status(cancelling.getId()).pending(), "禁用了也看得到");
+        deactivationService.cancel(cancelling.getId());
+        assertNull(reload(cancelling.getId()).getDeactivateEffectiveTime(), "禁用了也撤得了");
+        assertEquals(UserStatus.BANNED, reload(cancelling.getId()).getStatus(), "撤销不动禁用状态");
+        assertEquals("没有待生效的注销申请",
+                assertThrows(BusinessException.class, () -> deactivationService.cancel(cancelling.getId())).getMessage());
+        BusinessException fresh = assertThrows(BusinessException.class,
+                () -> deactivationService.request(cancelling.getId(), "123456"));
+        assertTrue(fresh.getMessage().contains("禁用"), "禁用期间不能新申请：" + fresh.getMessage());
+
+        String phone = phone();
+        Volunteer leaving = registered(phone);
+        makeDue(leaving.getId());
+        jdbc.update("UPDATE volunteer SET status = 1 WHERE id = ?", leaving.getId());
+        assertTrue(deactivationService.finalizeAllDue() >= 1);
+        Volunteer gone = reload(leaving.getId());
+        assertEquals(UserStatus.DELETED, gone.getStatus(), "禁用中的也按时落定");
+        assertNull(gone.getPhoneHash(), "号按时释放");
+    }
+
+    /** 被判「拒绝使用本程序」的人：闸门为了让他看得到、撤得了已有的申请而放行了这条路径，但新申请照旧不收。 */
+    @Test
+    void deniedAllUse_cannotStartANewDeactivation() {
+        String phone = phone();
+        Volunteer v = registered(phone);
+        sanctionService.impose(v.getId(), 1, SEQ.incrementAndGet(), SanctionScope.ALL, 7);
+        authService.sendSmsCode(phone, SmsScene.ACCOUNT_DEACTIVATE, null);
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> deactivationService.request(v.getId(), code(SmsScene.ACCOUNT_DEACTIVATE, phone)));
+        assertTrue(ex.getMessage().contains(SanctionScope.labelOf(SanctionScope.ALL)), ex.getMessage());
+        assertNull(reload(v.getId()).getDeactivateEffectiveTime());
+    }
+
+    /** 落定时让出分队名额（分队人数按 volunteer.squad_id 计），并发出事件让 organization 收拾小组与组织架构。 */
+    @Test
+    void finalizing_clearsTheSquadSeat() {
+        Volunteer v = registered(phone());
+        jdbc.update("UPDATE volunteer SET squad_id = 424242 WHERE id = ?", v.getId());
+        makeDue(v.getId());
+        assertTrue(deactivationService.finalizeIfDue(v.getId()));
+        assertNull(reload(v.getId()).getSquadId());
+    }
+
+    /**
+     * 只读「账号正常不正常」的地方不等落定：已过冷静期、还没被任何入口碰到的账号，一律按已注销算——
+     * 不再收通知短信、不能再按手机号被找到（发卷、指派核销员、发证）、不算正常账号。
+     */
+    @Test
+    void pastDueButNotYetFinalized_isAlreadyTreatedAsDeactivatedByReaders() {
+        String phone = phone();
+        Volunteer v = registered(phone);
+        assertTrue(queryService.isActive(v.getId()));
+        makeDue(v.getId());
+        assertEquals(UserStatus.NORMAL, reload(v.getId()).getStatus(), "前提：库里还没落定");
+
+        assertFalse(queryService.isActive(v.getId()));
+        assertTrue(queryService.filterActiveRegistered(List.of(v.getId())).isEmpty());
+        assertFalse(queryService.hasVerifiedPhone(v.getId()));
+        assertTrue(queryService.listNotifiablePhones(List.of(v.getId())).isEmpty(), "已过冷静期不再发短信");
+        assertTrue(queryService.findIdsByPhones(List.of(phone)).isEmpty(), "号已释放，不能再按它找到这个人");
+        assertEquals(UserStatus.DELETED, queryService.getProfileForEligibility(v.getId()).status());
     }
 
     // ---------------- helpers ----------------

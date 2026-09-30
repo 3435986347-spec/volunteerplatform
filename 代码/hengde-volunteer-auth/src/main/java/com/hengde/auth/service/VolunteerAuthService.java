@@ -32,6 +32,7 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -298,11 +299,11 @@ public class VolunteerAuthService {
     }
 
     private Volunteer selectByPhoneHash(String phoneHash) {
-        // 这个号的持有者若已过注销冷静期，先把号释放出来（协会 2026-09-16：注销后手机号释放）——
-        // 否则要等到有人碰巧碰到那个账号，同号重新登录建号 / 找回密码才会查到一个「已注销」的人
-        deactivationService.releasePhoneIfDue(phoneHash);
-        List<Volunteer> matches = volunteerMapper.selectList(
-                Wrappers.<Volunteer>lambdaQuery().eq(Volunteer::getPhoneHash, phoneHash));
+        List<Volunteer> matches = new ArrayList<>(volunteerMapper.selectList(
+                Wrappers.<Volunteer>lambdaQuery().eq(Volunteer::getPhoneHash, phoneHash)));
+        // 这个号的持有者若已过注销冷静期，当场落定并把他剔出去（协会 2026-09-16：注销后手机号释放）——
+        // 否则同号重新登录建号 / 找回密码会查到一个「已注销」的人。就地处理已经查出来的行，登录路径不多一次查询
+        matches.removeIf(deactivationService::finalizeIfDue);
         if (matches.size() > 1) {
             throw new BusinessException("该手机号对应多个账号，请联系管理员");
         }

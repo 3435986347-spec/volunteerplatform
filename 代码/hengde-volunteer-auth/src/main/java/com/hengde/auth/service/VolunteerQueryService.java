@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -91,7 +92,29 @@ public class VolunteerQueryService {
         }
         Integer genderCode = v.getGender() == null ? Gender.UNKNOWN.getCode() : v.getGender().getCode();
         Integer gradeCode = v.getGrade() == null ? null : v.getGrade().getCode();
-        return new VolunteerProfileView(v.getId(), genderCode, v.getBirthday(), gradeCode, v.getStatus(), v.getSquadId());
+        return new VolunteerProfileView(v.getId(), genderCode, v.getBirthday(), gradeCode, effectiveStatus(v),
+                v.getSquadId());
+    }
+
+    /**
+     * 此刻的账号状态：已过注销冷静期、还没被落定的，<b>按已注销算</b>（到没到期按时间现算，不等落定）。
+     * 这个类里凡是判「账号正常不正常」的地方都经过这里或 {@link #normalNow}——落定只在请求闸门、登录、
+     * 按手机号查找那几处当场发生，其余只读路径不能靠它（定时收尾最多隔 10 分钟，也可能被关掉）。
+     */
+    private static Integer effectiveStatus(Volunteer v) {
+        return VolunteerDeactivationService.isPastDue(v, LocalDateTime.now()) ? UserStatus.DELETED : v.getStatus();
+    }
+
+    /** 此刻算不算「账号正常」：status 正常（null 按正常，与 DB 默认 0 对齐）且没过注销冷静期。 */
+    private static boolean normalNow(Volunteer v) {
+        Integer status = effectiveStatus(v);
+        return status == null || UserStatus.NORMAL.equals(status);
+    }
+
+    /** 查询条件：排除已过注销冷静期的行（手机号已释放、按已注销算）。 */
+    private static void notPastDue(LambdaQueryWrapper<Volunteer> w) {
+        LocalDateTime now = LocalDateTime.now();
+        w.and(x -> x.isNull(Volunteer::getDeactivateEffectiveTime).or().gt(Volunteer::getDeactivateEffectiveTime, now));
     }
 
     /**
@@ -161,11 +184,13 @@ public class VolunteerQueryService {
             return Map.of();
         }
         List<Volunteer> list = volunteerMapper.selectList(Wrappers.<Volunteer>lambdaQuery()
-                .select(Volunteer::getId, Volunteer::getPhone, Volunteer::getStatus)
+                .select(Volunteer::getId, Volunteer::getPhone, Volunteer::getStatus,
+                        Volunteer::getDeactivateEffectiveTime)
                 .in(Volunteer::getId, volunteerIds));
         Map<Long, String> result = new HashMap<>();
         for (Volunteer v : list) {
-            if (UserStatus.DELETED.equals(v.getStatus())) {
+            // 已过注销冷静期的按已注销算：落定前的这几分钟里发出去的短信同样是打扰
+            if (UserStatus.DELETED.equals(effectiveStatus(v))) {
                 continue;
             }
             // 【hasText 而不是 != null】decrypt(null) 安全返回 null，但 decrypt("") 会走进
@@ -236,6 +261,7 @@ public class VolunteerQueryService {
                 .last("LIMIT " + cap);
         if (kw.chars().allMatch(Character::isDigit)) {
             wrapper.eq(Volunteer::getPhoneHash, cryptoUtil.hashPhone(kw));
+            notPastDue(wrapper);
         } else {
             wrapper.like(Volunteer::getRealName, kw);
         }
@@ -270,9 +296,12 @@ public class VolunteerQueryService {
         if (hashByPhone.isEmpty()) {
             return Map.of();
         }
-        List<Volunteer> rows = volunteerMapper.selectList(Wrappers.<Volunteer>lambdaQuery()
+        LambdaQueryWrapper<Volunteer> byPhone = Wrappers.<Volunteer>lambdaQuery()
                 .select(Volunteer::getId, Volunteer::getPhoneHash)
-                .in(Volunteer::getPhoneHash, hashByPhone.values()));
+                .in(Volunteer::getPhoneHash, hashByPhone.values());
+        // 已过注销冷静期的号已经释放了：不能再按这个号给他发卷、指派核销员、发证
+        notPastDue(byPhone);
+        List<Volunteer> rows = volunteerMapper.selectList(byPhone);
         // hash -> id；重复 hash（同号多账号）标记为 null 后剔除，不随便挑一个
         Map<String, Long> idByHash = new HashMap<>();
         Set<String> ambiguous = new HashSet<>();
@@ -305,11 +334,7 @@ public class VolunteerQueryService {
             return false;
         }
         Volunteer v = volunteerMapper.selectById(volunteerId);
-        if (v == null) {
-            return false;
-        }
-        Integer status = v.getStatus();
-        return status == null || UserStatus.NORMAL.equals(status);
+        return v != null && normalNow(v);
     }
 
     /**
@@ -328,12 +353,12 @@ public class VolunteerQueryService {
             return Set.of();
         }
         List<Volunteer> rows = volunteerMapper.selectList(Wrappers.<Volunteer>lambdaQuery()
-                .select(Volunteer::getId, Volunteer::getStatus, Volunteer::getRegisterTime)
+                .select(Volunteer::getId, Volunteer::getStatus, Volunteer::getRegisterTime,
+                        Volunteer::getDeactivateEffectiveTime)
                 .in(Volunteer::getId, volunteerIds));
         Set<Long> eligible = new HashSet<>();
         for (Volunteer v : rows) {
-            Integer status = v.getStatus();
-            if (v.getRegisterTime() != null && (status == null || UserStatus.NORMAL.equals(status))) {
+            if (v.getRegisterTime() != null && normalNow(v)) {
                 eligible.add(v.getId());
             }
         }
@@ -357,13 +382,10 @@ public class VolunteerQueryService {
             return false;
         }
         Volunteer v = volunteerMapper.selectOne(Wrappers.<Volunteer>lambdaQuery()
-                .select(Volunteer::getId, Volunteer::getStatus, Volunteer::getPhoneHash)
+                .select(Volunteer::getId, Volunteer::getStatus, Volunteer::getPhoneHash,
+                        Volunteer::getDeactivateEffectiveTime)
                 .eq(Volunteer::getId, volunteerId));
-        if (v == null) {
-            return false;
-        }
-        Integer status = v.getStatus();
-        return (status == null || UserStatus.NORMAL.equals(status)) && StringUtils.hasText(v.getPhoneHash());
+        return v != null && normalNow(v) && StringUtils.hasText(v.getPhoneHash());
     }
 
     /**
@@ -381,9 +403,7 @@ public class VolunteerQueryService {
         if (v == null) {
             return false;
         }
-        Integer status = v.getStatus();
-        boolean active = status == null || UserStatus.NORMAL.equals(status);
-        return active && Integer.valueOf(1).equals(v.getManagerFlag());
+        return normalNow(v) && Integer.valueOf(1).equals(v.getManagerFlag());
     }
 
     /**
@@ -409,11 +429,10 @@ public class VolunteerQueryService {
         if (v == null) {
             return null;
         }
-        Integer status = v.getStatus();
-        // status 为 null 按正常处理，与 DB 默认 0 及 isActive 的口径一致
-        boolean active = status == null || UserStatus.NORMAL.equals(status);
+        // status 为 null 按正常处理，与 DB 默认 0 及 isActive 的口径一致；已过注销冷静期按已注销
+        Integer status = effectiveStatus(v);
         return new VolunteerGrantEligibilityView(v.getId(), v.getRealName(),
-                v.getRegisterTime() != null, active, status);
+                v.getRegisterTime() != null, normalNow(v), status);
     }
 
     /**
@@ -438,11 +457,10 @@ public class VolunteerQueryService {
         if (v == null) {
             return null;
         }
-        Integer status = v.getStatus();
-        // status 为 null 按正常处理，与 DB 默认 0 及 isActive 的口径一致
-        boolean active = status == null || UserStatus.NORMAL.equals(status);
+        // status 为 null 按正常处理，与 DB 默认 0 及 isActive 的口径一致；已过注销冷静期按已注销
+        Integer status = effectiveStatus(v);
         return new VolunteerGrantEligibilityView(v.getId(), v.getRealName(),
-                v.getRegisterTime() != null, active, status);
+                v.getRegisterTime() != null, normalNow(v), status);
     }
 
     /**
@@ -489,10 +507,12 @@ public class VolunteerQueryService {
      * 读取口径一致——游客态/禁用/注销上的管理团队标记不计入。供 data 域数据看板「管理团队人数」。
      */
     public long countManagers() {
-        return volunteerMapper.selectCount(Wrappers.<Volunteer>lambdaQuery()
+        LambdaQueryWrapper<Volunteer> w = Wrappers.<Volunteer>lambdaQuery()
                 .eq(Volunteer::getManagerFlag, 1)
                 .isNotNull(Volunteer::getRegisterTime)
-                .eq(Volunteer::getStatus, UserStatus.NORMAL));
+                .eq(Volunteer::getStatus, UserStatus.NORMAL);
+        notPastDue(w);
+        return volunteerMapper.selectCount(w);
     }
 
     /**
@@ -588,6 +608,8 @@ public class VolunteerQueryService {
             wrapper.eq(Volunteer::getIdCardHash, hash);
         } else {
             wrapper.eq(Volunteer::getPhoneHash, hash);
+            // 已过注销冷静期的号已经释放，不再按它找人
+            notPastDue(wrapper);
         }
         List<Volunteer> list = volunteerMapper.selectList(wrapper);
         if (list.isEmpty()) {

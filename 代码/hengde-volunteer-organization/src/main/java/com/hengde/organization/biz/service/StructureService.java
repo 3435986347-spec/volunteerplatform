@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
@@ -59,6 +60,7 @@ public class StructureService {
     private VolunteerQueryService volunteerQueryService;
     private RedissonClient redissonClient;
     private TransactionTemplate transactionTemplate;
+    private TransactionTemplate requiresNewTemplate;
 
     @Autowired
     public void setNodeMapper(OrganizationStructureNodeMapper nodeMapper) {
@@ -83,6 +85,8 @@ public class StructureService {
     @Autowired
     public void setTransactionManager(PlatformTransactionManager transactionManager) {
         this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.requiresNewTemplate = new TransactionTemplate(transactionManager);
+        this.requiresNewTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     // ================= 读 =================
@@ -289,6 +293,28 @@ public class StructureService {
             memberMapper.deleteById(memberId);
             return null;
         });
+    }
+
+    /**
+     * 把一个志愿者移出组织架构（他已注销＝退出协会，架构里不该还挂着他）。幂等：不在架构里就什么也不做。
+     *
+     * <p>与其它写操作同一把锁。事务用 <b>REQUIRES_NEW</b>：这是在注销事件的提交后回调里调用的，
+     * 那时外层事务已经提交、资源还绑在线程上，默认传播会加入那个已提交的事务——写进去的东西要靠连接归还时
+     * 复位 autocommit 碰巧落库。先普通读出他的那一行、再按主键删，不做按 volunteer_id 的范围删除。</p>
+     *
+     * @return 移出的行数
+     */
+    public int removeVolunteer(Long volunteerId) {
+        if (volunteerId == null) {
+            return 0;
+        }
+        return DistributedLockSupport.runLocked(redissonClient, LOCK_KEY, () -> requiresNewTemplate.execute(s -> {
+            List<OrganizationStructureMember> rows = memberMapper.selectList(
+                    Wrappers.<OrganizationStructureMember>lambdaQuery()
+                            .eq(OrganizationStructureMember::getVolunteerId, volunteerId));
+            rows.forEach(m -> memberMapper.deleteById(m.getId()));
+            return rows.size();
+        }));
     }
 
     // ================= 内部 =================

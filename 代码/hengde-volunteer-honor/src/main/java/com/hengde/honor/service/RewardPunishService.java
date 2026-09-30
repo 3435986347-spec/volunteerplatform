@@ -688,6 +688,18 @@ public class RewardPunishService {
         return PageResult.of(toVos(page.getRecords()), page.getTotal(), page.getCurrent(), page.getSize());
     }
 
+    /**
+     * 这张单附带的处置能力域（不附带为 {@code null}）。供「提前解除」按档位判权限：
+     * 开出哪一档要哪个部门的权限点，解除同一档就要同一个点（协会 2026-09-16 的部门分工）。
+     */
+    public Integer sanctionScopeOf(Long id) {
+        HonorRewardPunish rp = id == null ? null : rewardPunishMapper.selectById(id);
+        if (rp == null) {
+            throw new BusinessException("奖惩单不存在");
+        }
+        return rp.getSanctionScope();
+    }
+
     /** 后台列表：可按志愿者/类型/审核状态/申诉状态筛。 */
     public PageResult<RewardPunishVO> adminList(PageQuery query, Long volunteerId, Integer type,
                                                 Integer reviewStatus, Integer appealStatus,

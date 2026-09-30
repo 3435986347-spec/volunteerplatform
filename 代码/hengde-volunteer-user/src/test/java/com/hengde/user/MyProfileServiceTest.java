@@ -199,10 +199,11 @@ class MyProfileServiceTest {
 
     @Test
     void changePhone_success_updatesPhoneAndHash() {
-        Long id = insertGuestWithPhone(phone("138"));
+        String oldPhone = phone("138");
+        Long id = insertGuestWithPhone(oldPhone);
         String newPhone = phone("139");
-        verifyCodeService.sendCode(newPhone, SmsScene.CHANGE_PHONE, null);
-        service.changePhone(id, newPhone, storedCode(SmsScene.CHANGE_PHONE, newPhone));
+        String oldCode = changePhoneCode(oldPhone);
+        service.changePhone(id, newPhone, changePhoneCode(newPhone), oldCode);
         Volunteer r = volunteerMapper.selectById(id);
         assertEquals(cryptoUtil.hashPhone(newPhone), r.getPhoneHash(), "phoneHash 应更新为新号");
         assertEquals(newPhone, cryptoUtil.decrypt(r.getPhone()), "phone 密文应为新号");
@@ -210,21 +211,65 @@ class MyProfileServiceTest {
 
     @Test
     void changePhone_wrongCode_rejected() {
-        Long id = insertGuestWithPhone(phone("136"));
+        String oldPhone = phone("136");
+        Long id = insertGuestWithPhone(oldPhone);
         String newPhone = phone("137");
         verifyCodeService.sendCode(newPhone, SmsScene.CHANGE_PHONE, null);
-        assertThrows(BusinessException.class, () -> service.changePhone(id, newPhone, "000000"));
+        String oldCode = changePhoneCode(oldPhone);
+        assertThrows(BusinessException.class, () -> service.changePhone(id, newPhone, "000000", oldCode));
+        assertEquals(cryptoUtil.hashPhone(oldPhone), volunteerMapper.selectById(id).getPhoneHash());
+    }
+
+    /**
+     * 原手机号也要收验证码：只验新号的话，拿到登录态的人能把号换成自己的，此后验证码登录、找回密码、
+     * 申请注销的验证码都发到他手上——账号被整个拿走。
+     */
+    @Test
+    void changePhone_requiresTheCurrentNumbersCode() {
+        String oldPhone = phone("133");
+        Long id = insertGuestWithPhone(oldPhone);
+        String attacker = phone("132");
+
+        String newCode = changePhoneCode(attacker);
+        BusinessException missing = assertThrows(BusinessException.class,
+                () -> service.changePhone(id, attacker, newCode, null));
+        assertTrue(missing.getMessage().contains("原手机号"), missing.getMessage());
+
+        // 原号的码填错：同样拒绝；拿新号收到的码冒充原号的码也不行（码按号存）
+        assertThrows(BusinessException.class, () -> service.changePhone(id, attacker, newCode, "000000"));
+        assertThrows(BusinessException.class, () -> service.changePhone(id, attacker, newCode, newCode));
+
+        Volunteer r = volunteerMapper.selectById(id);
+        assertEquals(cryptoUtil.hashPhone(oldPhone), r.getPhoneHash(), "号没有被换走");
+    }
+
+    /** 还没绑过手机号的账号（微信登录建的游客）第一次绑定：没有原号可验，只验新号。 */
+    @Test
+    void changePhone_firstBinding_onlyNeedsTheNewNumbersCode() {
+        Volunteer v = new Volunteer();
+        v.setOpenid("wx_first_bind_" + System.nanoTime() + "_" + SEQ.incrementAndGet());
+        v.setStatus(0);
+        volunteerMapper.insert(v);
+        String newPhone = phone("131");
+        service.changePhone(v.getId(), newPhone, changePhoneCode(newPhone), null);
+        assertEquals(cryptoUtil.hashPhone(newPhone), volunteerMapper.selectById(v.getId()).getPhoneHash());
     }
 
     @Test
     void changePhone_clashWithOtherAccount_rejected() {
         String taken = phone("135");
         insertGuestWithPhone(taken); // 另一账号已占用该号
-        Long id = insertGuestWithPhone(phone("134"));
-        verifyCodeService.sendCode(taken, SmsScene.CHANGE_PHONE, null);
-        String code = storedCode(SmsScene.CHANGE_PHONE, taken);
-        BusinessException ex = assertThrows(BusinessException.class, () -> service.changePhone(id, taken, code));
+        String mine = phone("134");
+        Long id = insertGuestWithPhone(mine);
+        String code = changePhoneCode(taken);
+        String oldCode = changePhoneCode(mine);
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.changePhone(id, taken, code, oldCode));
         assertTrue(ex.getMessage().contains("已被"), "应提示手机号已被占用");
+    }
+
+    private String changePhoneCode(String phonePlain) {
+        verifyCodeService.sendCode(phonePlain, SmsScene.CHANGE_PHONE, null);
+        return storedCode(SmsScene.CHANGE_PHONE, phonePlain);
     }
 
     private Long insertGuestWithPhone(String phonePlain) {

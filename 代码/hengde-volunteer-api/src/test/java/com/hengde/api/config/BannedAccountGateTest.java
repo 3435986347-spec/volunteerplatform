@@ -48,6 +48,8 @@ class BannedAccountGateTest {
         // V45：申诉凭证上传，理由同 DenyAllUseGate——被禁用的人一样有 7 天申诉期，
         // 提得出申诉却传不了凭证，那条路径就是残的。
         assertTrue(BannedAccountGate.isExempt("/v/files/appeal-image"), "申诉凭证上传");
+        assertTrue(BannedAccountGate.isExempt("/v/user/deactivation"), "禁用之前申请的注销要看得到、撤得了");
+        assertTrue(DenyAllUseGate.isExempt("/v/user/deactivation"), "同上：被判「拒绝使用本程序」的人");
 
         // 必须挡住
         assertFalse(BannedAccountGate.isExempt("/v/auth/register"),

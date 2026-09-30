@@ -11,6 +11,7 @@ import com.hengde.common.sms.VerifyCodeService;
 import com.hengde.common.testsupport.RedisTestcontainersConfig;
 import com.hengde.common.testsupport.TestcontainersConfig;
 import com.hengde.common.utils.RedisUtil;
+import com.hengde.user.dto.MyProfileUpdateDTO;
 import com.hengde.user.service.MyProfileService;
 import com.hengde.user.vo.MyProfileVO;
 import org.junit.jupiter.api.Test;
@@ -91,6 +92,31 @@ class SchoolConfirmAndDeactivationProfileTest {
         assertThrows(BusinessException.class, () -> profileService.confirmSchoolAndGrade(guest, "某中学", Grade.SENIOR_1.getCode()));
     }
 
+    /** 在「基本信息」里改了学校或年级，就算这个学年确认过了——不然弹窗会在他刚改完之后又弹出来。 */
+    @Test
+    void editingSchoolOrGradeInTheProfile_countsAsThisYearsConfirmation() {
+        int thisYear = Grade.schoolYearOf(LocalDate.now());
+        Long bySchool = volunteer(phone(), thisYear - 1);
+        MyProfileUpdateDTO school = new MyProfileUpdateDTO();
+        school.setSchool("新学校");
+        profileService.updateMyProfile(bySchool, school);
+        assertFalse(profileService.getMyProfile(bySchool).getSchoolConfirmPending());
+        assertEquals(thisYear, volunteerMapper.selectById(bySchool).getSchoolConfirmYear());
+
+        Long byGrade = volunteer(phone(), thisYear - 1);
+        MyProfileUpdateDTO grade = new MyProfileUpdateDTO();
+        grade.setGrade(Grade.SENIOR_2.getCode());
+        profileService.updateMyProfile(byGrade, grade);
+        assertFalse(profileService.getMyProfile(byGrade).getSchoolConfirmPending());
+
+        // 只改了别的（地址）不算确认
+        Long byAddress = volunteer(phone(), thisYear - 1);
+        MyProfileUpdateDTO address = new MyProfileUpdateDTO();
+        address.setAddress("雷州市某某路");
+        profileService.updateMyProfile(byAddress, address);
+        assertTrue(profileService.getMyProfile(byAddress).getSchoolConfirmPending());
+    }
+
     @Test
     void profile_showsTheCoolingOffWindow() {
         Long id = volunteer(phone(), Grade.schoolYearOf(LocalDate.now()));
@@ -107,18 +133,23 @@ class SchoolConfirmAndDeactivationProfileTest {
     void changePhone_toANumberHeldByAnExpiredCoolingOffAccount_succeeds() {
         String taken = phone();
         Long leaving = volunteer(taken, Grade.schoolYearOf(LocalDate.now()));
-        Long me = volunteer(phone(), Grade.schoolYearOf(LocalDate.now()));
+        String mine = phone();
+        Long me = volunteer(mine, Grade.schoolYearOf(LocalDate.now()));
 
         verifyCodeService.sendCode(taken, SmsScene.CHANGE_PHONE, null);
         String code = code(SmsScene.CHANGE_PHONE, taken);
+        verifyCodeService.sendCode(mine, SmsScene.CHANGE_PHONE, null);
+        String oldCode = code(SmsScene.CHANGE_PHONE, mine);
         assertEquals("该手机号已被其他账号使用",
-                assertThrows(BusinessException.class, () -> profileService.changePhone(me, taken, code)).getMessage(),
+                assertThrows(BusinessException.class, () -> profileService.changePhone(me, taken, code, oldCode))
+                        .getMessage(),
                 "对方没注销时照旧挡住");
 
         jdbc.update("UPDATE volunteer SET deactivate_request_time = DATE_SUB(NOW(), INTERVAL 8 DAY), "
                 + "deactivate_effective_time = DATE_SUB(NOW(), INTERVAL 1 DAY) WHERE id = ?", leaving);
         verifyCodeService.sendCode(taken, SmsScene.CHANGE_PHONE, null);
-        profileService.changePhone(me, taken, code(SmsScene.CHANGE_PHONE, taken));
+        verifyCodeService.sendCode(mine, SmsScene.CHANGE_PHONE, null);
+        profileService.changePhone(me, taken, code(SmsScene.CHANGE_PHONE, taken), code(SmsScene.CHANGE_PHONE, mine));
 
         assertEquals(cryptoUtil.hashPhone(taken), volunteerMapper.selectById(me).getPhoneHash());
         Volunteer gone = volunteerMapper.selectById(leaving);

@@ -125,6 +125,36 @@ class AssociationAnswersApiFlowTest {
     }
 
     /** 分队负责人在小程序里审加入申请（协会 2026-09-02：分队自己审，也可以由部门审核）。 */
+    /**
+     * 提前解除处置与开出同一档要同一个权限点：光有 honor:sanction 解不了别的部门开的处置。
+     * 静态判定的用例证明不了控制器真的在解除前取了这张单的档位——这里走真实 HTTP。
+     */
+    @Test
+    void liftingASanction_needsTheSameDepartmentPermissionAsImposingIt() {
+        ApiStressClient c = new ApiStressClient(port);
+        ApiStressClient neg = new ApiStressClient(port);
+        String root = c.adminLogin(adminUser, adminPass);
+        String tag = Long.toString(System.nanoTime(), 36);
+        c.devLogin("lift-" + tag);
+        long vid = jdbc.queryForObject("SELECT id FROM volunteer WHERE openid = ?", Long.class, "dev:lift-" + tag);
+        // 超管持终审权：开即通过、处置当场生效
+        long ticket = ok(c.post("/a/honor/reward-punishes", root, punish(vid, 3), "开拒绝使用本程序")).dataAsLong();
+
+        long lift = permId(c, root, "honor:sanction");
+        String orgDept = subAccount(c, root, "lo" + tag, "组织部", lift, permId(c, root, "honor:sanction-activity"));
+        String secDept = subAccount(c, root, "ls" + tag, "秘书部", lift, permId(c, root, "honor:sanction-all"));
+
+        Map<String, Object> reason = Map.of("reason", "测试提前解除");
+        assertEquals(403, neg.post("/a/honor/reward-punishes/" + ticket + "/lift-sanction", orgDept, reason,
+                "组织部解秘书部开的").code());
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM volunteer_sanction WHERE volunteer_id = ? "
+                + "AND status = 1", Integer.class, vid), "处置还在");
+        assertEquals(200, neg.post("/a/honor/reward-punishes/" + ticket + "/lift-sanction", secDept, reason,
+                "秘书部解自己那一档").code());
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM volunteer_sanction WHERE volunteer_id = ? "
+                + "AND status = 1", Integer.class, vid), "秘书部解掉了");
+    }
+
     @Test
     void squadLeader_reviewsJoinApplications_throughTheVolunteerApi() {
         ApiStressClient c = new ApiStressClient(port);

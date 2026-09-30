@@ -108,10 +108,10 @@
 | GET | /v/user/profile | 获取本人完整资料（`no` 编号[=志愿者 id 字符串，「我的」页顶部展示]/姓名/昵称/手机号/身份证完整号[本人查看自己]/政治面貌/学校/年级/地址/紧急联系方式 + 时长/积分/参与活动数/所在小组/归属分队）；游客也可取（实名字段为空、`registered:false`） | 需登录 |
 | PATCH | /v/user/profile | 更新可修改项（头像/i志愿者码/昵称[全局唯一去重]/学校/年级/政治面貌/通讯地址/紧急联系方式，**部分更新**仅传非空字段）；**手机号走 `PUT /v/user/phone`**；姓名/身份证「不可修改」（实名字段仅后台超管 `PUT /a/user/volunteers/{id}` 可改） | 需登录 |
 | POST | /v/user/profile/school-confirm | **每年确认一次学校和年级**（2026-09-27 补，协会 2026-09-16「每年由志愿者确认学校和年级即可，审核自动通过，原则上不影响报名」）：body `{school, grade}`，确认即通过，同时把年级对应到本学年、清掉「请改学校和年级」提示；`GET /v/user/profile` 的 `schoolConfirmPending` 为真时提示（已实名、账号正常、本学年还没确认过） | 需登录 |
-| GET | /v/user/deactivation | **注销状态**（2026-09-27 补，协会 2026-09-16：注销＝退出协会、7 天冷静期）：`pending` / `requestTime` / `effectiveTime` / `coolingDays` | 需登录 |
-| POST | /v/user/deactivation | 申请注销：body `{smsCode}`（先 `POST /v/auth/sms/codes` scene=`account-deactivate`，发到本人手机号）；进入冷静期，期内账号照常可用、手机号不释放；**到期按时间现算**，之后第一次碰到这个账号（请求闸门 / 登录 / 按手机号查找）即落定：status=2、清手机号与密码、合成 openid 换成 `deactivated:{id}`，身份证哈希不动（不能再注册） | 需登录 |
+| GET | /v/user/deactivation | **注销状态**（2026-09-27 补，协会 2026-09-16：注销＝退出协会、7 天冷静期）：`pending` / `requestTime` / `effectiveTime` / `coolingDays`。**被禁用 / 被判「拒绝使用本程序」的账号也放行这条路径**（两道闸门的放行清单里都有）：此前申请的注销要看得到、撤得了；新申请仍只收账号正常且没被判「拒绝使用」的人 | 需登录（含被禁用 / 被判「拒绝使用」者） |
+| POST | /v/user/deactivation | 申请注销：body `{smsCode}`（先 `POST /v/auth/sms/codes` scene=`account-deactivate`，发到本人手机号）；进入冷静期，期内账号照常可用、手机号不释放；**到期按时间现算**，之后第一次碰到这个账号（请求闸门 / 登录 / 按手机号查找）即落定：status=2、清手机号 / 密码 / 归属分队、合成 openid 换成 `deactivated:{id}`，身份证哈希不动（不能再注册）；小组（组长除外）与组织架构里的位置由 organization 随后让出。**冷静期里被禁用的照样按时落定**；禁用期间不能新申请 | 需登录 |
 | DELETE | /v/user/deactivation | 冷静期内撤销注销（到期后撤销不了，按已注销处理） | 需登录 |
-| PUT | /v/user/phone | 修改/换绑手机号（`{phone, smsCode}`，新号需 scene=change-phone 短信验证；查重不可撞其它账号；账号=手机号，同步改 phone 密文+phoneHash） | 需登录 |
+| PUT | /v/user/phone | 修改/换绑手机号（`{phone, smsCode, oldSmsCode}`：**原号与新号都要短信验证**，两条都用 scene=change-phone、按号区分；还没绑过手机号的账号第一次绑定只验新号，`oldSmsCode` 可不传。2026-09-30 起原号必验——只验新号的话，拿到登录态的人能把号换成自己的、进而拿走整个账号（验证码登录、找回密码、申请注销都认这个号）；原号已停用收不到码的，由协会在后台志愿者管理里改。查重不可撞其它账号；账号=手机号，同步改 phone 密文+phoneHash） | 需登录 |
 
 ### 管理端 `/a/user`
 
@@ -123,7 +123,7 @@
 | PATCH | /a/user/volunteers/{id}/status | 暂停/恢复志愿者账号（body: `{"status": 0/1}`，仅 0正常/1禁用）。⚠️ **禁用不再等于「登不进来」**：他仍能登录，但只能访问退出登录 / 奖惩记录 / 申诉 / 处置查看 / 站内提示这五条 | `user:status` |
 | DELETE | /a/user/volunteers/{id} | 删除志愿者（逻辑删除） | `user:delete` |
 | POST | /a/user/volunteers/{id}/password/reset | 重置志愿者密码=**清空** `password`（V20 起有密码列；管理员不设/不知明文，志愿者之后用手机号验证码登录再自设新密码） | `user:pwd-reset` |
-| POST | /a/user/volunteers/{id}/restore | **恢复已注销的账号**（2026-09-27 补，协会 2026-09-16「账号恢复 → 理事会」）：body `{phone}`——注销时手机号已释放、可能已被别人注册，所以填一个当前没被占用的号；恢复后账号正常、没有密码，本人用这个号收验证码登录 | 需登录（user:restore） |
+| POST | /a/user/volunteers/{id}/restore | **恢复已注销的账号**（2026-09-27 补，协会 2026-09-16「账号恢复 → 理事会」）：body `{phone}`——注销时手机号已释放、可能已被别人注册，所以填一个当前没被占用的号；恢复后账号正常、没有密码，本人用这个号收验证码登录；注销时让出去的分队 / 小组 / 组织架构位置不会跟着回来 | 需登录（user:restore） |
 | GET | /a/user/volunteers/export | 批量导出志愿者（Excel，支持与列表相同的筛选参数） | `user:export` |
 
 ---
@@ -423,7 +423,7 @@
 | POST | /a/honor/reward-punishes/{id}/reject | 驳回，`reason` 必填。**初审、终审两档都可以驳**——只让初审驳的话，单子到了理事会手上就只剩「批」这一条路。志愿者始终看不到这张单，不入账、不生效 | honor:reward-punish **或** honor:reward-punish-final |
 | POST | /a/honor/reward-punishes/{id}/appeal | **受理**申诉。`upheld=true` 成立 → 撤销处置 **+ 冲正积分**；`false` 驳回 → 维持原处罚。两种都必须填 `result`（驳回不写理由，志愿者只会看到「申诉失败」四个字）。<br>**冲正走反向流水而不是改原始流水**（账本追加型，原始那笔是「当时确实按这张单扣了分」的事实）；且反向流水**不能复用 `source_id`**——`uk_source(6, id)` 已被审核通过那笔占住，再写必然撞键，故走 `source_id=null` + `requestId=sys:rp-revert:{id}`，由 `uk_request_id` 兜幂等。<br>**单独一个权限点**：需求只写了审核方是组织部，**没写申诉由谁受理**；做成可授权的点，谁受理由后台配置决定，而不是在代码里替协会挑一个部门 | honor:reward-punish-appeal |
 | GET | /a/honor/sanctions | 查某人当前生效中的处置（`volunteerId` 必填） | honor:sanction |
-| POST | /a/honor/reward-punishes/{id}/lift-sanction | 提前解除某张单产生的处置，`reason` 必填，回实际解除条数。申诉成立时由系统自动解除，不走这个接口 | honor:sanction |
+| POST | /a/honor/reward-punishes/{id}/lift-sanction | 提前解除某张单产生的处置，`reason` 必填，回实际解除条数。申诉成立时由系统自动解除，不走这个接口。**2026-09-30 起还要这一档对应部门的处置权限点**（与开出同一档要的点相同：限制参加活动 `honor:sanction-activity` / 限制发布社区 `honor:sanction-community` / 拒绝使用本程序 `honor:sanction-all`），否则持 `honor:sanction` 的账号能把别的部门开的处置解掉；缺点返回 403 | honor:sanction（+ 该档处置权限点，代码内判定） |
 
 ### 考勤/积分变更二次审核 — 管理端 `/a/activity`
 
