@@ -293,6 +293,37 @@ class VolunteerDeactivationTest {
         assertNull(gone.getPhoneHash(), "号按时释放");
     }
 
+    /**
+     * 同上，但走「碰到即落定」那条路（登录 / 请求闸门都经 {@code finalizeIfDue(Volunteer)} → {@code isDue}），
+     * 不经定时收尾——收尾任务直接调按 id 落定的 UPDATE，证明不了 {@code isDue} 认不认禁用账号。
+     */
+    @Test
+    void bannedAndPastDue_isFinalizedTheFirstTimeSomethingTouchesIt() {
+        Volunteer byEntity = registered(phone());
+        makeDue(byEntity.getId());
+        jdbc.update("UPDATE volunteer SET status = 1 WHERE id = ?", byEntity.getId());
+        Volunteer loaded = reload(byEntity.getId());
+        assertTrue(deactivationService.isDue(loaded), "禁用且已过冷静期＝到期");
+        assertTrue(deactivationService.finalizeIfDue(loaded), "请求闸门 / 登录就是这样落定的");
+        assertEquals(UserStatus.DELETED, reload(byEntity.getId()).getStatus());
+
+        // 验证码登录：按手机号查到这个禁用的到期账号，当场落定、号释放，陌生号建一个新游客
+        String phone = phone();
+        Volunteer byLogin = registered(phone);
+        makeDue(byLogin.getId());
+        jdbc.update("UPDATE volunteer SET status = 1 WHERE id = ?", byLogin.getId());
+        authService.sendSmsCode(phone, SmsScene.LOGIN, null);
+        String code = code(SmsScene.LOGIN, phone);
+        try {
+            authService.smsLogin(phone, code, null);
+        } catch (Exception ignored) {
+            // 非 web 上下文 StpUtil.login 抛错；落定在它之前完成
+        }
+        Volunteer gone = reload(byLogin.getId());
+        assertEquals(UserStatus.DELETED, gone.getStatus(), "禁用中的到期账号被登录碰到即落定");
+        assertNull(gone.getPhoneHash(), "号释放");
+    }
+
     /** 被判「拒绝使用本程序」的人：闸门为了让他看得到、撤得了已有的申请而放行了这条路径，但新申请照旧不收。 */
     @Test
     void deniedAllUse_cannotStartANewDeactivation() {
