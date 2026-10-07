@@ -105,6 +105,23 @@ public final class ApiStressClient {
         return call("DELETE", path, token, null, label);
     }
 
+    /** 不带登录、原样取回响应体——给不套 {@code Result} 外壳的端点用（如 {@code /actuator/info}）；非 200 直接抛。 */
+    public String rawGet(String path) {
+        try {
+            HttpResponse<String> resp = http.send(HttpRequest.newBuilder(URI.create(base + path))
+                    .timeout(Duration.ofSeconds(30)).GET().build(), HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() != 200) {
+                throw new AssertionError("GET " + path + " → HTTP " + resp.statusCode() + "：" + resp.body());
+            }
+            return resp.body();
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+    }
+
     /**
      * 发一个请求并归档耗时与结果类别。<b>不抛异常</b>——压测线程里抛出去只会让统计漏掉那一次，
      * 所有异常都记成 failed 并留样本。

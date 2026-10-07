@@ -45,9 +45,11 @@ class AdminRewardPunishControllerTest {
 
     @Test
     void appealedOnly_polarityIsPinned() {
-        assertFalse(AdminRewardPunishController.appealedOnly(true),
+        assertFalse(AdminRewardPunishController.appealedOnly(true, false),
                 "持有 honor:reward-punish（完整管理权）→ 不收窄，看得到全部");
-        assertTrue(AdminRewardPunishController.appealedOnly(false),
+        assertFalse(AdminRewardPunishController.appealedOnly(false, true),
+                "只持 honor:reward-punish-final（理事会终审）→ 也看全部，否则「待终审」永远是空的");
+        assertTrue(AdminRewardPunishController.appealedOnly(false, false),
                 "只有 honor:reward-punish-appeal（受理权）→ 收窄，只看得到已进入申诉流程的单");
     }
 

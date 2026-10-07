@@ -30,6 +30,14 @@ server:
   servlet:
     context-path: /api
 
+# actuator：只开 health 与 info。info 报构建版本 / 构建时间（build-info）与数据库迁移版本号
+# （SchemaVersionInfoContributor），用来不登录、不看日志判断线上跑的是哪个包；不含环境变量与连接信息。
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
 mybatis-plus:
   mapper-locations: classpath*:mapper/**/*.xml
   configuration:

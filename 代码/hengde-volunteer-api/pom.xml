@@ -200,6 +200,15 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <executions>
+                    <!-- 生成 META-INF/build-info.properties：/actuator/info 据此报出构建版本与构建时间，
+                         不登录、不看日志就能判断线上跑的是哪个包（见 SchemaVersionInfoContributor） -->
+                    <execution>
+                        <goals>
+                            <goal>build-info</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

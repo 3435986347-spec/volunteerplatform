@@ -74,6 +74,10 @@ public class AdminRewardPunishController {
      * <p><b>但放宽必须同时收窄可见面</b>：只有受理权的人只看得到<b>已进入申诉流程</b>的单子，
      * 看不到待审核的草稿与别人尚未批的处罚。「不盲审」要的是看到自己要判的那一张，不是看到全部——
      * 第一次改这条时只做了放宽、忘了收窄。</p>
+     *
+     * <p><b>终审权（理事会）看全部</b>，与管理权同口径（url文档v2 一直是这么写的）。代码里曾只按
+     * 「有没有管理权」判，只持 {@code reward-punish-final} 的账号过得了注解、却被当成只有受理权收窄成
+     * 只看已申诉的单——「待终审」页签与侧栏角标永远是空的，没有任何报错。</p>
      */
     @Operation(summary = "奖惩单列表（可按志愿者/类型/审核状态/申诉状态筛）")
     @SaCheckPermission(value = {PermissionCode.HONOR_REWARD_PUNISH, PermissionCode.HONOR_REWARD_PUNISH_APPEAL,
@@ -85,7 +89,8 @@ public class AdminRewardPunishController {
                                                    @Parameter(description = "审核 0待初审/3待终审/1已通过/2已驳回") @RequestParam(required = false) Integer reviewStatus,
                                                    @Parameter(description = "申诉 0未申诉/1申诉中/2成立/3驳回") @RequestParam(required = false) Integer appealStatus) {
         boolean appealedOnly = appealedOnly(
-                StpAdminUtil.STP_LOGIC.hasPermission(PermissionCode.HONOR_REWARD_PUNISH));
+                StpAdminUtil.STP_LOGIC.hasPermission(PermissionCode.HONOR_REWARD_PUNISH),
+                StpAdminUtil.STP_LOGIC.hasPermission(PermissionCode.HONOR_REWARD_PUNISH_FINAL));
         return Result.ok(rewardPunishService.adminList(query, volunteerId, type, reviewStatus,
                 appealStatus, appealedOnly));
     }
@@ -99,10 +104,11 @@ public class AdminRewardPunishController {
      * 抽成静态方法后，{@code AdminRewardPunishControllerTest} 可以直接对它断言。</p>
      *
      * @param hasManagePermission 是否持有 {@code honor:reward-punish}（完整管理权）
+     * @param hasFinalPermission  是否持有 {@code honor:reward-punish-final}（终审权）
      * @return true = 只看得到已进入申诉流程的单
      */
-    static boolean appealedOnly(boolean hasManagePermission) {
-        return !hasManagePermission;
+    static boolean appealedOnly(boolean hasManagePermission, boolean hasFinalPermission) {
+        return !hasManagePermission && !hasFinalPermission;
     }
 
     /**

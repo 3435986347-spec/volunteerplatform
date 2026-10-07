@@ -124,7 +124,6 @@ class AssociationAnswersApiFlowTest {
         assertEquals(200, neg.post("/a/honor/reward-punishes", pubDept, punish(vid, null), "不附带处置的单谁都能开").code());
     }
 
-    /** 分队负责人在小程序里审加入申请（协会 2026-09-02：分队自己审，也可以由部门审核）。 */
     /**
      * 提前解除处置与开出同一档要同一个权限点：光有 honor:sanction 解不了别的部门开的处置。
      * 静态判定的用例证明不了控制器真的在解除前取了这张单的档位——这里走真实 HTTP。
@@ -155,6 +154,42 @@ class AssociationAnswersApiFlowTest {
                 + "AND status = 1", Integer.class, vid), "秘书部解掉了");
     }
 
+    /**
+     * 只持终审权的理事会账号要看得到「待终审」的单（url文档v2：终审方读不到队列就只能盲审）。
+     * 这里曾经只按「有没有管理权」收窄，终审人被当成只有受理权、只看得到已申诉的单——
+     * 「待终审」永远是空的，界面上没有任何报错。判定在控制器，只有 HTTP 用例证明得了它接上了登录态。
+     */
+    @Test
+    void finalReviewerOnly_seesTheAwaitingFinalQueue() {
+        ApiStressClient c = new ApiStressClient(port);
+        ApiStressClient neg = new ApiStressClient(port);
+        String root = c.adminLogin(adminUser, adminPass);
+        String tag = Long.toString(System.nanoTime(), 36);
+        c.devLogin("fin-" + tag);
+        long vid = jdbc.queryForObject("SELECT id FROM volunteer WHERE openid = ?", Long.class, "dev:fin-" + tag);
+
+        // 组织部开的奖励不经初审，直接落「待终审」
+        String orgDept = subAccount(c, root, "fo" + tag, "组织部", permId(c, root, "honor:reward-punish"));
+        Map<String, Object> reward = new HashMap<>();
+        reward.put("volunteerId", vid);
+        reward.put("type", 1);
+        reward.put("category", "表彰");
+        reward.put("title", "测试奖励-" + tag);
+        long ticket = ok(c.post("/a/honor/reward-punishes", orgDept, reward, "组织部提奖励")).dataAsLong();
+
+        String council = subAccount(c, root, "fc" + tag, "理事会", permId(c, root, "honor:reward-punish-final"));
+        String appealDesk = subAccount(c, root, "fa" + tag, "秘书部", permId(c, root, "honor:reward-punish-appeal"));
+        String queue = "/a/honor/reward-punishes?page=1&size=20&reviewStatus=3&volunteerId=" + vid;
+
+        JsonNode seen = ok(neg.get(queue, council, "理事会看待终审")).data().get("records");
+        assertEquals(1, seen.size(), seen.toString());
+        assertEquals(ticket, seen.get(0).get("id").asLong());
+        assertEquals(0, ok(neg.get(queue, appealDesk, "受理人看待终审")).data().get("records").size(),
+                "只有受理权的人仍只看得到进入过申诉流程的单");
+        ok(neg.post("/a/honor/reward-punishes/" + ticket + "/final-approve", council, null, "理事会终审"));
+    }
+
+    /** 分队负责人在小程序里审加入申请（协会 2026-09-02：分队自己审，也可以由部门审核）。 */
     @Test
     void squadLeader_reviewsJoinApplications_throughTheVolunteerApi() {
         ApiStressClient c = new ApiStressClient(port);
