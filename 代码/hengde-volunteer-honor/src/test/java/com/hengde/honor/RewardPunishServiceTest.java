@@ -1014,11 +1014,12 @@ class RewardPunishServiceTest {
         approveFully(id, ADMIN);
 
         AppealSubmitDTO dto = appealDto();
-        dto.setImageUrls(List.of("https://oss/a.jpg", "https://oss/b.jpg"));
+        List<String> urls = List.of(appealImage('a'), appealImage('b'));
+        dto.setImageUrls(urls);
         rewardPunishService.appeal(id, vid, dto);
 
         List<String> got = myRecords(vid).get(0).getAppealImageUrls();
-        assertEquals(List.of("https://oss/a.jpg", "https://oss/b.jpg"), got, "顺序也要保持");
+        assertEquals(urls, got, "顺序也要保持");
     }
 
     /** 没传凭证时回<b>空数组而不是 null</b>——客户端少一处判空。 */
@@ -1047,8 +1048,8 @@ class RewardPunishServiceTest {
         approveFully(id, ADMIN);
 
         AppealSubmitDTO dto = appealDto();
-        dto.setImageUrls(List.of("https://o/1.jpg", "https://o/2.jpg", "https://o/3.jpg",
-                "https://o/4.jpg", "https://o/5.jpg", "https://o/6.jpg", "https://o/7.jpg"));
+        dto.setImageUrls(List.of(appealImage('1'), appealImage('2'), appealImage('3'),
+                appealImage('4'), appealImage('5'), appealImage('6'), appealImage('7')));
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> rewardPunishService.appeal(id, vid, dto));
         assertTrue(ex.getMessage().contains("最多上传 6 张"), "实际：" + ex.getMessage());
@@ -1073,6 +1074,41 @@ class RewardPunishServiceTest {
         AppealSubmitDTO dto = appealDto();
         dto.setImageUrls(List.of("https://oss/a,b.jpg"));
         assertThrows(BusinessException.class, () -> rewardPunishService.appeal(id, vid, dto));
+    }
+
+    /**
+     * 只收经 {@code /v/files/appeal-image} 传上来的图：外链、别的目录下的本系统文件都不收，
+     * 被拒之后单子不能被推进「申诉中」（否则他再也提不了）。
+     *
+     * <p>不核的话申诉里能塞任意外链——受理人在后台点开的就是别人的页面（问卷文件题、投诉图片早就是这个判定，
+     * 申诉凭证是漏掉的那一处）。</p>
+     */
+    @Test
+    void appealImages_onlyOurOwnAppealUploads() {
+        Long vid = insertVolunteer();
+        Long id = rewardPunishService.create(punish(vid, 0), ADMIN, false);
+        approveFully(id, ADMIN);
+
+        for (String bad : List.of("https://evil.example/x.jpg",
+                "[oss-disabled]/avatar/20261013/" + "c".repeat(32) + ".jpg",
+                "[oss-disabled]/appeal/20261013/../../avatar/x.jpg")) {
+            AppealSubmitDTO dto = appealDto();
+            dto.setImageUrls(List.of(appealImage('a'), bad));
+            BusinessException ex = assertThrows(BusinessException.class,
+                    () -> rewardPunishService.appeal(id, vid, dto), bad);
+            assertTrue(ex.getMessage().contains("上传接口"), "实际：" + ex.getMessage());
+        }
+        assertEquals(0, rewardPunishMapper.selectById(id).getAppealStatus(), "被拒之后申诉不算已提交");
+
+        AppealSubmitDTO ok = appealDto();
+        ok.setImageUrls(List.of(appealImage('a')));
+        rewardPunishService.appeal(id, vid, ok);
+        assertEquals(List.of(appealImage('a')), myRecords(vid).get(0).getAppealImageUrls());
+    }
+
+    /** 与上传端点产出的对象名同形（存储未启用时的占位前缀 + appeal/日期/32 位十六进制）。 */
+    private static String appealImage(char c) {
+        return "[oss-disabled]/" + RewardPunishService.APPEAL_IMAGE_DIR + "/20261013/" + String.valueOf(c).repeat(32) + ".jpg";
     }
 
     private static AppealSubmitDTO appealDto() {

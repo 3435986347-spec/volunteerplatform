@@ -1,6 +1,7 @@
 package com.hengde.activity;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.hengde.activity.constant.ActivityStatus;
 import com.hengde.activity.dao.ActivityAttendanceMapper;
 import com.hengde.activity.dao.ActivityEnrollmentMapper;
 import com.hengde.activity.dao.ActivityMapper;
@@ -344,6 +345,28 @@ class EnrollmentServiceTest {
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> enrollmentService.enroll(a2, List.of(s2), vid));
         assertTrue(ex.getMessage().contains("时间冲突"));
+    }
+
+    /**
+     * 取消的活动不再占着报过名的人的时间：取消刻意保留报名数据（状态仍是「已通过」），
+     * 不剔除的话协会取消一场、同一时间另发一场时，原先报过名的人全都报不上。
+     */
+    @Test
+    void timeConflict_ignoresCancelledActivity() {
+        Long vid = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
+        Long a1 = insertActivity(a -> a.setNeedAudit(0));
+        Long s1 = insertSlot(a1, A_START, A_START.plusHours(2));
+        enrollmentService.enroll(a1, List.of(s1), vid);
+        Activity cancelled = new Activity();
+        cancelled.setId(a1);
+        cancelled.setStatus(ActivityStatus.CANCELLED);
+        activityMapper.updateById(cancelled);
+
+        Long a2 = insertActivity(a -> a.setNeedAudit(0));
+        Long s2 = insertSlot(a2, A_START, A_START.plusHours(2));
+        enrollmentService.enroll(a2, List.of(s2), vid);
+        assertEquals(1, enrollmentMapper.selectCount(Wrappers.<ActivityEnrollment>lambdaQuery()
+                .eq(ActivityEnrollment::getActivityId, a2).eq(ActivityEnrollment::getVolunteerId, vid)));
     }
 
     @Test

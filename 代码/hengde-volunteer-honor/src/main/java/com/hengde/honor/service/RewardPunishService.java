@@ -16,6 +16,7 @@ import com.hengde.auth.vo.VolunteerGrantEligibilityView;
 import com.hengde.auth.vo.VolunteerProfileView;
 import com.hengde.common.constant.UserStatus;
 import com.hengde.common.exception.BusinessException;
+import com.hengde.common.oss.FileStorageService;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
 import com.hengde.common.sms.SmsNotifyTemplate;
@@ -91,6 +92,12 @@ public class RewardPunishService {
     private NotificationService notificationService;
     private SmsNotifyService smsNotifyService;
     private HonorProperties honorProperties;
+    private FileStorageService fileStorageService;
+
+    @Autowired
+    public void setFileStorageService(FileStorageService fileStorageService) {
+        this.fileStorageService = fileStorageService;
+    }
 
     @Autowired
     public void setRewardPunishMapper(HonorRewardPunishMapper rewardPunishMapper) {
@@ -733,6 +740,12 @@ public class RewardPunishService {
     /** 一次申诉最多允许的凭证图片数。 */
     static final int MAX_APPEAL_IMAGES = 6;
 
+    /**
+     * 申诉凭证的上传目录：{@code POST /v/files/appeal-image} 传到这里，提交申诉时只认这个目录下本系统生成的对象。
+     * 上传端点引用的就是这个常量，两边不会各写一份。
+     */
+    public static final String APPEAL_IMAGE_DIR = "appeal";
+
     /** {@code appeal_images} 列宽，逗号分隔串的上限（与 V44 一致）。 */
     private static final int APPEAL_IMAGES_COLUMN_LEN = 1024;
 
@@ -764,6 +777,11 @@ public class RewardPunishService {
             // 而且是「存进去时看着好好的、看的时候才坏」。宁可当场拒绝。
             if (t.indexOf(',') >= 0) {
                 throw new BusinessException("图片地址不能包含逗号");
+            }
+            // 只收经 /v/files/appeal-image 传上来的图（与问卷文件题、投诉图片同一判定）。
+            // 不核的话申诉里能塞任意外链，受理人在后台点开的就是别人的页面。
+            if (!fileStorageService.isOwnUpload(t, APPEAL_IMAGE_DIR)) {
+                throw new BusinessException("申诉凭证请先通过上传接口上传，再提交上传得到的地址");
             }
             cleaned.add(t);
         }

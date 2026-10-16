@@ -55,7 +55,8 @@ public class VolunteerFileUploadController {
     private static final String DIR_SIGNATURE = "signature";
 
     /** 申诉凭证图片（任意登录志愿者，奖惩申诉时随理由一起提交） */
-    private static final String DIR_APPEAL = "appeal";
+    /** 与提交申诉时的校验同一个目录（{@link com.hengde.honor.service.RewardPunishService#APPEAL_IMAGE_DIR}）。 */
+    private static final String DIR_APPEAL = com.hengde.honor.service.RewardPunishService.APPEAL_IMAGE_DIR;
 
     private static final String DIR_GROUP = "group";
 

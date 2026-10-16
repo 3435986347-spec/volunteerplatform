@@ -671,6 +671,26 @@ public class EnrollmentService {
         }
     }
 
+    /**
+     * 还真的占着这个人时间的时段：所属活动已取消、已删除的不算。
+     *
+     * <p>取消活动刻意保留报名与考勤数据（{@code ActivityService.cancel}），那些报名的状态仍是「已通过」。
+     * 不剔除的话，协会因天气取消一场、在同一时间另发一场时，原先报过名的人一个都报不上，
+     * 只看到「与您已报名的时间段存在时间冲突」——而那场活动已经不存在了。</p>
+     */
+    private List<ActivitySlot> occupyingSlots(List<ActivitySlot> slots) {
+        if (slots.isEmpty()) {
+            return slots;
+        }
+        // selectBatchIds 已按 @TableLogic 排除了删除的活动
+        Set<Long> live = activityMapper.selectBatchIds(slots.stream().map(ActivitySlot::getActivityId).distinct().toList())
+                .stream()
+                .filter(a -> !Integer.valueOf(ActivityStatus.CANCELLED).equals(a.getStatus()))
+                .map(Activity::getId)
+                .collect(Collectors.toSet());
+        return slots.stream().filter(sl -> live.contains(sl.getActivityId())).toList();
+    }
+
     /** 选定 slot 彼此不得时间重叠；且不得与我在任何活动的活跃报名 slot 重叠。 */
     private void checkTimeConflicts(Long volunteerId, List<ActivitySlot> newSlots) {
         // 选定 slot 之间
@@ -689,7 +709,7 @@ public class EnrollmentService {
             return;
         }
         List<Long> activeSlotIds = myActive.stream().map(ActivityEnrollment::getSlotId).distinct().toList();
-        List<ActivitySlot> existingSlots = activitySlotMapper.selectBatchIds(activeSlotIds);
+        List<ActivitySlot> existingSlots = occupyingSlots(activitySlotMapper.selectBatchIds(activeSlotIds));
         for (ActivitySlot ns : newSlots) {
             for (ActivitySlot es : existingSlots) {
                 if (overlaps(ns, es)) {

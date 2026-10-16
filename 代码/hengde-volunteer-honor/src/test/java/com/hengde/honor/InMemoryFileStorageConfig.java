@@ -69,6 +69,12 @@ public class InMemoryFileStorageConfig {
             }
 
             @Override
+            public boolean isOwnUpload(String url, String dir) {
+                // 与真实实现「存储未启用」时同一口径：占位前缀 + 本项目生成的对象名
+                return FileStorageService.matchesUploadedName(url, "[oss-disabled]", dir);
+            }
+
+            @Override
             public void delete(String objectName) {
                 OBJECTS.remove(objectName);
             }
