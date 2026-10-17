@@ -582,15 +582,23 @@ public class DonationService {
                 .set(DonateDonation::getInvoiceTime, now)
                 .set(DonateDonation::getInvoiceBy, adminId)
                 .set(DonateDonation::getUpdateTime, now));
+        if (rows == 1 && StringUtils.hasText(d.getInvoiceFileKey()) && !d.getInvoiceFileKey().equals(key)) {
+            // 重传＝替换：旧文件里有抬头与税号，留在桶里没人引用也没人清，删掉（失败只记日志，不影响这次上传）
+            deleteQuietly(d.getInvoiceFileKey(), "被替换的旧发票");
+        }
         if (rows != 1) {
-            try {
-                fileStorageService.delete(key);
-            } catch (RuntimeException e) {
-                log.warn("[DONATION] 发票文件 {} 没能删掉（这笔捐款状态已变化）：{}", key, e.getMessage());
-            }
+            deleteQuietly(key, "这笔捐款状态已变化");
             DonateDonation now2 = requireById(donationId);
             throw new BusinessException("这笔捐款当前不能上传发票（" + DonationFlow.statusLabel(now2.getStatus()) + " · "
                     + DonationFlow.invoiceLabel(now2.getInvoiceStatus()) + "）");
+        }
+    }
+
+    private void deleteQuietly(String key, String why) {
+        try {
+            fileStorageService.delete(key);
+        } catch (RuntimeException e) {
+            log.warn("[DONATION] 发票文件 {} 没能删掉（{}）：{}", key, why, e.getMessage());
         }
     }
 

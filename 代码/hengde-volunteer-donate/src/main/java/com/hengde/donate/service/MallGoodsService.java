@@ -188,7 +188,10 @@ public class MallGoodsService {
         if (sponsorScope == null) {
             couponService.requireExists(values.getRequireCouponId());
         }
-        Delivery d = normalizeDelivery(values, sponsorScope == null ? ADMIN_IMAGE_DIR : SPONSOR_IMAGE_DIR);
+        // 原样保留的兑换二维码不再按目录校验：企业传在 enterprise/ 下的码，后台改别的字段时会原样带回来
+        MallGoods existing = goodsMapper.selectById(id);
+        Delivery d = normalizeDelivery(values, sponsorScope == null ? ADMIN_IMAGE_DIR : SPONSOR_IMAGE_DIR,
+                existing == null ? null : existing.getRedeemQrUrl());
         int rows = goodsMapper.update(null, Wrappers.<MallGoods>lambdaUpdate()
                 .eq(MallGoods::getId, id)
                 .eq(sponsorScope != null, MallGoods::getSponsorEnterpriseId, sponsorScope)
@@ -465,6 +468,14 @@ public class MallGoodsService {
                 .set(MallGoods::getUpdateTime, LocalDateTime.now()));
     }
 
+    /**
+     * 这件商品是否按新口径（V95，协会答复五 丙-3）设置过领取方式；两个开关都是 NULL 的是改造前的存量商品，
+     * 沿用全局的自提点、快递开关与快递费。<b>「老商品」的判定只在这里</b>——下单、展示、校验都调它。
+     */
+    public static boolean deliveryConfigured(MallGoods g) {
+        return g != null && (g.getAllowPickup() != null || g.getAllowExpress() != null);
+    }
+
     /** 规范化后的领取方式（落库值）。 */
     record Delivery(Integer allowPickup, Integer allowExpress, String pickupPointIds, Integer expressFeeFen,
                     Integer expressPoints, Integer virtualGoods, String redeemQrUrl) {
@@ -479,6 +490,13 @@ public class MallGoodsService {
      * @param uploadDir 兑换二维码必须是本系统传到这个目录下的图（外链放进详情页，扫出来的是别人的码）
      */
     Delivery normalizeDelivery(MallGoodsSaveDTO dto, String uploadDir) {
+        return normalizeDelivery(dto, uploadDir, null);
+    }
+
+    /**
+     * @param keptQr 这件商品原来的兑换二维码：原样提交的不再校验目录（它当初已经按发布者的上传目录校验过）
+     */
+    Delivery normalizeDelivery(MallGoodsSaveDTO dto, String uploadDir, String keptQr) {
         boolean virtual = dto.getVirtualGoods() != null && dto.getVirtualGoods() == 1;
         if (dto.getAllowPickup() == null && dto.getAllowExpress() == null) {
             if (virtual || StringUtils.hasText(dto.getRedeemQrUrl()) || dto.getExpressFeeFen() != null
@@ -503,7 +521,7 @@ public class MallGoodsService {
             if (qr == null) {
                 throw new BusinessException("虚拟商品请上传兑换二维码");
             }
-            if (!fileStorageService.isOwnUpload(qr, uploadDir)) {
+            if (!qr.equals(keptQr) && !fileStorageService.isOwnUpload(qr, uploadDir)) {
                 throw new BusinessException("兑换二维码请先通过上传接口上传，再提交上传得到的地址");
             }
         } else if (qr != null) {
@@ -558,7 +576,7 @@ public class MallGoodsService {
      * 自提恒可；快递跟全局开关，快递费取配置、积分按配置汇率折算。前端只认这几个生效值，不必知道新旧两套口径。
      */
     private void applyDeliveryView(MallGoodsVO vo, MallGoods g) {
-        boolean configured = g.getAllowPickup() != null || g.getAllowExpress() != null;
+        boolean configured = deliveryConfigured(g);
         vo.setDeliveryConfigured(configured);
         vo.setVirtualGoods(g.getVirtualGoods() != null && g.getVirtualGoods() == 1);
         vo.setRedeemQrUrl(g.getRedeemQrUrl());
@@ -624,7 +642,6 @@ public class MallGoodsService {
                         .orderByDesc(MallGoods::getId));
         PageResult<MallGoodsVO> result = PageResult.of(page.convert(g -> toVO(g, false)));
         fill(result.getRecords());
-        result.getRecords().forEach(v -> v.setRedeemQrUrl(null));
         return result;
     }
 
@@ -651,9 +668,6 @@ public class MallGoodsService {
         }
         MallGoodsVO vo = toVO(goods, false);
         fill(List.of(vo));
-        // 虚拟商品的兑换二维码<b>不在商品页公开</b>：谁都能看的商品页上挂着它，就不必兑换了。
-        // 它只出现在兑换成功之后本人的兑换详情里（MallOrderService.detailMine）
-        vo.setRedeemQrUrl(null);
         return vo;
     }
 
@@ -764,6 +778,11 @@ public class MallGoodsService {
         vo.setSort(goods.getSort());
         vo.setCreateTime(goods.getCreateTime());
         applyDeliveryView(vo, goods);
+        if (!forAdmin) {
+            // 虚拟商品的兑换二维码<b>不在志愿者端的商品页下发</b>：谁都能看的页面上挂着它，就不必兑换了。
+            // 它只出现在兑换成功之后本人的兑换详情里（MallOrderService.detailMine）；后台与赞助企业看得到（编辑回填）
+            vo.setRedeemQrUrl(null);
+        }
         if (forAdmin) {
             vo.setSponsorEnterpriseId(goods.getSponsorEnterpriseId());
             vo.setRejectReason(goods.getRejectReason());

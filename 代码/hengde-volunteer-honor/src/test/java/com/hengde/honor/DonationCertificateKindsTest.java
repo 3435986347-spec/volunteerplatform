@@ -211,6 +211,35 @@ class DonationCertificateKindsTest {
         assertEquals(2, mine(donor, null).size());
     }
 
+    @Test
+    void goodsCertificate_followsItemsAddedOrRemovedAfterTheCheck() {
+        Long donor = volunteer("补录物资的捐书人");
+        Long campaign = openCampaign("补录捐书-" + SEQ.incrementAndGet());
+        // 核对时一件都不合格：没有证书
+        DonateFlowVOs.Shipment s = shipmentService.register(donor, campaign, shipment(item("霉书", 1)));
+        shipmentService.arrive(s.getId(), ADMIN);
+        shipmentService.check(s.getId(), check(result(s.getItems().get(0).getId(), false, "发霉")), ADMIN);
+        assertNull(certRow(DonateCertRefs.book(s.getId())));
+
+        // 拆包时发现单子上漏写了一件、后台补录（已核对的包裹补录即合格）：补出证书（评审发现）
+        Long added = shipmentService.addItem(s.getId(), item("课外书", 2), ADMIN);
+        Map<String, Object> row = certRow(DonateCertRefs.book(s.getId()));
+        assertNotNull(row, "补录了合格物资就该有证书");
+        assertEquals(0, ((Number) row.get("is_deleted")).intValue());
+
+        // 把这件合格物资又移除：一件合格的都不剩，证书撤销（留原因，可恢复）
+        shipmentService.removeItem(added, ADMIN);
+        Map<String, Object> revoked = certRow(DonateCertRefs.book(s.getId()));
+        assertEquals(1, ((Number) revoked.get("is_deleted")).intValue(), "写着「经核对合格」的证书不能留着");
+        assertTrue(revoked.get("deleted_reason").toString().contains("移除"), revoked.get("deleted_reason").toString());
+
+        // 再补录一件：恢复原来那张（同一编号），不另发一张
+        shipmentService.addItem(s.getId(), item("课外书", 1), ADMIN);
+        Map<String, Object> back = certRow(DonateCertRefs.book(s.getId()));
+        assertEquals(0, ((Number) back.get("is_deleted")).intValue());
+        assertEquals(row.get("cert_no"), back.get("cert_no"));
+    }
+
     // ================= 众筹捐款：到账时出，退款即撤 =================
 
     @Test

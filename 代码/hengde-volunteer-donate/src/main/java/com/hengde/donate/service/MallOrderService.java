@@ -426,8 +426,7 @@ public class MallOrderService {
         if (goods != null && goods.getVirtualGoods() != null && goods.getVirtualGoods() == 1) {
             throw new BusinessException("虚拟商品只能自提");
         }
-        boolean configured = goods != null && (goods.getAllowPickup() != null || goods.getAllowExpress() != null);
-        if (!configured) {
+        if (!MallGoodsService.deliveryConfigured(goods)) {
             int fee = shippingCalculator.feeFen(MallDeliveryType.EXPRESS, goods, spec);
             int rate = shippingCalculator.pointsPerYuan();
             int points = payType != null && payType == MallShippingPayType.POINTS ? MallShippingCalculator.pointsFor(fee, rate) : 0;
@@ -454,12 +453,13 @@ public class MallOrderService {
      * @return 选中的自提点；不用选时返回 null
      */
     private MallPickupPoint pickupPointFor(MallGoods goods, Long chosen) {
-        boolean configured = goods != null && (goods.getAllowPickup() != null || goods.getAllowExpress() != null);
-        if (configured && (goods.getAllowPickup() == null || goods.getAllowPickup() != 1)) {
+        if (MallGoodsService.deliveryConfigured(goods) && (goods.getAllowPickup() == null || goods.getAllowPickup() != 1)) {
             throw new BusinessException("该商品不支持自提，请选择快递");
         }
         String ids = goods == null ? null : goods.getPickupPointIds();
-        if (MallPickupPointService.parseIds(ids).isEmpty()) {
+        // 看「此刻还能选的」而不是「商品上列过的」：列过的点全停用 / 删除时，商品页给的可选列表是空的，
+        // 小程序就不会带自提点——这时按没列处理（到配置里的唯一自提点领），而不是让这件商品再也兑不了
+        if (pickupPointService.usableByIds(MallPickupPointService.parseIds(ids)).isEmpty()) {
             if (chosen != null) {
                 throw new BusinessException("该商品没有可选的自提点，不用选择");
             }

@@ -150,18 +150,54 @@ class MallImmediateOrderTest {
 
     @Test
     void pickupPoint_mustBeChosenFromTheGoodsList_andStillEnabled() {
-        long spec = goods(pickupOnly(office), spec("标准", 10, 0, 5));
+        long far = pickupPointService.create(point("远处-" + SEQ.incrementAndGet(), "雷州市某镇"));
+        long spec = goods(pickupOnly(office, school), spec("标准", 10, 0, 5));
         assertTrue(assertThrows(BusinessException.class, () -> orderService.placeOrder(me, pickupAt(spec, null)))
                 .getMessage().contains("请选择自提点"));
-        assertTrue(assertThrows(BusinessException.class, () -> orderService.placeOrder(me, pickupAt(spec, school)))
+        assertTrue(assertThrows(BusinessException.class, () -> orderService.placeOrder(me, pickupAt(spec, far)))
                 .getMessage().contains("不能在这个自提点"));
-        MallPickupPointDTO off = point("协会办公室（停用）", "雷州市新城大道 1 号");
-        off.setEnabled(0);
-        pickupPointService.update(office, off);
+        disable(office);
         assertTrue(assertThrows(BusinessException.class, () -> orderService.placeOrder(me, pickupAt(spec, office)))
                 .getMessage().contains("已停用"));
         assertEquals(5, stock(spec), "被拒的下单不占库存");
         assertEquals(1000, pointService.balanceOf(me));
+
+        // 商品上列过的点全停用：商品页给的可选列表是空的，小程序不会带自提点——按没列处理，到配置里的自提点领，
+        // 而不是让这件商品再也兑不了（评审发现）
+        disable(school);
+        assertTrue(goodsService.detailForVolunteer(goodsIdOf(spec)).getPickupPoints().isEmpty());
+        MallOrder order = orderService.placeOrder(me, pickupAt(spec, null));
+        assertEquals(MallOrderStatus.READY, order.getStatus());
+        assertEquals("协会办公室（配置）", order.getPickupSiteName());
+        assertTrue(assertThrows(BusinessException.class, () -> orderService.placeOrder(me, pickupAt(spec, school)))
+                .getMessage().contains("没有可选的自提点"));
+    }
+
+    @Test
+    void adminCanEditAnEnterpriseVirtualGoods_keepingTheEnterpriseUploadedQr() {
+        // 企业传的码在 enterprise/ 下；后台改别的字段时原样带回来，不能因为「不是 goods/ 目录」被拒（评审发现）
+        String qr = "[oss-disabled]/" + MallGoodsService.SPONSOR_IMAGE_DIR + "/20261017/" + "b".repeat(32) + ".png";
+        MallGoodsSaveDTO v = delivery(1, 0, null, null, null);
+        v.setVirtualGoods(1);
+        v.setRedeemQrUrl(qr);
+        v.setSpecs(List.of(spec("会员资格", 100, 0, 5)));
+        Long id = goodsService.createForSponsor(v, 7001L, "某爱心企业");
+        v.setName("改个名字-" + SEQ.incrementAndGet());
+        goodsService.update(id, v);
+        assertEquals(qr, goodsService.detailForAdmin(id).getRedeemQrUrl());
+        MallGoodsSaveDTO outside = delivery(1, 0, null, null, null);
+        outside.setVirtualGoods(1);
+        outside.setRedeemQrUrl("[oss-disabled]/" + MallGoodsService.SPONSOR_IMAGE_DIR + "/20261017/" + "c".repeat(32) + ".png");
+        outside.setSpecs(List.of(spec("会员资格", 100, 0, 5)));
+        outside.setName("换了一个企业目录的码");
+        assertThrows(BusinessException.class, () -> goodsService.update(id, outside),
+                "换成新的码仍按后台的上传目录校验");
+    }
+
+    private void disable(long pointId) {
+        MallPickupPointDTO off = point("停用-" + SEQ.incrementAndGet(), "雷州市");
+        off.setEnabled(0);
+        pickupPointService.update(pointId, off);
     }
 
     @Test

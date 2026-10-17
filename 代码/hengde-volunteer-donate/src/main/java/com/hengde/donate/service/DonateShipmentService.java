@@ -9,6 +9,7 @@ import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
 import com.hengde.donate.constant.DonateCertRefs;
 import com.hengde.donate.constant.DonateFlow;
+import com.hengde.donate.event.DonationCertRevokedEvent;
 import com.hengde.donate.event.DonationCertifiableEvent;
 import com.hengde.donate.constant.ExpressCompany;
 import com.hengde.donate.constant.WishFlow;
@@ -499,6 +500,13 @@ public class DonateShipmentService {
         itemMapper.insert(item);
         traceService.record(shipmentId, item.getId(), null, DonateFlow.ACT_ADMIN_ADD, "机构补录物资：" + item.getName(),
                 DonateFlow.OP_ADMIN, adminId);
+        if (status == DonateFlow.ITEM_QUALIFIED) {
+            // 已核对的包裹补了一件合格物资：核对时可能一件都不合格、没出过证——这里补上（出证幂等，已有就是原来那张）
+            String ref = DonateCertRefs.ofShipment(s.getBizType(), shipmentId);
+            if (ref != null) {
+                eventPublisher.publishEvent(new DonationCertifiableEvent(ref, s.getDonorVolunteerId()));
+            }
+        }
         return item.getId();
     }
 
@@ -536,6 +544,17 @@ public class DonateShipmentService {
         }
         traceService.record(item.getShipmentId(), itemId, null, DonateFlow.ACT_ADMIN_REMOVE,
                 "机构移除了物资：" + item.getName(), DonateFlow.OP_ADMIN, adminId);
+        if (item.getStatus() == DonateFlow.ITEM_QUALIFIED) {
+            // 移除的是合格物资：这个包裹若已一件合格的都不剩，那张「捐赠物资共 N 件（经核对合格）」的证书就不该留着
+            Long stillQualified = itemMapper.selectCount(Wrappers.<DonateItem>lambdaQuery()
+                    .eq(DonateItem::getShipmentId, item.getShipmentId())
+                    .in(DonateItem::getStatus, DonateFlow.ITEM_QUALIFIED, DonateFlow.ITEM_PACKED, DonateFlow.ITEM_DELIVERED));
+            String ref = DonateCertRefs.ofShipment(item.getBizType(), item.getShipmentId());
+            if (stillQualified == 0 && ref != null) {
+                eventPublisher.publishEvent(new DonationCertRevokedEvent(ref, item.getDonorVolunteerId(),
+                        "合格物资已被机构移除：" + item.getName()));
+            }
+        }
     }
 
     // ================= 内部 =================
