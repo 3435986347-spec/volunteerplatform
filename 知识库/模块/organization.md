@@ -13,7 +13,7 @@
 - 志愿者端权限只给「活跃且 `manager_flag=1`」的人（`isActiveManager`），可授的点由 `permission.volunteer_grantable` 圈定。
 - 一人一组靠生成列唯一键 `uk_active_volunteer`；小组 create / join 按人上锁。
 - 分队：两条审核路（部门、分队负责人）都走 `approveSerialized`，事务第一句先锁分队行；负责人＝`volunteer_squad.leader_id`，取消要显式 `.set(leader_id, null)`。
-- 组织架构：全部写操作一把全局锁 `lock:org-structure`；最多 10 层、不能成环、有下级或有人的节点不能删。
+- 组织架构：全部写操作一把全局锁 `lock:org-structure`；最多 10 层、不能成环、有下级或有人的节点不能删。种子节点：协会根节点下理事会（V101 补种）、组织部、秘书部、宣传部。
 - 问卷：题目与答案的校验、规范化只在 `FormAnswerValidator`；发布后题目冻结；提交与停止靠 `selectByIdForShare` 串行；文件题只收本系统 `form/` 下的上传。
 - 考试：多选全对才得分；交卷 / 阅卷 / 撤销持同一把按人的锁；资格按时间现算；到期收尾按主键、不按 `volunteer_id` 范围 UPDATE（会死锁）。
 
