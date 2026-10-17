@@ -19,6 +19,7 @@
 - [ ] 业务口径变了：改 `领域/` 对应页的现行规则与功能状态表
 - [ ] 协会有新答复：`决策/协会决策.md` 加新号 + 对照表
 - [ ] 跨模块的批次：`变更日志.md` 最上面追加
+- [ ] 新做完一条工作流：在 `回归验证.md` 第二节加一行（工作流 · 证明它的用例 · H / S）
 - [ ] `python3 tools/gen_knowledge_base.py`、`python3 tools/verify_knowledge_base.py` 都过
 - [ ] 根 `AGENTS.md` 改了：`python3 tools/gen_agent_entries.py`
 - [ ] 需要同步到 Gitee 知识库仓库：`tools/publish_knowledge_base.sh`
