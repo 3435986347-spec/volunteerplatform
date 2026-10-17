@@ -12,7 +12,11 @@ import java.util.Set;
  * <p><b>一条短信模板属于且只属于一个话题</b>（{@link #of}），新增模板时必须在这里归类——没归类的一律当「不可关闭」处理，
  * 宁可多打扰一条，不能让一条要紧的提醒因为漏归类被静默吞掉。</p>
  *
- * <p><b>不可关闭</b>的是「不知道就会吃亏」的提醒：奖惩与违规（申诉期从通过那一刻起算）、活动取消（不知道就白跑一趟）。
+ * <p><b>不可关闭</b>的是「不知道就会吃亏」的提醒：奖惩与违规（申诉期从通过那一刻起算）、活动取消（不知道就白跑一趟）、
+ * 分队 / 小组 / 管理团队的申请结果（协会 2026-09-16 回执四 乙-1 确认：组织类、申请类是审批结果，关掉就不知道自己的申请过没过，
+ * 事情办不下去；可关的是活动、社区、积分、勋章这类）。</p>
+ *
+ * <p>⚠️ 活动取消比协会口径更严：那张表把它列在「活动类、可关」里，这里按「不知道就白跑一趟」定为不可关，见知识库 `知识库/决策/协会决策.md` 的 XH21。
  * 用户存了关闭也不生效（V4规划 承重条款 6：偏好在 {@code SmsNotifyService} 统一过滤，不让业务调用方各自判断）。
  * 验证码不走通知通道，本来就不受偏好影响。</p>
  *
@@ -31,7 +35,7 @@ public enum NotifyTopic {
             SmsNotifyTemplate.SERVICE_RECORD_CREDITED, SmsNotifyTemplate.POINTS_ORDER_REVIEW),
     REWARD_PUNISH("奖惩与违规记录", false,
             SmsNotifyTemplate.REWARD_PUNISH, SmsNotifyTemplate.ACTIVITY_VIOLATION),
-    ORGANIZATION("分队 / 小组 / 管理团队申请结果", true,
+    ORGANIZATION("分队 / 小组 / 管理团队申请结果", false,
             SmsNotifyTemplate.ORG_JOIN_RESULT, SmsNotifyTemplate.GROUP_JOIN_RESULT),
     COMPLAINT("投诉建议答复", true,
             SmsNotifyTemplate.COMPLAINT_REPLIED),
