@@ -1,194 +1,146 @@
-# Repository Guidelines
+# AGENTS.md
 
-## Project Structure
+雷州市恒德爱心公益协会志愿者管理平台的**总入口**，写给所有 coding agent（Codex、Claude Code、Cursor……）。Claude Code 经根 `CLAUDE.md` 的 `@AGENTS.md` 读到同一份。
 
-Code lives under `代码/`. Product, API, design, deployment, and test references live under `文档/`. Treat these files as the working contract:
+> **这个文件只放硬规矩和路由**，正文在 `知识库/`（同时发布为独立仓库 Gitee `henge-volunteerplatform-knowlegebase`）。
+> 先按任务找到页，再读那一页的「现行规则 / 现行要点」。冲突时：**代码 > 知识库现行要点 > 按批次的记录 > `文档/` 里的规划与历史材料**。
 
-- `CLAUDE.md`: current implementation status, architecture rules, command notes, and module boundaries.
-- `文档/业务领域划分.md`: 12-domain ownership map.
-- `文档/功能清单.md`: requirement checklist and completion state.
-- `文档/v1/url文档v1.md`: API path and permission contract.
-- `文档/v1/后台管理页面设计prompt.md`: admin console UI/API contract.
-- `文档/v1/雷州市恒德爱心公益协会志愿者小程序V1.md`: V1 feature scope.
+## 项目一句话
 
-Implemented backend modules:
+微信小程序 + 后台管理控制台 + Spring Boot 4 后端（Java 17，**按领域垂直切分的模块化单体**，14 个 Maven 模块，`groupId=com.hengde`，`version=2.0.1`）。版本号只在父 POM 维护（子模块不写自身 `groupId` / `version`，互相引用不写 version；`<parent>` 里的版本号例外，改版本用 `versions:set`）。
 
-- `代码/hengde-volunteer-parent/`: parent POM, Java 17, Spring Boot 4.0.6, dependency management, shared plugins.
-- `代码/hengde-volunteer-common/`: shared primitives, errors, crypto, Redis, SMS, OSS, Excel, pagination, distributed lock helper, Flyway migrations, and Testcontainers support.
-- `代码/hengde-volunteer-auth/`: volunteer login/register/agreement/signature, admin auth, PII encryption/decryption, volunteer query/admin services.
-- `代码/hengde-volunteer-organization/`: RBAC sub-accounts, permissions, groups, squads, structure, manager-team flag workflows, admin `/a/auth/me`, and volunteer-side RBAC grants.
-- `代码/hengde-volunteer-activity/`: activity publishing/review, enrollment, attendance, service records, points, leaders, messages, recurring publish, backfill, volunteer-side publishing, and leader views.
-- `代码/hengde-volunteer-publicity/`: banners, announcements, and downloadable files.
-- `代码/hengde-volunteer-user/`: admin volunteer management, search/filter/export, status changes, deletion, detail/update, and cross-domain display aggregates.
-- `代码/hengde-volunteer-data/`: dashboard aggregate counts and data overview endpoints.
-- `代码/hengde-volunteer-honor/`: rankings (attendance count / service minutes / points × month / year / total) with snapshot freezing of past periods, medals and role models (V2 batch 3), and **electronic certificates (V2 batch 4)** — auto-creation on secretary confirmation, lazy PDF rendering stamped onto the association's template, private storage with short-lived signed download URLs, batch upload, soft delete/restore, per-activity templates, plus a reconcile job that backfills certificates whose creation event was lost — **bounded by a lookback window** so a cron run can never mass-issue certificates for pre-refactor activities (the association has not ruled on back-issuing yet), with `POST /a/honor/certificates/reconcile?since=&activityId=` as the explicit, human-scoped remedy for gaps outside that window. Also **rewards/penalties (V2 batch 5)** — one order table for both praise and punishment, organiser review before anything becomes visible, a 7-day appeal window whose deadline is frozen at approval time, points credited/debited through the batch-1 ledger, and appeal-upheld reversals written as a **new opposite entry** (never by editing the original — the ledger is append-only). Reads activity-domain data **only through narrow services** — `ActivityRankingQueryService` for metrics, `ActivityCertificateQueryService` for certificate subjects, `ViolationReviewService#findApproved` for the on-site violation a penalty is based on; never through activity's mappers.
-- `代码/hengde-volunteer-auth/` also owns **`volunteer_sanction`** (V32): the account-capability restrictions a penalty imposes — restrict-from-activities / restrict-from-community / deny-all-use, each with an optional expiry. It lives here, **not in honor**, because the enforcement gates hang off business entry points in `activity` and `publicity`; putting the table in honor would force those modules to depend on honor and close a cycle. Expiry is decided **by comparing timestamps at query time, never by a cron flipping a status flag** — a missed job would silently keep a lapsed penalty in force. The gate needs **two** things and they are easy to confuse. (1) *Serialization*: the writer (`SanctionService.impose`) and the gates (`SanctionQueryService`) **both lock the `volunteer` row** — X and S respectively. They run in separate transactions and share no Redisson lock (`lock:enroll:volunteer:` only serializes enrollments against each other), and the sanction row the gate needs to see does not exist yet when the gate reads, so a stable parent row is the only thing both sides can serialize on. (2) *Visibility*: the gate's sanction query must itself be a **current read** (`VolunteerSanctionMapper.selectBlockingForShare`). The parent-row lock alone buys "I wait for you to commit", not "I can see it once you have" — under REPEATABLE READ the read view is fixed at the transaction's first consistent read, and `doProxyEnroll` must run its same-group check (a plain read) before the gate for privacy reasons. Shipping only (1) leaves the gate silently missing freshly committed penalties; `EnrollmentGateIsolationTest` pins this — including the *reverse* direction (that `impose` itself takes the parent X lock) and one case that drives the real `proxyEnroll` entry point rather than comparing two query methods. Proxy enrollment uses the batch entry point `assertNoneRestricted`, which takes **all** parent-row locks in ascending id order before reading any sanctions — a current read takes gap locks too, so a per-target "lock parent, then read" loop can deadlock against a concurrent `impose`. The gate throws if called outside a transaction: `FOR SHARE` under autocommit releases at statement end, leaving the gate looking correct while enforcing nothing.
-- `代码/hengde-volunteer-api/`: single deployable Spring Boot app, global config, filters, exception handling, upload controller, search controller, and aggregate wiring.
+## 工作区与四个仓库
 
-Frontend/admin console:
-
-- `volunteer-platform-back/`: no-build admin console. Entry is `index.html`; scripts are plain `.js` files under `assets/` using `React.createElement`, loaded by ordinary `<script>` tags.
-- Runtime Babel and CDN React have been removed. React production files live under `assets/vendor/`.
-- `assets/api.js` owns request/auth/download/upload behavior. `assets/authz.js` owns `hasPerm`. `assets/preview-identities.js` only serves the Tweaks preview identities.
-- `assets/shell.js` owns navigation metadata and `TODO_SOURCES`; overview cards and sidebar badges must share this source for pending-count endpoints.
-
-Planned but not yet built domains include `donate`, `social`, and `enterprise`. `honor` now carries rankings, medals, role models, the electronic-certificate core, and the rewards/penalties centre. ⚠️ Because `social` does not exist, the sanction scope "restrict from posting in the community" is **recorded but inert** — wire its gate up when `social` lands. Still unbuilt inside batch 4: the **paper-certificate application path** (5 tables, 18 endpoints, WeChat Pay) and **i志愿 certificates** (batch 4B) — both deliberately frozen, see `文档/v2/V2规划.md`. Do not create a module unless the task explicitly requires that domain.
-
-Keep Java packages under `com.hengde`. Domain modules own their `controller/service/dao/entity/dto/vo` packages. Cross-domain calls should go through public service APIs, not direct mapper access.
-
-## Build And Test
-
-Run Maven from `代码/hengde-volunteer-parent`. The parent POM now carries a `<modules>` reactor aggregating **all 9 modules** in dependency order (common → auth → organization → publicity → activity → user → data → honor → api), so a plain full build works; after a full build, verify the Reactor Summary lists parent + all 9 modules (a missing entry means the api jar silently packages a stale module from the local repo — this bit us on 2026-07-02 when user/data were absent from the list). Update this count whenever a module is added, or the check silently stops catching the very thing it exists for.
-
-**A green build does not mean the endpoint exists.** On 2026-08-04 a javadoc edit dropped a closing `*/`, so `AdminRewardPunishController.list` and its `@GetMapping` were swallowed by the comment block that followed. `GET /a/honor/reward-punishes` did not exist at runtime, yet `mvn` reported BUILD SUCCESS (comments are legal Java) and `python tools/verify_url_contract.py --root .` reported `✓ 契约一致` (it regex-scanned raw source). The script now strips comments before parsing and has self-tests for that exact shape, but it still only proves *the annotations are written correctly* — not that Spring registered the handler. When you add or move an endpoint, confirm with `javap -p <module>/target/classes/.../XxxController.class` that the method is actually in the compiled class.
-
-```powershell
-cd 代码\hengde-volunteer-parent
-
-# Full build (preferred).
-.\mvnw.cmd clean install -DskipTests
-
-# Or incrementally: build/install a single module with -f when iterating
-# (re-install an upstream module before building downstream/api).
-.\mvnw.cmd clean install -DskipTests -f ..\hengde-volunteer-activity\pom.xml
-.\mvnw.cmd clean install -DskipTests -f ..\hengde-volunteer-api\pom.xml
-
-# Run tests for changed modules.
-.\mvnw.cmd test -f ..\hengde-volunteer-activity\pom.xml
-.\mvnw.cmd test -f ..\hengde-volunteer-organization\pom.xml
-.\mvnw.cmd test -f ..\hengde-volunteer-user\pom.xml
-.\mvnw.cmd test -f ..\hengde-volunteer-data\pom.xml
-.\mvnw.cmd test -f ..\hengde-volunteer-api\pom.xml
-
-# Run a single test class or method.
-.\mvnw.cmd test -f ..\hengde-volunteer-activity\pom.xml -Dtest=ActivityAttendanceServiceTest
+```
+<工作区>/
+├── volunteerplatform/                文档仓库（GitHub）：本文件、知识库/、文档/、部署/、tools/
+│   ├── 知识库/                       知识库源头；`git subtree` 发布到 Gitee 知识库仓库
+│   └── 代码/                         后端仓库（Gitee volunteerplatform-backend，自身是独立 git，文档仓库也跟踪它）
+├── volunteerplatform-miniprogram/    小程序（Gitee）
+└── volunteerplatform-back/           后台控制台（Gitee）
 ```
 
-Docker Desktop must be running for MySQL/Redis Testcontainers tests.
+- 改前端去同级目录；文档仓库里原先的 `hengde-volunteer-miniprogram/`、`volunteer-platform-back/` 已清空。
+- 后端改动要在 `代码/`（Gitee）与文档仓库各提交一次，提交说明同名并注明「同 Gitee 后端仓库同名提交」。
+- **单独克隆后端仓库时**，把知识库仓库克隆到与它同级、名为 `知识库` 的目录，模块入口里的 `../../知识库/…` 路径才成立。
 
-Frontend checks:
+## 当前状态
 
-```powershell
-cd volunteer-platform-back
-node --check .\assets\app.js
-python -m http.server 5500
+- **迁移**：全项目唯一序列在 common，当前到 **V100**，下一个从 V101 起；**权限点现行 99 个**（清单 `知识库/生成/权限点.md`，脚本生成）。
+- **控制台**：无构建、纯 `React.createElement`；⚠️ **在本地打开 `index.html` 时 API 基址指向线上**，点一下就写线上库，联调用 `tools/serve_admin_local.py`。见 `知识库/跨端/后台控制台.md`。
+- **小程序**：`app.js` 的 `globalData.useMockApi = false`、`apiBaseUrl` 指向**线上**服务器（开发版放行 HTTP）——开发者工具里点的也写线上库；本地联调改成 `http://localhost:8080/api`。（`utils/api-mode.js` 的 `DEFAULT_USE_MOCK_API` 只在 `app.js` 没给值时生效，现为 `false`；小程序 `README.md` 里「默认 mock」的说法已过期。）
+- **线上**：2026-10-17 仍是 9 月的旧包；`GET /api/actuator/info` 免登录查版本与迁移号。
+- **只验到假渠道 / 未端到端**：微信支付、快递100 推送、小程序码、对象存储视频直传、服务号模板消息。
+
+## 知识库路由
+
+| 想知道 | 读 |
+|---|---|
+| 业务口径、功能状态、需求出处、待办（**按业务说的任务从这里进**） | `知识库/领域/01…12-*.md`（用户与身份认证 / 志愿活动 / 积分体系 / 公益捐赠 / 组织管理 / 爱心企业 / 社区交流 / 荣誉展示 / 信息与公示 / 个人中心 / 后台管理系统 / 监管后台） |
+| 某个模块的代码不变式、关键类、承重测试、踩过的坑（**改代码前读**） | `知识库/模块/<模块>.md` |
+| 协会答复与口径（统一编号 **XH01…**，原编号如「乙-5」「丙-3」也能 grep 到） | `知识库/决策/协会决策.md` |
+| 需求原文（「Row 47」＝表格行号、「原型 P83」＝PDF 页码） | `知识库/需求/需求表.md`、`知识库/需求/原型.md` |
+| 接口清单、权限点、表、迁移（**脚本生成，不手改**） | `知识库/生成/` |
+| 跨模块套路：并发与锁、积分口径、通知与处置、测试纪律、依赖与部署 | `知识库/横切/` |
+| 后台控制台的组件坑与联调方式 | `知识库/跨端/后台控制台.md` |
+| 跨模块批次的历史记录 | `知识库/变更日志.md` |
+
+| 模块 | 管什么 | | 模块 | 管什么 |
+|---|---|---|---|---|
+| common | 基础设施、**迁移序列**、短信模板登记、上传校验、锁助手 | | trade | 微信支付收付、退款、对账（未真实调用过） |
+| api | 启动与全局配置、鉴权路由、Jackson、上传、webhook 控制器 | | donate | **积分商城**、捐书与物资流转、微心愿、结对、众筹、捐款与发票、物流 |
+| auth | 三套登录态、实名、PII、**处置表与闸门**、**通知短信入口**、注销冷静期 | | user | 志愿者管理、我的资料、地址、年级、志愿者证 |
+| organization | 子账号与权限点、小组、分队、组织架构、管理团队、**问卷引擎**、临时负责人考试 | | data | 数据看板与汇总、**投诉建议** |
+| publicity | 轮播图、公告、文件下载 | | honor | 排行榜、勋章与榜样、**电子证书**、**奖惩与申诉** |
+| activity | 活动、报名、签到、时长、名单公示、相册、**积分账本** | | social / enterprise / system | 社区与私信 / 爱心企业 / 日志·水印·编号·网盘 |
+
+常见跨模块话题：**积分**（账本在 activity、商城在 donate、企业积分在 enterprise、排行在 honor）· **证书**（activity 确认考勤 / donate 捐赠事件 → honor 出证）· **处置与禁言**（表与闸门在 auth、开单在 honor、社区禁言在 social）· **通知短信**（模板在 common、入口在 auth）· **收付**（trade；订阅方在 donate）。
+
+## 硬规矩（完整说明见 `知识库/横切/`）
+
+- **迁移**只放 common 的 `db/migration/`；挑号前跑跨分支最大号命令（`知识库/模块/common.md`）；跑过的不能原地改、只能加新号；一个文件只放一条有失败可能的语句；脚本连注释里也不能出现美元花括号占位符。
+- **积分只认账本**：读写一律经 `PointService`，不要 `SUM(activity_attendance.points_award)`；新来源独占类型码。
+- **通知短信只走 `SmsNotifyService`**，模板先在 `SmsNotifyTemplate` 登记（键 + 变量名 + 顺序），并在 `NotifyTopic` 归到一个话题。
+- **分布式锁用 `DistributedLockSupport`**，锁在事务外取；「幂等键 + 唯一键」挡不住并发重放时按幂等键上锁。
+- **CAS 失败之后的复核读必须是当前读**；**别对可能还不存在的行加锁或做范围 UPDATE**（间隙锁会死锁）。
+- **`AFTER_COMMIT` 监听里写库用 `REQUIRES_NEW`**；高并发入口改为事务外发布 + 订阅方 `fallbackExecution = true`。
+- **第三方 webhook 的应答直接写 `HttpServletResponse`**，不要返回 `String`。
+- **魔法数收在各模块 `constant` 持有类**，新增状态判断复用 / 扩展它们。
+- **依赖注入统一用 setter 注入**：`@Autowired` 标在手写的 setter 上（Lombok `@Setter` 不带注解）；不用字段注入、不用构造器注入。
+- **测试统一 `@SpringBootTest` + Testcontainers MySQL（不要 H2）**，不写纯 Mockito 单测；每个领域模块在 `src/test/java/com/hengde/<domain>/` 放一个测试用 `@SpringBootApplication`；用到 Redisson 的模块另加 Redis 容器。分页拦截器只在 api，领域模块测试断言 `records` 不断言 `total`。
+- **测试纪律**：变异验证必须 clean 构建并重装本轮动过的所有模块；赛跑类并发用例断言每种结局都出现过；api 全量跑一次才算绿（单独跑绿 ≠ 全量跑绿）。
+- **Excel 依赖钉**：升 `poi.version` 时 `commons-compress` 与 `commons-io` 一起改，并跑一次真实导入导出。
+- **线上接口「GET 就 500」**先查 `/actuator/info` 确认部署的是不是新包。
+- **父 POM 里声明了但代码没用的别照着写**：Spring Cloud / Alibaba、Sentinel、MapStruct、XXL-Job、MinIO、FastJSON2、Guava。定时任务用 Spring `@Scheduled`。
+
+## 构建与测试
+
+Maven 在 `代码/hengde-volunteer-parent/` 下执行（仓库根没有 POM），自带 Maven Wrapper（`./mvnw`，Windows 用 `mvnw.cmd`）。父 POM 的 `<modules>` 聚合全部 14 个模块，顺序：common → auth → organization → publicity → activity → trade → donate → user → honor → social → enterprise → data → system → api。**全量构建后核对 Reactor Summary 列全 15 行**（含 parent）——少一个模块时 api 会悄悄打进本地仓库里的旧 jar；**新增模块时同步这里的数字与顺序**。
+
+```bash
+cd 代码/hengde-volunteer-parent
+./mvnw clean install -DskipTests                                           # 全量
+./mvnw clean install -DskipTests -f ../hengde-volunteer-common/pom.xml     # 单模块（下游靠本地仓库解析，被依赖的改了先 install）
+./mvnw test -f ../hengde-volunteer-activity/pom.xml                        # 模块测试（需要 Docker）
+./mvnw test -f ../hengde-volunteer-activity/pom.xml -Dtest=EnrollmentServiceTest
+./mvnw spring-boot:run -f ../hengde-volunteer-api/pom.xml                  # 启动（需要 MySQL ≥ 8.0.17 与 Redis）
+./mvnw versions:set -DnewVersion=2.0.2 -DgenerateBackupPoms=false          # 改版本号（父 POM + 14 个 <parent>）
 ```
 
-For `.js` files that are plain scripts, `node --check` is valid syntax verification. Browser end-to-end checks still require the API, MySQL, and Redis.
+- 压力测试（`@Tag("stress")`，默认排除）的命令见 `知识库/横切/测试纪律.md`。
+- ⚠️ 仓库在 iCloud 同步的桌面上时 `target/` 里会冒出「X 2.class」冲突副本——构建一律带 `clean`；更稳妥的是 rsync 到临时目录（排除 `target/` 与「* 2*」）再构建测试。
+- 改了 Controller：`python3 tools/verify_url_contract.py`（核对 `文档/v2~v4/url文档v*.md`），再 `javap -p` 确认方法真的在编译产物里。
+- 改了知识库或代码里被知识库点名的东西：`python3 tools/verify_knowledge_base.py`；改了迁移 / 权限点 / Controller：`python3 tools/gen_knowledge_base.py`；改了本文件：`python3 tools/gen_agent_entries.py`（重新生成后端仓库里的 `AGENTS.md` / `CLAUDE.md`）。三个生成脚本都有 `--check`。
 
-## Coding Rules
+## 模块架构
 
-- Use Java 17 and 4-space indentation.
-- Class names use `PascalCase`; methods and fields use `camelCase`; constants use `UPPER_SNAKE_CASE`.
-- Use setter injection consistently. Hand-write setters with `@Autowired`; Lombok-generated setters do not carry `@Autowired`.
-- Use Lombok only where it removes boilerplate without hiding behavior.
-- Controller paths must not include `/api`; `server.servlet.context-path=/api` supplies it.
-- Use URL role prefixes: `/v` for volunteers, `/a` for admin, `/e` reserved for enterprise.
-- Keep Jackson behavior in `hengde-volunteer-api` `JacksonConfig`, not `spring.jackson.*` YAML. `LocalDateTime` format is `yyyy-MM-dd HH:mm:ss`; Long serializes as string for JS safety.
-- Use Spring Boot's default HikariCP datasource; do not add Druid.
-- Flyway scripts are centralized in `hengde-volunteer-common/src/main/resources/db/migration/` with one global version sequence. Current sequence is **V38** (V30 = per-slot attendance, V31 = electronic certificates, V32 = rewards/penalties + sanctions, V33 = a cap on `sanction_days`, V34 = binary collation on `point_record.request_id`, V35 = rejected tickets release the violation key, V36 = the `honor:sanction-all` permission, V37 = the `volunteer_notification` in-app notice table, V38 = appeal-upheld tickets also release the violation key); the next migration must therefore start at V39. **Put at most one statement that can fail in a migration file.** MySQL commits each DDL implicitly, so "statement 1 succeeded, statement 2 failed" leaves the database half-migrated *and* unable to re-run — statement 1 fails the second time with a duplicate name. V33 and V34 were one file until this actually bit: `utf8mb4_0900_bin` only exists from MySQL 8.0.17, so on 8.0.16 the CHECK was added and committed, the collation change failed with `ERROR 1273`, and the post-upgrade re-run died on `ERROR 3822`. **The project floor is therefore MySQL 8.0.17**, checked by `DatabaseVersionGuard` *before* Flyway migrates — a check that runs after migration can only refuse to serve, it cannot protect the database. Never edit a migration that may already have run anywhere — Flyway `repair` only realigns the schema-history checksum, it does **not** re-execute a version recorded as successful, so the change would silently never reach that database. Add a new version instead (V25 → V26 was split for exactly this reason). Check the directory before picking a version — this line is a pointer, the directory is the source of truth.
-- New status/role constants should live in domain constant holders. Existing service-private aliases may reference the shared constants to avoid broad call-site churn.
-- Use `DistributedLockSupport` for Redisson lock helpers. Multi-lock flows must deduplicate IDs, acquire in ascending order, and release in reverse order.
+父工程 `hengde-volunteer-parent`（packaging=pom，纯依赖管理）下直接挂各领域模块（扁平，没有 dao/service 中间层）；每个领域一个 jar，内部 `controller / service / dao(MyBatis-Plus Mapper) / entity / dto / vo`（手写转换）；`hengde-volunteer-api` 依赖全部领域模块、持有唯一的 `@SpringBootApplication`，是唯一可部署单元。领域间调用经对方的 service 接口（**不直接用对方的 Mapper**），避免循环依赖，公共能力下沉到 common。Flyway 迁移集中在 common，运行期配置在 api。
 
-## Frontend Rules
+容易混淆的归属：首页数据看板归 **data**；投诉建议归 **data**、帖子举报归 **social**；活动**临时负责人考试**归 **organization**（activity 里的「活动负责人」是单次活动的现场负责人）；全局搜索在 api 聚合层；处置表在 **auth**（放 honor 会成环）。
 
-- Keep `volunteer-platform-back` no-build. Do not reintroduce JSX syntax, runtime Babel, npm bundling, or CDN React unless the user explicitly changes the deployment strategy.
-- Use plain `.js` script files and `React.createElement`.
-- Keep permissions driven by `hasPerm(identity, code)` from `assets/authz.js`.
-- Do not revive `assets/data.js` or `window.HD` mock data. Tweaks preview identities belong in `assets/preview-identities.js`.
-- When adding sidebar badges or overview pending cards, add the endpoint once in `TODO_SOURCES` and reuse it.
-- Count requests must be gated by the endpoint's real permission to avoid 403s and stale data leaks.
-- On identity changes, clear derived permission-sensitive state and guard late async responses with cancellation.
-- Uploads go through `API.upload(file, dir)` with backend `dir` gates. Image fields should crop to required ratio before upload when a preset exists.
-- `window.__API_BASE__` and AMap placeholders are configured in `index.html`; do not hard-code production hosts in page scripts.
+**多组织部署＝白标多实例**（每个组织一套独立库 + 配置，跑同一份 api 制品）；「监管后台」是另一个独立应用，未建（`知识库/领域/12-监管后台.md`）。
 
-## Fixed Product Contracts
+## 接口 URL 约定
 
-Search is fixed by V1:
+写 Controller 前先查 `文档/v1~v4/url文档v*.md`（按版本切；v1 冻结）与 `知识库/生成/接口/<模块>.md`。
 
-- `GET /v/search` returns a single information stream.
-- Response type is `PageResult<SearchItemVO>`.
-- Scope is activity + publicity + group + squad.
-- Merge order is activity -> publicity -> group -> squad.
-- `SearchItemVO` fields are `type`, `id`, `title`, `summary`, `imageUrl`.
+- 路径 `/{role}/{domain}/{resource}/{action?}`，context-path `/api` 不写进代码。role：`/v` 小程序志愿者端、`/a` 管理后台、`/e` 爱心企业端。
+- 资源用复数名词；动作走 HTTP 方法；动词性操作用子资源后缀（`POST /a/activity/enrollments/{id}/approve`），不造 `/doXxx`。
+- 分页 `page`（从 1 起）、`size`（默认 10，最大 100）；搜索 `keyword=`。
+- Jackson 行为在 api 的 `JacksonConfig`（不用 `spring.jackson.*`）：时间 `yyyy-MM-dd HH:mm:ss`、入参兼容 ISO `T`；Long 序列化为字符串。
 
-Organization approval rules are fixed:
+### 路由鉴权（`SaTokenConfigure`）
 
-- Squad application approval must use CAS on pending status.
-- Disabled squads cannot be approved or joined from volunteer flows.
-- Volunteer assignment to `squad_id` must use conditional update with `squad_id is null` and explicit `update_time`.
-- One active group per volunteer is enforced by service checks plus the V9 unique constraint.
-- Group join approval must be reachable through `GET /v/organization/groups/{id}/join-applications`; this returns pending join rows and their `memberId` for approve/reject.
-- Admin group member reads must use admin-safe service methods, not volunteer same-group checks.
-- Deleting a squad must reject when active volunteers still reference it.
+| 路径 | 状态 |
+|---|---|
+| `/v/auth/login/wechat`、`/v/auth/login/dev`（dev 限定）、`/v/auth/login/sms`、`/v/auth/login/password`、`/v/auth/password/reset`、`/v/auth/agreement`、`/v/auth/sms/codes`、`/v/auth/wechat/group-membership`、`/v/user/volunteer-cards/verify`（只收随机令牌） | 公开 |
+| `/v/**` 其余 | 需登录 + 每次查账号状态（非正常即登出 403；禁用账号只放行奖惩、申诉等小口子；游客照常放行） |
+| `/a/auth/login`、`/a/auth/sms/codes`、`/a/auth/password/reset` | 公开 |
+| `/a/**` 其余 | 需后台登录（`StpAdminUtil`） |
+| `/e/auth/login`、`/e/auth/register`、`/e/auth/sms/codes`、`/e/auth/password/reset` | 公开 |
+| `/e/**` 其余 | 需企业登录（`StpEnterpriseUtil`）+ `EnterpriseAccountGate` 按状态放行 |
+| `/share/files/{token}` | 公开，靠随机令牌（要不要登录由那条分享决定） |
+| `/ws/social/chat?token=` | 握手时按 token 认身份；nginx 要放行 `Upgrade` / `Connection` 头 |
+| `/actuator/info` | 公开，只报构建版本、时间与迁移号 |
+| `/callback/**`（微信支付、快递100 webhook） | 公开，**靠验签不靠登录态** |
 
-Volunteer-side RBAC rules are fixed:
+⚠️ 拦截器注册在 `/**`，处理器内部只对 `/v/**` `/a/**` `/e/**` 做 check，其余路径落不到 check 上才得以放行——**往处理器里加一条全局 `match("/**")` 会让 webhook 当场 401 且毫无征兆**（`TradeCallbackApiTest` 钉住）。
 
-- V18 adds `volunteer_permission` and `permission.volunteer_grantable`.
-- Only activity-domain grantable points may be assigned to volunteers; `activity:menu` is not volunteer-grantable.
-- Volunteer permission assignment is super-admin only.
-- Non-empty assignment requires the target volunteer to be active and `manager_flag=1`.
-- Empty assignment is allowed as a cleanup path even after the volunteer is downgraded.
-- Permission reads use `VolunteerQueryService.isActiveManager`; suspended, deleted, or downgraded volunteers get no codes.
-- `@SaCheckPermission` on `/v` endpoints must not use `type="admin"`; it should use the default login realm.
-- `POST /v/activity/activities` consumes `activity:publish` for manager-team volunteers.
+## 技术栈（实际在用的）
 
-Activity rules already decided in code/docs should keep their current wording and error semantics:
+Spring Boot 4 · Sa-Token（三套登录态，token 存 Redis）· MyBatis-Plus 3.5.16（`mybatis-plus-spring-boot4-starter`）+ HikariCP + MySQL ≥ 8.0.17（不用 Druid）· Flyway（flyway-mysql）· Redisson 4.x（父 POM 用 `${redisson.version}`；锁不指定 leaseTime）· 阿里云 OSS / 火山 TOS · 火山引擎短信 · 腾讯云 faceid 实名 · weixin-java（小程序、支付）· EasyExcel + POI · ZXing / iText · Hutool · Spring WebSocket · Knife4j（`/api/doc.html`，生产 403）· Testcontainers + JUnit 5。子模块引依赖**不写 version**。
 
-- `POST /v/activity/activities` creates pending-review activities (`status=4`), not immediately published.
-- Admin direct publish remains immediately online and does not enter the review queue.
-- Review-domain statuses are `4` pending review and `5` rejected. Normal admin menu/detail/write flows must exclude or reject these unless using review endpoints.
-- Under-review/rejected activities must not be modified, deleted, copied, assigned leaders, backfilled, or exposed through volunteer leader read paths.
-- `review-detail` is gated by `activity:publish-audit` and includes review trail fields.
-- Copying an activity must clear review trail, run status, actual times, summary fields, and historical marker.
-- Historical activities are not visible to volunteers and must not grant points.
-- Activity albums are postponed until `social` exists.
-- Attendance/points changes require the V14 two-step approval flow.
-- Activity backfill approval is terminal: it writes confirmed attendance directly; historical backfill records time only and finalizes points as issued with 0 points.
-- Leader emergency reporting is a configured phone number (`hengde.activity.emergency-phone`) returned as `emergencyPhone`; no table is used.
-- Manual violation records use `description` as required free text with max length 512.
-- Manual `violationType` is optional and limited to 0-4. Type 5 means absence and is system-generated only by marking absent.
-- `recordViolation` must keep service-level guards for required text, max length, and type range so internal callers cannot bypass DTO validation.
-- Violation record views must not resolve `recorded_by` blindly through volunteer IDs because it can also contain `admin_user.id`. Only resolve `recordedByName` when the recorder is a volunteer leader of that activity; otherwise leave it null.
+## 角色
 
-User/data contracts:
+游客（登录未实名）→ 志愿者（实名）→ 活动临时负责人（考试通过，资格按时间现算）/ 管理团队（`manager_flag=1`）；后台子账号按权限点授权（部门：理事会、组织部、秘书部、宣传部——**监察部、分队管理部已撤销**）；爱心企业是独立账号（`/e`）。
 
-- Admin volunteer list/detail/export only include registered volunteers (`register_time` not null). Cancelled volunteers (`status=2`) are still visible as registered records.
-- Volunteer status is `0` normal, `1` disabled, `2` cancelled. `setStatus` only accepts `0` or `1`; cancelled is terminal in the admin frontend.
-- **Disabled is not "cannot log in".** Since the association's 2026-08-11 ruling ("give the disabled account a small opening — it may only view rewards/penalties and file an appeal"), `ensureLoginable` issues a token for `status=1` and rejects only `status=2`; `SaTokenConfigure.checkVolunteerEnabled` then allows a disabled account exactly the paths in `BannedAccountGate.EXEMPT_PATHS` (logout, reward-punish list, appeal, sanction view, notifications) and returns 403 for everything else. **A successful login therefore no longer implies a usable account.** Two rules follow. First, the disabled branch must never call `logout()` — that would void the token the appeal path needs, closing the opening while the allow-list still looks correct; only the cancelled branch logs out. Second, `BannedAccountGate.EXEMPT_PATHS` must stay a subset of `DenyAllUseGate.EXEMPT_PATHS`: someone can be both disabled and carrying a `SanctionScope.ALL` penalty, and the two gates sit on the same request chain, so a path missing from either one silently costs that person their right to appeal. The two lists are deliberately not merged — `DenyAllUseGate` serves accounts that are *normal* but heavily sanctioned (hence it opens all of `/v/auth/**`), while opening that whole segment to a disabled account would let it complete real-name registration.
-- Sensitive volunteer PII decryption stays in `auth`. Other modules consume narrow auth service outputs.
-- Admin volunteer update is super-admin only. Empty phone fields have explicit clearing semantics.
-- Dashboard manager count means active registered managers only: `manager_flag=1`, `register_time is not null`, `status=0`.
-- Dashboard activity/participation/service-time counts must exclude draft/cancelled/review-domain activities; published and ended activities count.
+## 未实现与冻结
 
-## Testing Guidelines
+监管后台（SaaS）未建 · 纸质证书申请、i志愿证书冻结 · 评优评先按 Row 47「需预留」推迟 · Row 70 仓库管理系统待协会说清 · XXL-Job 未接（要先部署调度中心）。
 
-Tests use JUnit 5 and Spring Boot test. Put tests under `src/test/java` with names ending in `Test` or `Tests`.
+## 维护规则
 
-- Prefer `@SpringBootTest` for service behavior, context wiring, Flyway, MyBatis, Redis, Redisson, and Testcontainers.
-- Domain modules without a `main` app need a test-only `@SpringBootApplication` in `src/test/java/com/hengde/<domain>/`.
-- MySQL/Redis integration tests should reuse common test-jar Testcontainers config and import only what the module needs.
-- Do not use H2; migrations and MyBatis behavior target MySQL.
-- Modules using Redisson must import Redis Testcontainers config.
-- Domain module tests do not have the API module pagination interceptor; assert returned records, not `selectPage` totals.
-- For wrapper/CAS updates, explicitly set `update_time` when MyBatis-Plus auto-fill will not run.
-- Run the relevant module test command before handing off code changes. For docs-only edits, state that tests were not run.
-
-## Security And Data Ownership
-
-- Do not commit production secrets. SMS, OSS, WeChat, Redis, database, crypto, AMap, and nginx/server secrets must come from environment variables or deployment config.
-- Production config guards should fail fast when required production settings are missing or still using development placeholders.
-- Sensitive volunteer data decryption stays in `auth`. Other modules should consume `auth` service outputs and should not manipulate encrypted columns directly.
-- Public display use cases should request narrow outputs, such as name-only views, instead of loading decrypted phone numbers into memory.
-- Cross-domain ID columns that can hold IDs from multiple tables must not be name-resolved without a subject-type discriminator or a safe local proof of subject type.
-- OpenAPI auth uses `apiKey` in the `Authorization` header to match Sa-Token direct token behavior.
-- Admin upload is double-gated by `dir`: permission plus file type. Unknown or missing `dir` must be rejected.
-
-## Git And Handoff
-
-- The worktree may contain user or other-agent changes. Do not revert or rewrite unrelated files.
-- Use `rg`/`rg --files` first for searches.
-- Use `apply_patch` for manual file edits.
-- Do not use destructive commands such as `git reset --hard` or `git checkout --` unless explicitly requested.
-- Use concise conventional commits when commits are requested, such as `feat: add activity backfill` or `fix: guard attendance audit operator`.
-- Handoff notes should include changed modules/files, test results, requirement/API document impact, migrations, permission points, and configuration changes.
+- **每批收尾**：更新所涉模块页的「现行要点」（只写现在是什么）与「按批次的记录」（为什么、撞过什么）；业务口径变了改 `知识库/领域/`；协会有新答复追加 `知识库/决策/协会决策.md`（新号，不复用）；跨模块的批次记 `知识库/变更日志.md`；跑 `gen_knowledge_base.py` 与 `verify_knowledge_base.py`。
+- 本文件只在规矩或路由变了时才改；一条事实只写在一个页里，别处放链接。
+- **入口文件成对出现**：每个入口目录都有 `AGENTS.md`（内容；Codex、Cursor 等读它）与 `CLAUDE.md`（Claude Code 读它，用 `@` 导入 `AGENTS.md` 或模块页）。后端仓库里的那几对由 `gen_agent_entries.py` 生成，不手改。
+- 发布知识库：`tools/publish_knowledge_base.sh`（把 `知识库/` 以 subtree 推到 Gitee 知识库仓库）。
