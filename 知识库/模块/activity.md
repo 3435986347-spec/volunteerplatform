@@ -15,7 +15,7 @@
 - 积分发放＝基数 × 角色倍率 × 违规系数；0 分也发通知。
 - 违规记录审核通过后才对志愿者可见，负责人端看全部。
 - 名单公示窗口按时间现算；普通成员电话打码，游客看负责人电话也打码。
-- 相册：只有报名已通过的人 / 本活动负责人 / 管理团队能传；积分按审核那一刻还在的张数算，上限复核要先锁住这个人的批次行。
+- 相册：只有报名已通过的人 / 本活动负责人 / 管理团队能传；积分按审核那一刻还在的张数算；同一个人同一相册的审核按 `AlbumService.POINTS_LOCK_PREFIX` 串行（锁在事务外），事务里只按主键锁这一批——**不要改回范围 `FOR UPDATE`**（2026-10-17 压测死锁，见按批次的记录末尾）。
 - 到家详细地址只对 `activity:home-address` 下发（字段级，不是前端打码）。
 - 排行榜的口径收在 `ActivityRankingQueryService`，honor 只排序和存快照。
 
@@ -57,10 +57,19 @@
 
 **：Row 11 / Row 30，V4规划 D10。四张表 `activity_album`（活动相册与后台自建相册；**活动相册第一次被打开或上传时才建**，标题「编号 活动名称」，生成列唯一键一个活动一个，并发建撞键就读回赢家；草稿 / 审核中 / 已取消的活动不建）/ `activity_album_batch`（每次上传一批＝一张积分审核单）/ `activity_album_photo` / `activity_album_rule`（单行：每 N 张 M 分、每人每相册上限、开关；种子 3 张 1 分、上限 10）。**权限**：看与单张下载——已实名志愿者；往**这个活动的**相册传——**报名已通过**的志愿者与本活动志愿者负责人（待审核的不算，Q32）；往**任何**相册传——管理团队；后台删相册 / 删照片 / 批量下载 / 积分审核各一个权限点（`activity:album`/`album-delete`/`album-photo-delete`/`album-download`/`album-points-audit`，共 83）。照片只收本系统传到 `album/` 下的（`POST /v/files/album-photo`）；删照片用显式软删 SQL（`@TableLogic` 列不能经 wrapper set）。**积分**：新来源 `PointSourceType.ALBUM=7`（非消费），`source_id`＝批次 id。
 
-**审核通过那一刻按「这一批现在还没删的照片数」算**（上传后被删的不算），个人在同一相册累计不超过上限——**上限复核必须先 `sumAwardedForUpdate` 当前读锁住这个人在这个相册的全部批次行**，否则五批同时审核各自以为还差几分、越过上限；通过是 `WHERE points_status=待审` 的 CAS；0 分不入账；规则关着时新上传的批次不进审核队列。**同步社区**（Row 30「默认勾选发送到交流平台」）：上传后发 `AlbumPhotosUploadedEvent`（事务之外），social 的 `AlbumSocialSyncListener`（`fallbackExecution=true`）走正常发帖路径——**照样过禁止发帖闸门与关键词风控**，失败只少一条帖子、不外抛不补偿，成功回写 `social_post_id`（依赖方向 social → activity，activity 不依赖 social）。测试：`AlbumServiceTest` 4、`AlbumConcurrencyTest` 4（**必跑**：测试线程持住上传人批次行、审核必须等 / 五批同时审核恰好顶到上限 / 同一批四人同时审只成一个 / 8 线程同时打开同一活动相册只建一个）+ 1 条 `@Tag("stress")`（600 次乱序上传 / 删照片 / 通过 / 驳回 / 看相册，断言每人每相册不越上限、账本与批次发分相等、零异常）、social 的 `AlbumSocialSyncTest`、api 的 `AlbumApiFlowTest`（**必跑**）。十三处变异均已验证必红（clean 构建）：待审核报名也能传 / 管理团队传不了 / 负责人传不了 / 照片不核本系统上传 / 积分按上传时张数算 / 不看上限 / 上限复核不加锁 / 通过 CAS 不带待审 / 并发建册不读回赢家 / 勾了同步不发事件 / 规则关着也进审核 / 同步发帖不过禁言闸门 / 同步发帖不过关键词风控。
+**审核通过那一刻按「这一批现在还没删的照片数」算**（上传后被删的不算），个人在同一相册累计不超过上限——同一个人同一相册的审核必须串行，否则五批同时审核各自以为还差几分、越过上限（当时用范围 `FOR UPDATE` 锁这个人的全部批次行来串行，2026-10-17 因压测死锁改成分布式锁，见本页末尾）；通过是 `WHERE points_status=待审` 的 CAS；0 分不入账；规则关着时新上传的批次不进审核队列。**同步社区**（Row 30「默认勾选发送到交流平台」）：上传后发 `AlbumPhotosUploadedEvent`（事务之外），social 的 `AlbumSocialSyncListener`（`fallbackExecution=true`）走正常发帖路径——**照样过禁止发帖闸门与关键词风控**，失败只少一条帖子、不外抛不补偿，成功回写 `social_post_id`（依赖方向 social → activity，activity 不依赖 social）。测试：`AlbumServiceTest` 4、`AlbumConcurrencyTest` 4（**必跑**：测试线程持住上传人批次行、审核必须等 / 五批同时审核恰好顶到上限 / 同一批四人同时审只成一个 / 8 线程同时打开同一活动相册只建一个）+ 1 条 `@Tag("stress")`（600 次乱序上传 / 删照片 / 通过 / 驳回 / 看相册，断言每人每相册不越上限、账本与批次发分相等、零异常）、social 的 `AlbumSocialSyncTest`、api 的 `AlbumApiFlowTest`（**必跑**）。十三处变异均已验证必红（clean 构建）：待审核报名也能传 / 管理团队传不了 / 负责人传不了 / 照片不核本系统上传 / 积分按上传时张数算 / 不看上限 / 上限复核不加锁 / 通过 CAS 不带待审 / 并发建册不读回赢家 / 勾了同步不发事件 / 规则关着也进审核 / 同步发帖不过禁言闸门 / 同步发帖不过关键词风控。
 
 **V4 系统治理批（V83，2026-09-18）**：Row 63「活动结束，志愿者到家定位：详细地址最高权限才可查看，其他权限均显示已到家」。`activity_attendance` 加 `confirm_home_address`（志愿者确认到家时可带，`confirmHome` 多一个可空参数）；新端点 `GET /a/activity/activities/{id}/home-confirmations`（`activity:manage`）列签过到的人，**详细地址与坐标只对持 `activity:home-address` 的账号下发**（新权限点，默认不授任何人；判定在控制器的 `hasPermission`，服务层只收一个布尔）——**字段级可见性，不是前端打码**：把地址放进响应再让前端隐藏等于没挡，只有 HTTP 用例（api 的 `SystemGovernanceApiFlowTest`）验得到这一条。
 
 **V4 临时负责人考试批（2026-09-17，无迁移）**：① **V8 的三个报名开放时间从此全部生效**（此前只有 `enroll_open_volunteer` 拦截）——`EnrollmentService.notOpenYet`：志愿者时间是底线（留空＝即刻开放、谁都不用查），管理团队（`manager_flag=1`）与活动临时负责人（organization 的 `TempLeaderQueryService`，按时间现算）**若活动另设了自己那一档且更早，按更早的算**；⚠️ **角色那一档留空＝没有提前，不是「即时可报」**（Q35）——两列此前从没生效过，按留空即时解读，存量活动上线那一刻这两类人就能报所有还没开放的活动；
 
 **代报名按被代的每个人各自的身份算，有一个没到就整批不报**。② 名单公示与后台按活动的报名列表：管理团队在前、**考试通过的临时负责人其次**（Row 13 F），`RosterVO.Person` / `EnrollmentAdminVO` 加 `tempLeader`（后者另加 `manager`）；后台列表的排序只在一页之内（身份在外域，跨页排要拼外域表）。测试 `TempLeaderActivityTest` 2（有效 / 到期 / 撤销三种资格行 × 两档窗口 × 自助与代报名；名单与后台列表顺序）。
+
+**相册积分审核死锁（2026-10-17 压测撞出）**：`AlbumConcurrencyTest` 的 stress 用例四次里三次死锁。InnoDB 死锁报告：上限复核那条
+`SELECT SUM(awarded_points) … WHERE album_id = ? AND uploader_type = 1 AND uploader_id = ? FOR UPDATE` 被优化器走成**主键扫描**、一次锁 117 行，
+与上传的 INSERT（等 `idx_album_uploader` 的插入意向锁）、另一个人的审核（走二级索引、再等主键行）三方成环。改成：同一个人同一相册的审核
+按 `lock:album-points:相册:人` 串行（`DistributedLockSupport`，锁在事务外），事务第一句按主键 `selectByIdForUpdate` 锁这一批、状态以它为准，
+已得分改普通读 `sumAwarded`（写 `awarded_points` 的只有审核通过，且都在那把锁里）。新用例 `approvalWaitsForThePerUploaderPointsLock`
+先占住那把锁、断言审核在等；变异「去掉分布式锁」→ 它与 `fiveBatchesApprovedAtOnce_neverExceedTheCap` 两条红。**教训：范围当前读锁多少行由执行计划决定，
+测试库小、统计信息新，优化器很容易选全表扫描——串行化别押在范围锁上。**
+
