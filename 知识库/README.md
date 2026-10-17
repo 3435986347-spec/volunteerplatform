@@ -2,7 +2,7 @@
 
 雷州市恒德爱心公益协会志愿者管理平台（微信小程序 + 后台控制台 + Spring Boot 4 模块化单体）的知识库：业务口径、协会决策、需求原文、模块的代码不变式与踩坑、从代码生成的接口 / 权限点 / 表 / 迁移清单。
 
-- **源头**在文档仓库（GitHub `volunteerplatform`）的 `知识库/` 目录；**发布**为独立仓库 Gitee `huang-mingzhang/henge-volunteerplatform-knowlegebase`（`git subtree`，见文末）。在发布仓库里直接改的内容要回到源头，否则下次发布会被覆盖。
+- **源头**在文档仓库（GitHub `volunteerplatform`）的 `知识库/` 目录；**发布**为独立仓库 Gitee `huang-mingzhang/henge-volunteerplatform-knowlegebase`（每次发布一个快照提交，见文末）。在发布仓库里直接改的内容要回到源头，否则下次发布会被覆盖。
 - 页里写的 `代码/…`、`文档/…`、`tools/…`、`部署/…` 路径**相对文档仓库根目录**；单独克隆本仓库时它们指向另外几个仓库。
 
 ## 目录
@@ -56,7 +56,7 @@ python3 tools/gen_knowledge_base.py          # 重写 生成/（--check 只比�
 python3 tools/convert_requirements.py        # 需求原件变了时重转 需求/
 python3 tools/gen_agent_entries.py           # 根 AGENTS.md 改了之后，重新生成后端仓库里的入口（--check 只比对）
 python3 tools/verify_knowledge_base.py       # 页里点名的类 / 方法 / 路径 / 配置键 / 权限点 / 迁移号 / XH 号 / 页内链接是否都还在
-tools/publish_knowledge_base.sh              # 把 知识库/ 以 subtree 推到 Gitee 知识库仓库
+tools/publish_knowledge_base.sh              # 校验 + 敏感信息扫描通过后，把 知识库/ 作为一个快照提交推到 Gitee 知识库仓库
 ```
 
 **不进知识库的**：密钥与 AppSecret、服务器地址与登录方式、线上安全状况（如《线上升级核对》）、真实手机号与身份证号。这些留在文档仓库或部署人员手里。
