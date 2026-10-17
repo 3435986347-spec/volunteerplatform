@@ -12,12 +12,16 @@ import java.util.Set;
  * <p><b>一条短信模板属于且只属于一个话题</b>（{@link #of}），新增模板时必须在这里归类——没归类的一律当「不可关闭」处理，
  * 宁可多打扰一条，不能让一条要紧的提醒因为漏归类被静默吞掉。</p>
  *
- * <p><b>不可关闭</b>的是「不知道就会吃亏」的提醒：奖惩与违规（申诉期从通过那一刻起算）、活动取消（不知道就白跑一趟）、
- * 分队 / 小组 / 管理团队的申请结果（协会 2026-09-16 回执四 乙-1 确认：组织类、申请类是审批结果，关掉就不知道自己的申请过没过，
- * 事情办不下去；可关的是活动、社区、积分、勋章这类）。</p>
+ * <p><b>哪些能关以协会的答复为准</b>（2026-09-02 回执三 1.4「活动类的、社区类的可以关，涉及到重要通知的不能关」，
+ * 2026-09-16 回执四 乙-1 同意我们的分类表；知识库 `知识库/决策/协会决策.md` 的 XH21）：</p>
+ * <ul>
+ *   <li><b>可关</b>：活动类（报名结果、开始与评价提醒、<b>活动取消</b>）、积分、投诉答复；</li>
+ *   <li><b>不可关</b>：奖惩与违规（申诉期从通过那一刻起算）、分队 / 小组 / 管理团队的申请结果（审批结果，关掉就不知道自己的申请过没过）、
+ *       其他（还没有业务的模板）。</li>
+ * </ul>
  *
- * <p>⚠️ 活动取消比协会口径更严：那张表把它列在「活动类、可关」里，这里按「不知道就白跑一趟」定为不可关，见知识库 `知识库/决策/协会决策.md` 的 XH21。
- * 用户存了关闭也不生效（V4规划 承重条款 6：偏好在 {@code SmsNotifyService} 统一过滤，不让业务调用方各自判断）。
+ * <p>⚠️ 活动取消在 V4 个人中心批里曾按「不知道就白跑一趟」定为不可关，比协会口径更严；2026-10-17 需方拍板「按照协会的说法来」，改回可关。
+ * 不可关闭的话题，用户存了关闭也不生效（V4规划 承重条款 6：偏好在 {@code SmsNotifyService} 统一过滤，不让业务调用方各自判断）。
  * 验证码不走通知通道，本来就不受偏好影响。</p>
  *
  * @author hengde
@@ -29,7 +33,7 @@ public enum NotifyTopic {
             SmsNotifyTemplate.ENROLLMENT_POSITION),
     ACTIVITY_REMINDER("活动开始与评价提醒", true,
             SmsNotifyTemplate.ACTIVITY_START_REMINDER, SmsNotifyTemplate.ACTIVITY_COMMENT_REMINDER),
-    ACTIVITY_CANCELLED("活动取消", false,
+    ACTIVITY_CANCELLED("活动取消", true,
             SmsNotifyTemplate.ACTIVITY_CANCELLED),
     POINTS("服务时长积分与兑换审核", true,
             SmsNotifyTemplate.SERVICE_RECORD_CREDITED, SmsNotifyTemplate.POINTS_ORDER_REVIEW),

@@ -32,7 +32,7 @@
 
 ## 当前状态
 
-- **迁移**：全项目唯一序列在 common，当前到 **V100**，下一个从 V101 起；**权限点现行 99 个**（清单 `../知识库/生成/权限点.md`，脚本生成）。
+- **迁移**：全项目唯一序列在 common，当前到 **V101**，下一个从 V102 起；**权限点现行 99 个**（清单 `../知识库/生成/权限点.md`，脚本生成）。
 - **控制台**：无构建、纯 `React.createElement`；⚠️ **在本地打开 `index.html` 时 API 基址指向线上**，点一下就写线上库，联调用 `../tools/serve_admin_local.py`。见 `../知识库/跨端/后台控制台.md`。
 - **小程序**：`app.js` 的 `globalData.useMockApi = false`、`apiBaseUrl` 指向**线上**服务器（开发版放行 HTTP）——开发者工具里点的也写线上库；本地联调改成 `http://localhost:8080/api`。（`utils/api-mode.js` 的 `DEFAULT_USE_MOCK_API` 只在 `app.js` 没给值时生效，现为 `false`；小程序 `README.md` 里「默认 mock」的说法已过期。）
 - **线上**：2026-10-17 仍是 9 月的旧包；`GET /api/actuator/info` 免登录查版本与迁移号。

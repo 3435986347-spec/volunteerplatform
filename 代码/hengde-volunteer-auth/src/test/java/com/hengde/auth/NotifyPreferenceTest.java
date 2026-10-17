@@ -76,7 +76,8 @@ class NotifyPreferenceTest {
         }
         assertEquals(EnumSet.allOf(SmsNotifyTemplate.class), covered);
         assertFalse(NotifyTopic.REWARD_PUNISH.isOptional(), "奖惩提醒是申诉期的起点，不能让人关掉");
-        assertFalse(NotifyTopic.ACTIVITY_CANCELLED.isOptional(), "活动取消不知道就会白跑一趟");
+        assertTrue(NotifyTopic.ACTIVITY_CANCELLED.isOptional(),
+                "协会 2026-09-02 回执三 1.4 / 2026-09-16 回执四 乙-1：活动类提醒（含活动取消）可以关");
         assertFalse(NotifyTopic.ORGANIZATION.isOptional(),
                 "协会 2026-09-16 回执四 乙-1：组织类、申请类的审批结果不可关——关掉就不知道自己的申请过没过");
     }
@@ -90,9 +91,11 @@ class NotifyPreferenceTest {
         preferenceService.set(v, "ENROLLMENT", false);
         preferenceService.set(v, "POINTS", false);
         preferenceService.set(v, "POINTS", true);
+        preferenceService.set(v, "ACTIVITY_CANCELLED", false);
         List<NotifyPreferenceView> mine = preferenceService.mine(v);
         assertFalse(find(mine, "ENROLLMENT").smsEnabled());
         assertTrue(find(mine, "POINTS").smsEnabled());
+        assertFalse(find(mine, "ACTIVITY_CANCELLED").smsEnabled(), "活动取消的提醒按协会口径可以关");
 
         assertEquals("「奖惩与违规记录」的提醒不能关闭",
                 assertThrows(BusinessException.class, () -> preferenceService.set(v, "REWARD_PUNISH", false)).getMessage());
