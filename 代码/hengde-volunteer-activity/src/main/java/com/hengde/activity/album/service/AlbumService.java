@@ -24,10 +24,12 @@ import com.hengde.activity.service.PointService;
 import com.hengde.auth.service.AdminQueryService;
 import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.common.exception.BusinessException;
+import com.hengde.common.lock.DistributedLockSupport;
 import com.hengde.common.oss.FileStorageService;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
@@ -53,8 +55,10 @@ import java.util.Objects;
  * 删相册 / 删照片 / 批量下载 / 管理——后台各自的权限点。</p>
  *
  * <p><b>积分</b>（D10）：新来源 {@link PointSourceType#ALBUM}（非消费、计入累计获得）。每一批上传是一张审核单，<b>审核通过那一刻</b>按
- * 「这一批现在还没删的照片数」与规则算分，个人在同一相册累计不超过上限；上限的复核在当前读锁住这个人在这个相册的全部批次行之后做，
- * 否则两批同时审核会各自以为还差几分而越过上限。0 分不入账（账本口径）。流水 {@code source_id}＝批次 id，{@code uk_source} 保幂等。</p>
+ * 「这一批现在还没删的照片数」与规则算分，个人在同一相册累计不超过上限；同一个人同一相册的审核按 {@link #POINTS_LOCK_PREFIX}
+ * 串行（锁在事务外取），否则两批同时审核会各自以为还差几分而越过上限。0 分不入账（账本口径）。流水 {@code source_id}＝批次 id，
+ * {@code uk_source} 保幂等。⚠️ 早先用「当前读锁住这个人在这个相册的全部批次行」串行，压测里那条范围当前读被走成主键扫描、
+ * 锁上百行，与上传和别人的审核成环死锁（2026-10-17），故改成分布式锁 + 只按主键锁这一批。</p>
  *
  * <p><b>同步社区</b>（Row 30「默认勾选发送到交流平台」）：上传事务提交后发 {@link AlbumPhotosUploadedEvent}，social 监听发帖。</p>
  *
@@ -72,6 +76,8 @@ public class AlbumService {
     public static final int POINTS_APPROVED = 1;
     public static final int POINTS_REJECTED = 2;
     public static final int POINTS_NONE = 9;
+    /** 同一个人在同一相册的积分审核串行：键 = 前缀 + 相册 id + ":" + 上传人 id。 */
+    public static final String POINTS_LOCK_PREFIX = "lock:album-points:";
 
     private ActivityAlbumMapper albumMapper;
     private ActivityAlbumBatchMapper batchMapper;
@@ -86,6 +92,12 @@ public class AlbumService {
     private FileStorageService fileStorageService;
     private ApplicationEventPublisher eventPublisher;
     private TransactionTemplate transactionTemplate;
+    private RedissonClient redissonClient;
+
+    @Autowired
+    public void setRedissonClient(RedissonClient redissonClient) {
+        this.redissonClient = redissonClient;
+    }
 
     @Autowired
     public void setAlbumMapper(ActivityAlbumMapper albumMapper) {
@@ -331,10 +343,16 @@ public class AlbumService {
 
     /** @return 这一批实际发了几分 */
     public int approvePoints(Long adminId, Long batchId) {
-        Integer awarded = transactionTemplate.execute(tx -> {
-            ActivityAlbumBatch b = requirePendingBatch(batchId);
+        ActivityAlbumBatch head = requirePendingBatch(batchId);
+        String lockKey = POINTS_LOCK_PREFIX + head.getAlbumId() + ":" + head.getUploaderId();
+        Integer awarded = DistributedLockSupport.runLocked(redissonClient, lockKey, () -> transactionTemplate.execute(tx -> {
+            // 事务第一句按主键锁这一批：行一定存在，只有行锁；状态以这次当前读为准（驳回不走这把分布式锁）
+            ActivityAlbumBatch b = batchMapper.selectByIdForUpdate(batchId);
+            if (b == null || !Integer.valueOf(POINTS_PENDING).equals(b.getPointsStatus())) {
+                throw new BusinessException("这一批刚被别人审过了，请刷新");
+            }
             ActivityAlbumRule rule = rule();
-            int already = batchMapper.sumAwardedForUpdate(b.getAlbumId(), b.getUploaderId());
+            int already = batchMapper.sumAwarded(b.getAlbumId(), b.getUploaderId());
             Long remaining = photoMapper.selectCount(Wrappers.<ActivityAlbumPhoto>lambdaQuery()
                     .eq(ActivityAlbumPhoto::getBatchId, batchId));
             int points = 0;
@@ -358,7 +376,7 @@ public class AlbumService {
                         "相册上传：" + (album == null ? "" : album.getTitle()), PointSourceType.OPERATOR_ADMIN, adminId);
             }
             return points;
-        });
+        }));
         return awarded == null ? 0 : awarded;
     }
 

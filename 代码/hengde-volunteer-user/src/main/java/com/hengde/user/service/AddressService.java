@@ -112,7 +112,14 @@ public class AddressService {
         }
     }
 
-    /** 置顶：按人上锁，先清旧的再置新的（同一事务）。已经是置顶的再点一次不报错。 */
+    /**
+     * 置顶：按人上锁，先清旧的再置新的（同一事务）。已经是置顶的再点一次不报错。
+     *
+     * <p>清旧的那一步<b>先普通读找出旧的置顶、再按主键改</b>，不写成 {@code WHERE volunteer_id = ? AND is_top = 1} 的范围 UPDATE：
+     * 那条范围当前读在压测里（{@code AddressConcurrencyTest} 的 stress 用例）被走成全表主键扫描、一次锁上百行，
+     * 与别人的置顶、别人新增地址的 INSERT 成环死锁（2026-10-17 InnoDB 死锁报告实证）。普通读是准的：
+     * 这个人的地址写操作全在 {@link #LOCK_PREFIX} 这把锁里，事务在拿到锁之后才开始。</p>
+     */
     public void top(Long volunteerId, Long id) {
         locked(volunteerId, () -> {
             UserAddress a = requireOwn(volunteerId, id);
@@ -120,11 +127,17 @@ public class AddressService {
                 return null;
             }
             LocalDateTime now = LocalDateTime.now();
-            addressMapper.update(null, Wrappers.<UserAddress>lambdaUpdate()
-                    .eq(UserAddress::getVolunteerId, volunteerId)
-                    .eq(UserAddress::getIsTop, 1)
-                    .set(UserAddress::getIsTop, 0)
-                    .set(UserAddress::getTopTime, null));
+            List<Long> oldTops = addressMapper.selectList(Wrappers.<UserAddress>lambdaQuery()
+                            .select(UserAddress::getId)
+                            .eq(UserAddress::getVolunteerId, volunteerId)
+                            .eq(UserAddress::getIsTop, 1))
+                    .stream().map(UserAddress::getId).toList();
+            for (Long oldId : oldTops) {
+                addressMapper.update(null, Wrappers.<UserAddress>lambdaUpdate()
+                        .eq(UserAddress::getId, oldId)
+                        .set(UserAddress::getIsTop, 0)
+                        .set(UserAddress::getTopTime, null));
+            }
             int rows = addressMapper.update(null, Wrappers.<UserAddress>lambdaUpdate()
                     .eq(UserAddress::getId, id)
                     .eq(UserAddress::getVolunteerId, volunteerId)

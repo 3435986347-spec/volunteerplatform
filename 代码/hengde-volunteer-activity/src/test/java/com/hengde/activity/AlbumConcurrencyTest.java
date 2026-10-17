@@ -7,6 +7,8 @@ import com.hengde.common.testsupport.RedisTestcontainersConfig;
 import com.hengde.common.testsupport.TestcontainersConfig;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.context.annotation.Import;
 import org.springframework.boot.test.context.SpringBootTest;
 
@@ -39,8 +41,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * 活动相册的并发（前三条<b>必跑</b>）与压测（{@code @Tag("stress")}）。
  *
- * <p>积分上限是「先读这个人在这个相册拿了多少、再发」——两批同时审核会各自以为还差几分，所以复核必须在当前读锁住这个人在这个相册的批次行之后做。
- * 靠赛跑证明不了这把锁，第一条用例由裸 JDBC 事务先锁住那些行，断言审核在等它。</p>
+ * <p>积分上限是「先读这个人在这个相册拿了多少、再发」——两批同时审核会各自以为还差几分，所以同一个人同一相册的审核
+ * 按 {@link AlbumService#POINTS_LOCK_PREFIX} 串行，事务里再按主键锁住这一批。靠赛跑证明不了锁，前两条用例各自先把锁占住，断言审核在等。</p>
+ *
+ * <p>⚠️ 2026-10-17 之前串行靠的是「当前读锁住这个人在这个相册的全部批次行」（范围 {@code FOR UPDATE}）。压测
+ * {@code albumChurn_capsAndLedgerStayConsistent} 三次里两次死锁：优化器把那条范围当前读走成主键扫描、一次锁上百行，
+ * 与上传的 INSERT、别人的审核成环（InnoDB 死锁报告实证）。</p>
  *
  * <p><b>需本机 Docker</b>（MySQL + Redis）。</p>
  *
@@ -52,6 +58,8 @@ class AlbumConcurrencyTest extends AlbumTestSupport {
 
     @org.springframework.beans.factory.annotation.Autowired
     private DataSource dataSource;
+    @org.springframework.beans.factory.annotation.Autowired
+    private RedissonClient redissonClient;
 
     @Test
     void approvalWaitsForTheUploadersBatchRows() throws Exception {
@@ -73,6 +81,29 @@ class AlbumConcurrencyTest extends AlbumTestSupport {
             conn.commit();
             assertEquals(1, f.get(30, TimeUnit.SECONDS));
         } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void approvalWaitsForThePerUploaderPointsLock() throws Exception {
+        Long aid = activityService.publish(base(7), ADMIN);
+        Long me = enrolledVolunteer(aid);
+        Long albumId = albumService.albumOfActivity(aid).getId();
+        Long batch = albumService.upload(me, albumId, noSync(3));
+        RLock held = redissonClient.getLock(AlbumService.POINTS_LOCK_PREFIX + albumId + ":" + me);
+        held.lock();
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            Future<Integer> f = pool.submit(() -> albumService.approvePoints(ADMIN, batch));
+            assertThrows(TimeoutException.class, () -> f.get(1500, TimeUnit.MILLISECONDS),
+                    "同一个人同一相册的审核应当在等这把分布式锁——不然两批同时审核会一起越过上限");
+            held.unlock();
+            assertEquals(1, f.get(30, TimeUnit.SECONDS));
+        } finally {
+            if (held.isHeldByCurrentThread()) {
+                held.unlock();
+            }
             pool.shutdownNow();
         }
     }
