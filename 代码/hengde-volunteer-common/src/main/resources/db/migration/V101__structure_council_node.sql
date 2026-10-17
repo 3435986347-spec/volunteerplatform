@@ -4,8 +4,9 @@
 --   而协会 2026-08-11 / 09-16 起理事会是奖惩终审、申诉受理、账号恢复与全部限制权限的主体，架构树里却放不进它的成员。
 -- 【挂在哪】协会根节点下（parent_id 为空且未删的那一行，取 id 最小的；V5 种的就是它），与三个部门平级；
 --   sort 5 排在组织部（10）之前，与原型 P19 的顺序一致：理事会、组织部、秘书部、宣传部。
--- 【不打扰已有数据】V69 起超管可以在后台增删节点：根节点下已经有未删的「理事会」（有人先在后台建了）就什么也不插；
---   没有未删的根节点也不插，免得凭空造出第二棵树。已删的「理事会」不算数。
+-- 【不打扰已有数据】V69 起超管可以在后台增删节点、挪节点：树里**任何位置**已经有未删的「理事会」（有人先在后台建了，
+--   挂在根下、挂在某个部门下、或者另起了一个顶层节点都算）就什么也不插——那是超管已经定下的架构，不再添一个同名的；
+--   名称比较去掉首尾空格。没有未删的根节点也不插，免得凭空造出第二棵树。已删的「理事会」不算数。
 -- 【本文件形态】一条 INSERT … SELECT（同表先查后插，MySQL 会先物化 SELECT 的结果）。
 INSERT INTO organization_structure_node (parent_id, name, title, sort, create_time, is_deleted)
 SELECT root.id, '理事会', '奖惩终审、申诉受理与账号恢复', 5, NOW(), 0
@@ -13,4 +14,4 @@ FROM (SELECT id FROM organization_structure_node
       WHERE parent_id IS NULL AND is_deleted = 0
       ORDER BY id LIMIT 1) root
 WHERE NOT EXISTS (SELECT 1 FROM organization_structure_node n
-                  WHERE n.parent_id = root.id AND n.name = '理事会' AND n.is_deleted = 0);
+                  WHERE TRIM(n.name) = '理事会' AND n.is_deleted = 0);
