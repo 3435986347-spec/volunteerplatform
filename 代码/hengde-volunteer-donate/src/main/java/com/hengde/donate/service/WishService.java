@@ -5,6 +5,10 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.hengde.auth.entity.VolunteerNotification;
 import com.hengde.auth.service.NotificationService;
+import com.hengde.donate.constant.DonateCertRefs;
+import com.hengde.donate.event.DonationCertifiableEvent;
+import com.hengde.donate.dao.DonateWishViewerMapper;
+import com.hengde.donate.entity.DonateWishViewer;
 import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.auth.vo.VolunteerContactView;
 import com.hengde.common.crypto.CryptoUtil;
@@ -27,6 +31,7 @@ import com.hengde.donate.entity.DonateWishClaim;
 import com.hengde.donate.vo.DonateFlowVOs;
 import com.hengde.donate.vo.WishVOs;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -67,6 +72,8 @@ import java.util.stream.Collectors;
 @Service
 public class WishService {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(WishService.class);
+
     static final int MAX_IMPORT_ROWS = 1000;
     static final int EXPORT_LIMIT = 20_000;
     static final int MAX_IMAGES = 9;
@@ -86,6 +93,20 @@ public class WishService {
     private CryptoUtil cryptoUtil;
     private DonateWishProperties properties;
     private TransactionTemplate transactionTemplate;
+
+    private ApplicationEventPublisher eventPublisher;
+
+    @Autowired
+    public void setEventPublisher(ApplicationEventPublisher eventPublisher) {
+        this.eventPublisher = eventPublisher;
+    }
+
+    private DonateWishViewerMapper viewerMapper;
+
+    @Autowired
+    public void setViewerMapper(DonateWishViewerMapper viewerMapper) {
+        this.viewerMapper = viewerMapper;
+    }
 
     @Autowired
     public void setWishMapper(DonateWishMapper wishMapper) {
@@ -434,6 +455,8 @@ public class WishService {
                 "你认领的微心愿已实现",
                 "心愿「" + wish.getTitle() + "」的物资已发放到孩子手中，发放照片可在微心愿中心查看。谢谢你！",
                 VolunteerNotification.BIZ_WISH_CLAIM, claim.getId());
+        // 协会 2026-10-16（答复五 乙-2）：微心愿在「已实现」时出捐赠证书。honor 在本事务提交后出证
+        eventPublisher.publishEvent(new DonationCertifiableEvent(DonateCertRefs.wish(claim.getId()), claim.getVolunteerId()));
     }
 
     /** 批量下载（Row 12 F）。含未成年人资料，受 {@code donate:wish} 保护；超过上限报错，<b>不静默截断</b>。 */
@@ -505,7 +528,43 @@ public class WishService {
         if (w == null || w.getStatus() == WishFlow.WISH_TAKEN_DOWN) {
             throw new BusinessException("心愿不存在");
         }
+        recordViewer(wishId, volunteerId);
         return toVolunteerVO(w, isMine(wishId, volunteerId));
+    }
+
+    /**
+     * 记下这次查看与查看人的手机号（协会 2026-10-16 答复五 丁-7）。看详情本就要求已验手机号（{@link #requireViewer}），
+     * 这里把那个号快照下来给协会。<b>记录失败不影响看心愿</b>——这是给协会的留痕，不是看心愿的前提。
+     */
+    private void recordViewer(Long wishId, Long volunteerId) {
+        try {
+            com.hengde.auth.vo.VolunteerContactView c =
+                    volunteerQueryService.listContactsByIds(List.of(volunteerId)).get(volunteerId);
+            String phone = c == null || !StringUtils.hasText(c.phone()) ? null : cryptoUtil.encrypt(c.phone());
+            viewerMapper.recordView(wishId, volunteerId, phone, LocalDateTime.now());
+        } catch (RuntimeException e) {
+            log.warn("[WISH] 记录心愿 {} 的查看人 {} 失败：{}", wishId, volunteerId, e.getMessage());
+        }
+    }
+
+    /** 后台看某个心愿的查看人（最近看的在前），带查看时的手机号。 */
+    public PageResult<WishVOs.Viewer> viewers(Long wishId, PageQuery query) {
+        IPage<DonateWishViewer> page = viewerMapper.selectPage(query.toPage(), Wrappers.<DonateWishViewer>lambdaQuery()
+                .eq(DonateWishViewer::getWishId, wishId)
+                .orderByDesc(DonateWishViewer::getLastViewTime)
+                .orderByDesc(DonateWishViewer::getId));
+        Map<Long, String> names = volunteerQueryService.listNamesByIds(page.getRecords().stream()
+                .map(DonateWishViewer::getVolunteerId).distinct().toList());
+        return PageResult.of(page.convert(v -> {
+            WishVOs.Viewer vo = new WishVOs.Viewer();
+            vo.setVolunteerId(v.getVolunteerId());
+            vo.setVolunteerName(names.get(v.getVolunteerId()));
+            vo.setPhone(decrypt(v.getPhone()));
+            vo.setViewCount(v.getViewCount());
+            vo.setFirstViewTime(v.getFirstViewTime());
+            vo.setLastViewTime(v.getLastViewTime());
+            return vo;
+        }));
     }
 
     /**

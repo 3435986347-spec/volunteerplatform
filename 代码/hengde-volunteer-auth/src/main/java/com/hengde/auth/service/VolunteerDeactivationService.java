@@ -158,7 +158,48 @@ public class VolunteerDeactivationService {
         if (rows != 1) {
             throw new BusinessException("已经申请过注销，或账号状态已变化，请刷新后再试");
         }
+        // 协会答复五 乙-4：「7天冷静期即退出账号登录」——申请即踢下线（所有设备）。
+        // 冷静期里再登录会撤销这份申请（cancelOnLogin），所以「登出」本身就是给他的那道确认
+        try {
+            StpUtil.logout(volunteerId);
+        } catch (RuntimeException e) {
+            log.warn("[DEACTIVATE] 申请注销后踢下线失败 volunteerId={}：{}", volunteerId, e.getMessage());
+        }
         return effective;
+    }
+
+    /**
+     * 登录打断注销（协会答复五 乙-4，2026-10-16：「再次登录时显示注销冷静期中。如登录则自动打断注销流程，账号恢复正常」）。
+     *
+     * <p>只在<b>登录</b>时调（验证码 / 密码 / 微信 / 开发登录）：找回密码之类不是登录，不打断。
+     * 已到期的不归这里管——调用方先 {@link #finalizeIfDue} 落定；万一判完之后恰好到期，CAS 改不到，
+     * 重新读一次后按已注销报错。</p>
+     *
+     * @return true＝这次登录撤销了一份冷静期中的注销申请
+     */
+    public boolean cancelOnLogin(Volunteer v) {
+        if (v == null || v.getDeactivateEffectiveTime() == null) {
+            return false;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        int rows = volunteerMapper.update(null, Wrappers.<Volunteer>lambdaUpdate()
+                .eq(Volunteer::getId, v.getId())
+                .in(Volunteer::getStatus, UserStatus.NORMAL, UserStatus.BANNED)
+                .gt(Volunteer::getDeactivateEffectiveTime, now)
+                .set(Volunteer::getDeactivateRequestTime, null)
+                .set(Volunteer::getDeactivateEffectiveTime, null)
+                .set(Volunteer::getUpdateTime, now));
+        if (rows == 1) {
+            log.info("[DEACTIVATE] 冷静期内登录，注销申请已撤销 volunteerId={}", v.getId());
+            v.setDeactivateRequestTime(null);
+            v.setDeactivateEffectiveTime(null);
+            return true;
+        }
+        Volunteer latest = volunteerMapper.selectById(v.getId());
+        if (latest != null && (finalizeIfDue(latest) || UserStatus.DELETED.equals(latest.getStatus()))) {
+            throw new BusinessException("账号已注销");
+        }
+        return false;
     }
 
     /**

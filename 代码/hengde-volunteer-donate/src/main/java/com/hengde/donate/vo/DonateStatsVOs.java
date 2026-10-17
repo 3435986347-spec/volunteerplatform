@@ -68,7 +68,7 @@ public final class DonateStatsVOs {
         private long stationery;
         @Schema(description = "收到运动器材（件）")
         private long sports;
-        @Schema(description = "修建书屋数：系统里没有「书屋」这个概念，恒为 null（见协会待确认清单㉒）")
+        @Schema(description = "修建书屋数＝收到过捐书物资（已送达）的受赠单位个数（协会答复五 乙-6：一所小学一间书屋）")
         private Long bookHouses;
     }
 }

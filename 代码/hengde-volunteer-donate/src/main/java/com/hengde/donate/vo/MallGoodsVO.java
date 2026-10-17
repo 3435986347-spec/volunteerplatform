@@ -54,6 +54,38 @@ public class MallGoodsVO {
     @Schema(description = "规格列表（库存与所需积分都在这里）")
     private List<MallGoodsSpecVO> specs;
 
+    // ---- 领取方式（V95）：下面这些是【生效值】，没按新口径设置过的商品按全局行为折算好了，前端照着显示即可 ----
+
+    @Schema(description = "可自提（生效值）")
+    private Boolean allowPickup;
+
+    @Schema(description = "可快递（生效值）")
+    private Boolean allowExpress;
+
+    @Schema(description = "快递费【分】（现金；不收现金快递费时为 null）")
+    private Integer expressFeeFen;
+
+    @Schema(description = "快递费【元】")
+    private String expressFeeYuan;
+
+    @Schema(description = "运费积分（不收积分运费时为 null）")
+    private Integer expressPoints;
+
+    @Schema(description = "可选的自提点（只含启用中的；空=不用选，到配置里的唯一自提点领）")
+    private List<MallPickupPointVO> pickupPoints;
+
+    @Schema(description = "虚拟商品")
+    private Boolean virtualGoods;
+
+    @Schema(description = "虚拟商品的兑换二维码图片（只在后台与企业端回填；志愿者在兑换成功后的兑换详情里拿到）")
+    private String redeemQrUrl;
+
+    @Schema(description = "是否已按新口径设置过领取方式（后台用：false 表示还在沿用全局行为）")
+    private Boolean deliveryConfigured;
+
+    @Schema(description = "已选自提点 id（后台编辑回填用，含已停用的）")
+    private List<Long> pickupPointIds;
+
     /** 各规格里最低的所需积分，列表页展示「XX 积分起」用；无规格时为 null。 */
     @Schema(description = "最低所需积分")
     private Integer minPoints;

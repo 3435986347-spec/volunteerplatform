@@ -127,6 +127,7 @@ public class VolunteerAuthService {
 
         Volunteer volunteer = volunteerMapper.selectOne(
                 Wrappers.<Volunteer>lambdaQuery().eq(Volunteer::getOpenid, openid));
+        boolean cancelled = false;
         if (volunteer == null) {
             volunteer = new Volunteer();
             volunteer.setOpenid(openid);
@@ -138,11 +139,11 @@ public class VolunteerAuthService {
             // 「只放 NORMAL」。三条登录路径各写各的判定，改口径时必然漏掉其中一条——
             // 协会这次要求禁用可登录，正好把三份判定并成一份。
             // 【顺带修掉一处不一致】此前微信登录不挡已注销账号，自己注销过的人照样能登回来。
-            ensureLoginable(volunteer);
+            cancelled = ensureLoginable(volunteer, true);
         }
 
         StpUtil.login(volunteer.getId());
-        return new LoginVO(StpUtil.getTokenValue(), volunteer.getRegisterTime() != null);
+        return new LoginVO(StpUtil.getTokenValue(), volunteer.getRegisterTime() != null, cancelled);
     }
 
     /**
@@ -162,13 +163,14 @@ public class VolunteerAuthService {
 
         Volunteer volunteer = volunteerMapper.selectOne(
                 Wrappers.<Volunteer>lambdaQuery().eq(Volunteer::getOpenid, openid));
+        boolean cancelled = false;
         if (volunteer == null) {
             volunteer = new Volunteer();
             volunteer.setOpenid(openid);
             volunteer.setStatus(UserStatus.NORMAL);
             volunteerMapper.insert(volunteer);
         } else {
-            ensureLoginable(volunteer);
+            cancelled = ensureLoginable(volunteer, true);
         }
 
         // 造一个可用的「已实名」测试身份：填姓名 + 成年生日 + 性别，避免年龄/性别资格校验取到 null
@@ -183,7 +185,7 @@ public class VolunteerAuthService {
         }
 
         StpUtil.login(volunteer.getId());
-        return new LoginVO(StpUtil.getTokenValue(), volunteer.getRegisterTime() != null);
+        return new LoginVO(StpUtil.getTokenValue(), volunteer.getRegisterTime() != null, cancelled);
     }
 
     /**
@@ -222,9 +224,9 @@ public class VolunteerAuthService {
         verifyCodeService.verify(phone, SmsScene.LOGIN, smsCode);
         String phoneHash = cryptoUtil.hashPhone(phone);
         Volunteer volunteer = findOrCreateByPhone(phone, phoneHash);
-        ensureLoginable(volunteer);
+        boolean cancelled = ensureLoginable(volunteer, true);
         StpUtil.login(volunteer.getId());
-        return new LoginVO(StpUtil.getTokenValue(), volunteer.getRegisterTime() != null);
+        return new LoginVO(StpUtil.getTokenValue(), volunteer.getRegisterTime() != null, cancelled);
     }
 
     /**
@@ -253,14 +255,19 @@ public class VolunteerAuthService {
      * <p>被后台「删除」的账号是逻辑删除 + 唯一字段已释放，{@code selectByPhoneHash} 查不到，
      * 不会走到这里。</p>
      */
-    private void ensureLoginable(Volunteer volunteer) {
+    /**
+     * @param interruptDeactivation 真的是登录（会打断冷静期中的注销）时为 true
+     * @return true＝这次登录撤销了一份冷静期中的注销申请（协会答复五 乙-4）
+     */
+    private boolean ensureLoginable(Volunteer volunteer, boolean interruptDeactivation) {
         // 已过注销冷静期：当场落定（清手机号、换 openid），按已注销处理（协会 2026-09-16：注销＝退出协会）
         if (deactivationService.finalizeIfDue(volunteer)) {
             throw new BusinessException("账号已注销");
         }
         Integer status = volunteer.getStatus();
         if (UserStatus.NORMAL.equals(status) || UserStatus.BANNED.equals(status)) {
-            return;
+            // 冷静期内登录＝打断注销，账号恢复正常（协会答复五 乙-4）
+            return interruptDeactivation && deactivationService.cancelOnLogin(volunteer);
         }
         // 【写成白名单而不是「只拦 DELETED」】后者在 status 为 null 或将来多一个取值时会静默放行，
         // 而这是发 token 的那一步——放错了没有第二道防线。
@@ -327,10 +334,10 @@ public class VolunteerAuthService {
             loginProtectionService.onVolunteerLoginFailed(phoneHash, clientIp);
             throw new BusinessException("手机号或密码错误");
         }
-        ensureLoginable(volunteer);
+        boolean cancelled = ensureLoginable(volunteer, true);
         loginProtectionService.onVolunteerLoginSucceeded(phoneHash);
         StpUtil.login(volunteer.getId());
-        return new LoginVO(StpUtil.getTokenValue(), volunteer.getRegisterTime() != null);
+        return new LoginVO(StpUtil.getTokenValue(), volunteer.getRegisterTime() != null, cancelled);
     }
 
     /**
@@ -363,7 +370,8 @@ public class VolunteerAuthService {
         if (volunteer == null) {
             throw new BusinessException("该手机号未注册");
         }
-        ensureLoginable(volunteer);
+        // 找回密码不是登录：不打断冷静期中的注销（只有真的登录进来才算「如登录则自动打断」）
+        ensureLoginable(volunteer, false);
         volunteer.setPassword(PasswordUtil.encrypt(newPassword));
         volunteerMapper.updateById(volunteer);
     }

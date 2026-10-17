@@ -107,6 +107,14 @@ public class AdminWishController {
         return Result.ok(wishService.detailForAdmin(id));
     }
 
+    @Operation(summary = "看过这个心愿详情的人与他们当时的手机号（协会 2026-10-16 丁-7；最近看的在前）")
+    @SaCheckPermission(value = PermissionCode.DONATE_WISH, type = "admin")
+    @GetMapping("/wishes/{id}/viewers")
+    public Result<com.hengde.common.page.PageResult<WishVOs.Viewer>> viewers(@PathVariable Long id,
+            com.hengde.common.page.PageQuery query) {
+        return Result.ok(wishService.viewers(id, query));
+    }
+
     @Operation(summary = "修改心愿资料（仅待认领 / 已下架；编号留空表示不改）")
     @SaCheckPermission(value = PermissionCode.DONATE_WISH, type = "admin")
     @PutMapping("/wishes/{id}")

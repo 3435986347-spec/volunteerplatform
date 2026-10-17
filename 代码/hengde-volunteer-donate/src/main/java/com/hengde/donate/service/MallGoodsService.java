@@ -3,6 +3,7 @@ package com.hengde.donate.service;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.hengde.common.exception.BusinessException;
+import com.hengde.common.oss.FileStorageService;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
 import com.hengde.donate.constant.MallGoodsStatus;
@@ -16,6 +17,8 @@ import com.hengde.donate.entity.MallGoodsReview;
 import com.hengde.donate.entity.MallGoodsSpec;
 import com.hengde.donate.vo.MallGoodsSpecVO;
 import com.hengde.donate.vo.MallGoodsVO;
+import com.hengde.donate.vo.MallPickupPointVO;
+import com.hengde.trade.constant.TradeFlow;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,6 +47,29 @@ public class MallGoodsService {
     private MallGoodsSpecMapper specMapper;
     private MallGoodsReviewMapper reviewMapper;
     private MallCouponService couponService;
+    private MallPickupPointService pickupPointService;
+    private MallShippingCalculator shippingCalculator;
+    private FileStorageService fileStorageService;
+
+    /** 后台上传商品图片的目录（{@code POST /a/files/upload?dir=goods}）；兑换二维码只收这里的本系统上传 */
+    public static final String ADMIN_IMAGE_DIR = "goods";
+    /** 企业端上传图片的目录（{@code POST /e/files/image}） */
+    public static final String SPONSOR_IMAGE_DIR = "enterprise";
+
+    @Autowired
+    public void setPickupPointService(MallPickupPointService pickupPointService) {
+        this.pickupPointService = pickupPointService;
+    }
+
+    @Autowired
+    public void setShippingCalculator(MallShippingCalculator shippingCalculator) {
+        this.shippingCalculator = shippingCalculator;
+    }
+
+    @Autowired
+    public void setFileStorageService(FileStorageService fileStorageService) {
+        this.fileStorageService = fileStorageService;
+    }
 
     @Autowired
     public void setGoodsMapper(MallGoodsMapper goodsMapper) {
@@ -82,12 +108,14 @@ public class MallGoodsService {
             throw new BusinessException("请至少填写一个规格（库存与所需积分都挂在规格上）");
         }
         couponService.requireExists(dto.getRequireCouponId());
+        Delivery delivery = normalizeDelivery(dto, ADMIN_IMAGE_DIR);
         MallGoods goods = new MallGoods();
         goods.setName(dto.getName());
         goods.setCoverUrl(dto.getCoverUrl());
         goods.setDetail(dto.getDetail());
         goods.setSponsorName(dto.getSponsorName());
         goods.setRequireCouponId(dto.getRequireCouponId());
+        applyDelivery(goods, delivery);
         goods.setStatus(MallGoodsStatus.DRAFT);
         goods.setHidden(0);
         goods.setSort(0);
@@ -160,6 +188,7 @@ public class MallGoodsService {
         if (sponsorScope == null) {
             couponService.requireExists(values.getRequireCouponId());
         }
+        Delivery d = normalizeDelivery(values, sponsorScope == null ? ADMIN_IMAGE_DIR : SPONSOR_IMAGE_DIR);
         int rows = goodsMapper.update(null, Wrappers.<MallGoods>lambdaUpdate()
                 .eq(MallGoods::getId, id)
                 .eq(sponsorScope != null, MallGoods::getSponsorEnterpriseId, sponsorScope)
@@ -175,6 +204,14 @@ public class MallGoodsService {
                         values.getSponsorName())
                 // 显式 set（含 null）：取消「必须持卷」要能真的写成 NULL，updateById 会跳过 null
                 .set(sponsorScope == null, MallGoods::getRequireCouponId, values.getRequireCouponId())
+                // 领取方式：两个开关都没传＝不改（旧客户端）；传了就整组显式写（含 null），快递费、二维码要能真的清掉
+                .set(d != null, MallGoods::getAllowPickup, d == null ? null : d.allowPickup())
+                .set(d != null, MallGoods::getAllowExpress, d == null ? null : d.allowExpress())
+                .set(d != null, MallGoods::getPickupPointIds, d == null ? null : d.pickupPointIds())
+                .set(d != null, MallGoods::getExpressFeeFen, d == null ? null : d.expressFeeFen())
+                .set(d != null, MallGoods::getExpressPoints, d == null ? null : d.expressPoints())
+                .set(d != null, MallGoods::getVirtualGoods, d == null ? null : d.virtualGoods())
+                .set(d != null, MallGoods::getRedeemQrUrl, d == null ? null : d.redeemQrUrl())
                 // 已上架 / 已停用 → 退回待审核；草稿与驳回稿保持原状（它们本就没过审）
                 .setSql("status = CASE WHEN status IN (" + MallGoodsStatus.ON_SALE + ", "
                         + MallGoodsStatus.DISABLED + ") THEN " + MallGoodsStatus.PENDING + " ELSE status END")
@@ -225,9 +262,18 @@ public class MallGoodsService {
             MallGoodsSpec row = new MallGoodsSpec();
             row.setGoodsId(goodsId);
             row.setName(dto.getName());
-            row.setPoints(dto.getPoints());
-            // 不填按 0（纯积分）写，<b>不留 null</b>：updateById 会跳过 null，把「改回纯积分」静默丢掉
-            row.setCashFen(dto.getCashFen() == null ? 0 : dto.getCashFen());
+            // 积分与现金都不填按 0 写，<b>不留 null</b>：updateById 会跳过 null，把「改成纯现金 / 纯积分」静默丢掉。
+            // 至少一个大于 0（协会答复五 丁-2：只填金额＝纯收金额，只填积分＝纯收积分，都填＝两者同时收）
+            int points = dto.getPoints() == null ? 0 : dto.getPoints();
+            int cash = dto.getCashFen() == null ? 0 : dto.getCashFen();
+            if (points < 0 || cash < 0) {
+                throw new BusinessException("规格「" + dto.getName() + "」的积分与金额不能为负");
+            }
+            if (points == 0 && cash == 0) {
+                throw new BusinessException("规格「" + dto.getName() + "」请至少填写所需积分或金额");
+            }
+            row.setPoints(points);
+            row.setCashFen(cash);
             row.setStock(dto.getStock());
             row.setSort(dto.getSort() == null ? order : dto.getSort());
             if (dto.getId() != null && byId.containsKey(dto.getId())) {
@@ -330,10 +376,12 @@ public class MallGoodsService {
         if (dto.getSpecs() == null || dto.getSpecs().isEmpty()) {
             throw new BusinessException("请至少填写一个规格（库存与所需积分都挂在规格上）");
         }
+        Delivery delivery = normalizeDelivery(dto, SPONSOR_IMAGE_DIR);
         MallGoods goods = new MallGoods();
         goods.setName(dto.getName());
         goods.setCoverUrl(dto.getCoverUrl());
         goods.setDetail(dto.getDetail());
+        applyDelivery(goods, delivery);
         goods.setSponsorEnterpriseId(enterpriseId);
         goods.setSponsorName(enterpriseName);
         goods.setSponsorSuspended(0);
@@ -417,6 +465,122 @@ public class MallGoodsService {
                 .set(MallGoods::getUpdateTime, LocalDateTime.now()));
     }
 
+    /** 规范化后的领取方式（落库值）。 */
+    record Delivery(Integer allowPickup, Integer allowExpress, String pickupPointIds, Integer expressFeeFen,
+                    Integer expressPoints, Integer virtualGoods, String redeemQrUrl) {
+    }
+
+    /**
+     * 领取方式的校验与规范化（协会答复五 丙-3）。
+     *
+     * <p>两个开关都没传返回 null（＝不改 / 沿用全局行为），但这时别的领取字段也不许带——
+     * 带了说明表单弄错了，静默丢掉会让「设了快递费」看起来保存成功而实际没生效。</p>
+     *
+     * @param uploadDir 兑换二维码必须是本系统传到这个目录下的图（外链放进详情页，扫出来的是别人的码）
+     */
+    Delivery normalizeDelivery(MallGoodsSaveDTO dto, String uploadDir) {
+        boolean virtual = dto.getVirtualGoods() != null && dto.getVirtualGoods() == 1;
+        if (dto.getAllowPickup() == null && dto.getAllowExpress() == null) {
+            if (virtual || StringUtils.hasText(dto.getRedeemQrUrl()) || dto.getExpressFeeFen() != null
+                    || dto.getExpressPoints() != null || (dto.getPickupPointIds() != null && !dto.getPickupPointIds().isEmpty())) {
+                throw new BusinessException("请选择领取方式（自提 / 快递）");
+            }
+            return null;
+        }
+        int pickup = flag(dto.getAllowPickup(), "可自提");
+        int express = flag(dto.getAllowExpress(), "可快递");
+        if (dto.getVirtualGoods() != null && dto.getVirtualGoods() != 0 && dto.getVirtualGoods() != 1) {
+            throw new BusinessException("虚拟商品标记只能是 0 或 1");
+        }
+        if (pickup == 0 && express == 0) {
+            throw new BusinessException("请至少选择一种领取方式（自提或快递）");
+        }
+        String qr = StringUtils.hasText(dto.getRedeemQrUrl()) ? dto.getRedeemQrUrl().trim() : null;
+        if (virtual) {
+            if (express == 1 || pickup == 0) {
+                throw new BusinessException("虚拟商品只能设置自提");
+            }
+            if (qr == null) {
+                throw new BusinessException("虚拟商品请上传兑换二维码");
+            }
+            if (!fileStorageService.isOwnUpload(qr, uploadDir)) {
+                throw new BusinessException("兑换二维码请先通过上传接口上传，再提交上传得到的地址");
+            }
+        } else if (qr != null) {
+            throw new BusinessException("只有虚拟商品需要兑换二维码");
+        }
+        Integer fee = null;
+        Integer points = null;
+        if (express == 1) {
+            fee = dto.getExpressFeeFen();
+            points = dto.getExpressPoints();
+            if (fee == null && points == null) {
+                throw new BusinessException("支持快递时请设置快递费或运费积分（至少一种）");
+            }
+        } else if (dto.getExpressFeeFen() != null || dto.getExpressPoints() != null) {
+            throw new BusinessException("不支持快递时不用设置快递费与运费积分");
+        }
+        String pointIds = null;
+        if (pickup == 1) {
+            pointIds = pickupPointService.requireUsableIds(dto.getPickupPointIds());
+        } else if (dto.getPickupPointIds() != null && !dto.getPickupPointIds().isEmpty()) {
+            throw new BusinessException("不支持自提时不用选择自提点");
+        }
+        return new Delivery(pickup, express, pointIds, fee, points, virtual ? 1 : 0, virtual ? qr : null);
+    }
+
+    private static int flag(Integer v, String what) {
+        if (v == null) {
+            return 0;
+        }
+        if (v != 0 && v != 1) {
+            throw new BusinessException(what + "只能是 0 或 1");
+        }
+        return v;
+    }
+
+    private static void applyDelivery(MallGoods goods, Delivery d) {
+        goods.setVirtualGoods(0);
+        if (d == null) {
+            return;
+        }
+        goods.setAllowPickup(d.allowPickup());
+        goods.setAllowExpress(d.allowExpress());
+        goods.setPickupPointIds(d.pickupPointIds());
+        goods.setExpressFeeFen(d.expressFeeFen());
+        goods.setExpressPoints(d.expressPoints());
+        goods.setVirtualGoods(d.virtualGoods());
+        goods.setRedeemQrUrl(d.redeemQrUrl());
+    }
+
+    /**
+     * 把领取方式折算成生效值写进 VO：没按新口径设置过的商品（两个开关都是 NULL）按改造前的全局行为——
+     * 自提恒可；快递跟全局开关，快递费取配置、积分按配置汇率折算。前端只认这几个生效值，不必知道新旧两套口径。
+     */
+    private void applyDeliveryView(MallGoodsVO vo, MallGoods g) {
+        boolean configured = g.getAllowPickup() != null || g.getAllowExpress() != null;
+        vo.setDeliveryConfigured(configured);
+        vo.setVirtualGoods(g.getVirtualGoods() != null && g.getVirtualGoods() == 1);
+        vo.setRedeemQrUrl(g.getRedeemQrUrl());
+        vo.setPickupPointIds(MallPickupPointService.parseIds(g.getPickupPointIds()));
+        if (configured) {
+            vo.setAllowPickup(g.getAllowPickup() != null && g.getAllowPickup() == 1);
+            vo.setAllowExpress(g.getAllowExpress() != null && g.getAllowExpress() == 1);
+            vo.setExpressFeeFen(vo.getAllowExpress() ? g.getExpressFeeFen() : null);
+            vo.setExpressPoints(vo.getAllowExpress() ? g.getExpressPoints() : null);
+        } else {
+            vo.setAllowPickup(true);
+            boolean express = shippingCalculator.expressEnabled();
+            vo.setAllowExpress(express);
+            if (express) {
+                int fee = shippingCalculator.legacyFeeFen();
+                vo.setExpressFeeFen(fee);
+                vo.setExpressPoints(MallShippingCalculator.pointsFor(fee, shippingCalculator.pointsPerYuan()));
+            }
+        }
+        vo.setExpressFeeYuan(vo.getExpressFeeFen() == null ? null : TradeFlow.yuan(vo.getExpressFeeFen()));
+    }
+
     private void requireAdmin(Long adminId) {
         if (adminId == null) {
             throw new BusinessException("操作人不能为空");
@@ -460,6 +624,7 @@ public class MallGoodsService {
                         .orderByDesc(MallGoods::getId));
         PageResult<MallGoodsVO> result = PageResult.of(page.convert(g -> toVO(g, false)));
         fill(result.getRecords());
+        result.getRecords().forEach(v -> v.setRedeemQrUrl(null));
         return result;
     }
 
@@ -486,6 +651,9 @@ public class MallGoodsService {
         }
         MallGoodsVO vo = toVO(goods, false);
         fill(List.of(vo));
+        // 虚拟商品的兑换二维码<b>不在商品页公开</b>：谁都能看的商品页上挂着它，就不必兑换了。
+        // 它只出现在兑换成功之后本人的兑换详情里（MallOrderService.detailMine）
+        vo.setRedeemQrUrl(null);
         return vo;
     }
 
@@ -519,6 +687,17 @@ public class MallGoodsService {
                         Collectors.mapping(MallGoodsService::toSpecVO, Collectors.toList())));
 
         Map<Long, Map<String, Object>> stats = reviewStats(ids);
+
+        // 自提点：整页一次查（只含启用中的），按各商品自己的顺序回填
+        Map<Long, MallPickupPointVO> points = pickupPointService.usableByIds(records.stream()
+                        .flatMap(v -> v.getPickupPointIds() == null ? java.util.stream.Stream.<Long>empty()
+                                : v.getPickupPointIds().stream())
+                        .collect(Collectors.toCollection(java.util.LinkedHashSet::new)))
+                .stream().collect(Collectors.toMap(MallPickupPointVO::getId, x -> x));
+        for (MallGoodsVO vo : records) {
+            vo.setPickupPoints(vo.getPickupPointIds() == null ? List.of()
+                    : vo.getPickupPointIds().stream().map(points::get).filter(Objects::nonNull).toList());
+        }
 
         Map<Long, String> couponNames = couponService.namesOf(records.stream()
                 .map(MallGoodsVO::getRequireCouponId).filter(Objects::nonNull).collect(Collectors.toSet()));
@@ -584,6 +763,7 @@ public class MallGoodsService {
         vo.setHidden(goods.getHidden());
         vo.setSort(goods.getSort());
         vo.setCreateTime(goods.getCreateTime());
+        applyDeliveryView(vo, goods);
         if (forAdmin) {
             vo.setSponsorEnterpriseId(goods.getSponsorEnterpriseId());
             vo.setRejectReason(goods.getRejectReason());

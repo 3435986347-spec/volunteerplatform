@@ -136,6 +136,11 @@ public final class DonatePairMappers {
     public interface DonatePairLetterMapper extends BaseMapper<DonatePairLetter> {
     }
 
+    /** 结对项目的活动动态（V98）。 */
+    @Mapper
+    public interface DonatePairUpdateMapper extends BaseMapper<com.hengde.donate.entity.DonatePairUpdate> {
+    }
+
     /** 众筹项目。 */
     @Mapper
     public interface DonateCrowdfundMapper extends BaseMapper<DonateCrowdfund> {

@@ -50,6 +50,11 @@ public class MallShippingCalculator {
         return Math.max(0, properties.getExpress().getFeeFen());
     }
 
+    /** 全局配置的快递费【分】——只用于没按新口径设置过领取方式的商品（V95 之前的存量商品）。 */
+    public int legacyFeeFen() {
+        return Math.max(0, properties.getExpress().getFeeFen());
+    }
+
     /** 当前汇率：1 元折多少积分。 */
     public int pointsPerYuan() {
         return Math.max(1, properties.getExpress().getPointsPerYuan());

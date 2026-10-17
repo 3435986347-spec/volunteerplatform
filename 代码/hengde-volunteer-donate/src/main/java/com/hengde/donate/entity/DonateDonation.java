@@ -43,6 +43,9 @@ public class DonateDonation extends BaseEntity {
     private String invoiceNo;
     private LocalDateTime invoiceTime;
     private Long invoiceBy;
+    /** 发票文件（私有对象存储 key，V99） */
+    private String invoiceFileKey;
+    private String invoiceFileName;
     private LocalDateTime refundTime;
     private Long refundBy;
     private String refundReason;

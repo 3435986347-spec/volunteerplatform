@@ -1,0 +1,8 @@
+# api HTTP 用例（@ActiveProfiles("test")）的专用配置，叠加在 main 的 application.yaml 上。
+#
+# 兑换单默认「下单 / 付款即成功」（协会答复五 乙-5）。改造前的 HTTP 用例按「待审核 → 审核通过」写，
+# 这里把它们留在审核流程上；新口径另有 MallImmediateOrderApiFlowTest 显式关掉审核来测。
+hengde:
+  donate:
+    mall:
+      order-review: true

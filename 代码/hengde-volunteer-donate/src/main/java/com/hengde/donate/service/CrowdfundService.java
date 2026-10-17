@@ -221,8 +221,22 @@ public class CrowdfundService {
         if (dto == null || !StringUtils.hasText(dto.getTitle())) {
             throw new BusinessException("请填写项目名称");
         }
-        if (dto.getTargetAmount() == null || dto.getTargetAmount().signum() <= 0) {
+        // 协会 2026-10-16（答复五 丙-1）：每个众筹项目只选一种——收捐款或收捐物。
+        // 勾了收物时 acceptMoney 不传就是「不收钱」；只有明确传 true 才算两样都要，那是要拒绝的
+        boolean goods = Boolean.TRUE.equals(dto.getAcceptGoods());
+        boolean money = goods ? Boolean.TRUE.equals(dto.getAcceptMoney()) : !Boolean.FALSE.equals(dto.getAcceptMoney());
+        if (money && goods) {
+            throw new BusinessException("每个众筹项目只能选一种：收捐款或收捐物");
+        }
+        if (!money && !goods) {
+            throw new BusinessException("请选择这个项目收捐款还是收捐物");
+        }
+        // 预计金额是给捐款进度条用的：只收物的项目不收钱，进度条没有意义，可以不填（存 0）
+        if (money && (dto.getTargetAmount() == null || dto.getTargetAmount().signum() <= 0)) {
             throw new BusinessException("预计金额须大于 0");
+        }
+        if (dto.getTargetAmount() != null && dto.getTargetAmount().signum() < 0) {
+            throw new BusinessException("预计金额不能为负");
         }
         if (dto.getStartTime() != null && dto.getEndTime() != null
                 && !dto.getEndTime().isAfter(dto.getStartTime())) {
@@ -231,14 +245,9 @@ public class CrowdfundService {
         c.setTitle(dto.getTitle().trim());
         c.setCoverUrl(dto.getCoverUrl() == null || dto.getCoverUrl().isBlank() ? null : dto.getCoverUrl().trim());
         c.setDetail(dto.getDetail() == null || dto.getDetail().isBlank() ? null : dto.getDetail().trim());
-        c.setTargetAmount(dto.getTargetAmount());
+        c.setTargetAmount(dto.getTargetAmount() == null ? BigDecimal.ZERO : dto.getTargetAmount());
         c.setStartTime(dto.getStartTime());
         c.setEndTime(dto.getEndTime());
-        boolean money = !Boolean.FALSE.equals(dto.getAcceptMoney());
-        boolean goods = Boolean.TRUE.equals(dto.getAcceptGoods());
-        if (!money && !goods) {
-            throw new BusinessException("项目至少要接受捐款或捐物中的一种");
-        }
         if (goods && (!StringUtils.hasText(dto.getRecvName()) || !StringUtils.hasText(dto.getRecvPhone())
                 || !StringUtils.hasText(dto.getRecvAddress()))) {
             throw new BusinessException("接受捐物请填写物资收件人、电话与地址");

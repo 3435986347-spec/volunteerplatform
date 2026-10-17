@@ -7,7 +7,9 @@ import com.hengde.common.crypto.CryptoUtil;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
+import com.hengde.donate.constant.DonateCertRefs;
 import com.hengde.donate.constant.DonateFlow;
+import com.hengde.donate.event.DonationCertifiableEvent;
 import com.hengde.donate.constant.ExpressCompany;
 import com.hengde.donate.constant.WishFlow;
 import com.hengde.donate.dao.DonateItemMapper;
@@ -25,6 +27,7 @@ import com.hengde.donate.entity.DonateShipment;
 import com.hengde.donate.entity.DonateWishClaim;
 import com.hengde.donate.vo.DonateFlowVOs;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -66,6 +69,13 @@ public class DonateShipmentService {
     private CryptoUtil cryptoUtil;
     private DonateSourceTitleService sourceTitleService;
     private DonateWishClaimMapper wishClaimMapper;
+
+    private ApplicationEventPublisher eventPublisher;
+
+    @Autowired
+    public void setEventPublisher(ApplicationEventPublisher eventPublisher) {
+        this.eventPublisher = eventPublisher;
+    }
 
     @Autowired
     public void setShipmentMapper(DonateShipmentMapper shipmentMapper) {
@@ -417,6 +427,15 @@ public class DonateShipmentService {
             traceService.record(shipmentId, item.getId(), null, ok ? DonateFlow.ACT_CHECK_PASS : DonateFlow.ACT_CHECK_FAIL,
                     ok ? "核对合格：" + item.getName() : "核对不合格：" + item.getName() + "（" + r.getRemark().trim() + "）",
                     DonateFlow.OP_ADMIN, adminId);
+        }
+        // 协会 2026-10-16（答复五 乙-2）：公益捐书、众筹捐物在核对出合格物资时出捐赠证书（一个包裹一张）。
+        // 微心愿的包裹不在这里出——那一类在「心愿已实现」时按认领出
+        if (pending.stream().anyMatch(i -> Boolean.TRUE.equals(byItem.get(i.getId()).getQualified()))) {
+            DonateShipment head = shipmentMapper.selectById(shipmentId);
+            String ref = head == null ? null : DonateCertRefs.ofShipment(head.getBizType(), shipmentId);
+            if (ref != null) {
+                eventPublisher.publishEvent(new DonationCertifiableEvent(ref, head.getDonorVolunteerId()));
+            }
         }
     }
 

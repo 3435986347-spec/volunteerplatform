@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * 管理端-捐款（{@code /a/donate/donations}，V3 捐款批）。
@@ -71,5 +72,22 @@ public class AdminDonationController {
     public Result<Void> invoice(@PathVariable Long id, @Valid @RequestBody DonationDTOs.Invoice dto) {
         donationService.markInvoiced(id, dto.getInvoiceNo(), StpAdminUtil.getLoginIdAsLong());
         return Result.ok();
+    }
+
+    @Operation(summary = "上传发票文件（协会 2026-10-16 丁-5：财务传开好的发票，PDF 或图片 ≤10MB；传上即已开票，再传是替换；"
+            + "invoiceNo 可一起填）")
+    @SaCheckPermission(value = PermissionCode.DONATE_PROJECT, type = "admin")
+    @PostMapping("/donations/{id}/invoice-file")
+    public Result<Void> uploadInvoiceFile(@PathVariable Long id, @RequestParam("file") MultipartFile file,
+                                          @RequestParam(required = false) String invoiceNo) {
+        donationService.uploadInvoiceFile(id, file, invoiceNo, StpAdminUtil.getLoginIdAsLong());
+        return Result.ok();
+    }
+
+    @Operation(summary = "查看发票文件（短期签名地址）")
+    @SaCheckPermission(value = PermissionCode.DONATE_PROJECT, type = "admin")
+    @GetMapping("/donations/{id}/invoice-file")
+    public Result<String> invoiceFile(@PathVariable Long id) {
+        return Result.ok(donationService.invoiceFileUrlForAdmin(id));
     }
 }

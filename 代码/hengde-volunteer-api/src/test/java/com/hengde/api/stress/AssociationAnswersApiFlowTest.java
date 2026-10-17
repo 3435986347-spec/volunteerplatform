@@ -20,6 +20,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -53,8 +54,8 @@ class AssociationAnswersApiFlowTest {
     private RedisUtil redisUtil;
 
     /**
-     * 注销：申请 → 冷静期内照常用、可撤销 → 到期后第一次请求就被闸门当场落定（403、手机号释放）→
-     * 只有持 user:restore（理事会）的账号能恢复，恢复时换一个号。
+     * 注销（协会答复五 乙-4，2026-10-16）：申请即退出登录 → 冷静期里再登录就撤销注销、登录结果里告诉他 →
+     * 再申请、到期之后登录当场落定（手机号释放）→ 只有持 user:restore（理事会）的账号能恢复，恢复时换一个号。
      */
     @Test
     void deactivation_coolingOff_gateFinalizes_thenCouncilRestores() {
@@ -72,17 +73,23 @@ class AssociationAnswersApiFlowTest {
         assertTrue(applied.get("pending").asBoolean(), applied.toString());
         assertEquals(7, applied.get("coolingDays").asInt());
 
-        // 冷静期内照常可用，可以撤销
-        assertTrue(ok(c.get("/v/user/profile", me, "冷静期内看资料")).data().hasNonNull("deactivateEffectiveTime"));
-        ok(c.delete("/v/user/deactivation", me, "撤销注销"));
-        assertFalse(ok(c.get("/v/user/deactivation", me, "撤销后")).data().get("pending").asBoolean());
+        // 申请即退出登录：原来的 token 当场失效
+        assertEquals(401, neg.get("/v/user/profile", me, "申请后用旧 token").http(), "7 天冷静期即退出账号登录");
 
-        // 再申请一次，然后把冷静期挪到昨天：下一次请求被闸门拦下并当场落定
+        // 冷静期里再登录：自动打断注销，登录结果带 deactivationCancelled
+        ok(c.post("/v/auth/sms/codes", null, Map.of("phone", phone, "scene", "login"), "发登录验证码"));
+        JsonNode relogin = ok(c.post("/v/auth/login/sms", null, Map.of("phone", phone, "smsCode", code("login", phone)),
+                "冷静期内登录")).data();
+        assertTrue(relogin.get("deactivationCancelled").asBoolean(), relogin.toString());
+        String back = relogin.get("token").asText();
+        assertFalse(ok(c.get("/v/user/deactivation", back, "登录之后")).data().get("pending").asBoolean(), "账号恢复正常");
+
+        // 再申请一次，然后把冷静期挪到昨天：之后的登录当场落定、报已注销，手机号释放
         ok(c.post("/v/auth/sms/codes", null, Map.of("phone", phone, "scene", "account-deactivate"), "再发验证码"));
-        ok(c.post("/v/user/deactivation", me, Map.of("smsCode", code("account-deactivate", phone)), "再申请"));
+        ok(c.post("/v/user/deactivation", back, Map.of("smsCode", code("account-deactivate", phone)), "再申请"));
         jdbc.update("UPDATE volunteer SET deactivate_effective_time = DATE_SUB(NOW(), INTERVAL 1 MINUTE) WHERE id = ?", vid);
-        ApiStressClient.Resp denied = neg.get("/v/user/profile", me, "到期后的请求");
-        assertEquals(403, denied.code(), "到期即注销：" + denied);
+        ApiStressClient.Resp denied = neg.post("/v/auth/login/dev", null, Map.of("key", key, "registered", true), "到期后登录");
+        assertNotEquals(200, denied.code(), "到期即注销：" + denied);
         assertTrue(denied.message().contains("注销"), denied.message());
         Map<String, Object> row = jdbc.queryForMap("SELECT status, phone_hash, openid FROM volunteer WHERE id = ?", vid);
         assertEquals(2, ((Number) row.get("status")).intValue());
@@ -97,9 +104,9 @@ class AssociationAnswersApiFlowTest {
         String council = subAccount(c, root, "rs" + tag, "理事会", permId(c, root, "user:restore"));
         String newPhone = freePhone();
         ok(c.post("/a/user/volunteers/" + vid + "/restore", council, Map.of("phone", newPhone), "理事会恢复"));
-        Map<String, Object> back = jdbc.queryForMap("SELECT status, phone_hash, restore_by FROM volunteer WHERE id = ?", vid);
-        assertEquals(0, ((Number) back.get("status")).intValue());
-        assertEquals(cryptoUtil.hashPhone(newPhone), back.get("phone_hash"));
+        Map<String, Object> restored = jdbc.queryForMap("SELECT status, phone_hash, restore_by FROM volunteer WHERE id = ?", vid);
+        assertEquals(0, ((Number) restored.get("status")).intValue());
+        assertEquals(cryptoUtil.hashPhone(newPhone), restored.get("phone_hash"));
     }
 
     /** 处罚三档按部门各一个权限点（协会 2026-09-16），判定在控制器——只有 HTTP 用例证明得了它真的接上了登录态。 */

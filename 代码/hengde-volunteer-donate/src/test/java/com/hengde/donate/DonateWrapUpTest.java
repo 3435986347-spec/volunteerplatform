@@ -105,15 +105,18 @@ class DonateWrapUpTest {
     @Test
     void myRecords_mergeMoneyAndGoodsIntoOneTimeline_pagedInTheDatabase() {
         Long me = volunteer("时间线捐赠人");
+        // 一个众筹项目只收一种（协会 2026-10-16）：捐款与捐物分属两个项目，时间线照样合在一起
         String title = "时间线众筹-" + next();
-        Long cf = openCrowdfund(title);
+        String goodsTitle = "时间线捐物-" + next();
+        Long cf = openMoneyCrowdfund(title);
+        Long cfGoods = openCrowdfund(goodsTitle);
 
         DonationVOs.Created d1 = donationService.donateToCrowdfund(cf, me, DonationServiceTest.crowdfund("10", null, false));
-        DonateFlowVOs.Shipment s1 = crowdfundService.registerGoods(cf, me, shipment(expressNo(),
+        DonateFlowVOs.Shipment s1 = crowdfundService.registerGoods(cfGoods, me, shipment(expressNo(),
                 item("书包", DonateFlow.TYPE_STATIONERY, 1, null)));
         DonationVOs.Created d2 = donationService.donateToCrowdfund(cf, me, DonationServiceTest.crowdfund("20", null, false));
         paid(d2.getPrepay());
-        DonateFlowVOs.Shipment s2 = crowdfundService.registerGoods(cf, me, shipment(expressNo(),
+        DonateFlowVOs.Shipment s2 = crowdfundService.registerGoods(cfGoods, me, shipment(expressNo(),
                 item("铅笔", DonateFlow.TYPE_STATIONERY, 10, null), item("足球", DonateFlow.TYPE_SPORTS, 1, null)));
         // 时间拉开，定序才有得断言；d2 与 s1 故意同一秒，验证同一时刻的次序也是确定的（捐款在前）
         LocalDateTime base = LocalDateTime.now().withNano(0);
@@ -140,7 +143,7 @@ class DonateWrapUpTest {
 
         DonationVOs.MyRecord goods = page1.get(0);
         assertEquals("捐物", goods.getKindLabel());
-        assertEquals(title, goods.getProjectTitle(), "捐物的项目名按项目 id 去众筹表取");
+        assertEquals(goodsTitle, goods.getProjectTitle(), "捐物的项目名按项目 id 去众筹表取");
         assertEquals(2, goods.getItemCount());
         assertEquals("已寄出", goods.getStatusLabel());
         assertEquals("已揽收", goods.getTrackLastContext());
@@ -240,6 +243,16 @@ class DonateWrapUpTest {
         shipmentService.arrive(late.getId(), ADMIN);
         jdbc.update("UPDATE donate_campaign SET stats_deadline = ? WHERE id = ?", LocalDateTime.now().minusDays(2), c2);
 
+        // ---- 修建书屋数（协会答复五 乙-6）：收到过捐书物资的受赠单位个数 ----
+        // 同一所小学收到两件只算一间；微心愿送到的单位不是书屋。这里直接把物资置为已送达——装箱送达的流程有专门的用例，
+        // 本用例要钉的是「数什么」
+        Long school = BookDonationTestSupport.org(masterDataService);
+        Long wishSchool = BookDonationTestSupport.org(masterDataService);
+        jdbc.update("UPDATE donate_item SET status = ?, recipient_org_id = ? WHERE id IN (?, ?)", DonateFlow.ITEM_DELIVERED,
+                school, book.getItems().get(0).getId(), book.getItems().get(2).getId());
+        jdbc.update("UPDATE donate_item SET status = ?, recipient_org_id = ? WHERE shipment_id = ?", DonateFlow.ITEM_DELIVERED,
+                wishSchool, wishParcel.getId());
+
         DonateStatsVOs.Summary after = statsService.summary();
 
         assertEquals(3, after.getWish().getPublished() - before.getWish().getPublished());
@@ -263,7 +276,8 @@ class DonateWrapUpTest {
         assertEquals(3, after.getBook().getBooks() - before.getBook().getBooks());
         assertEquals(0, after.getBook().getStationery() - before.getBook().getStationery(), "不合格的不算收到");
         assertEquals(1, after.getBook().getSports() - before.getBook().getSports());
-        assertNull(after.getBook().getBookHouses(), "系统里没有书屋这个概念，给 null 不给 0");
+        assertEquals(1, after.getBook().getBookHouses() - before.getBook().getBookHouses(),
+                "一所小学一间书屋：同一单位两件只算一间，微心愿送到的单位不算");
     }
 
     // ---------------- helpers ----------------
@@ -280,6 +294,15 @@ class DonateWrapUpTest {
         d.setRecvName("协会物资组");
         d.setRecvPhone("0759-8888888");
         d.setRecvAddress("雷州市某路 1 号");
+        Long id = crowdfundService.create(d, ADMIN);
+        crowdfundService.publish(id);
+        return id;
+    }
+
+    private Long openMoneyCrowdfund(String title) {
+        PairDTOs.CrowdfundSave d = new PairDTOs.CrowdfundSave();
+        d.setTitle(title);
+        d.setTargetAmount(new BigDecimal("5000"));
         Long id = crowdfundService.create(d, ADMIN);
         crowdfundService.publish(id);
         return id;

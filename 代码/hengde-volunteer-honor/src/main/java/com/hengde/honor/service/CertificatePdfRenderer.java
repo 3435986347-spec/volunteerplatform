@@ -60,19 +60,18 @@ public class CertificatePdfRenderer {
      * @param templatePdf 协会「电子样本」的 PDF 字节，<b>作为底图</b>，不得为 null（理由同 {@link Content}）
      */
     public record DonationContent(String volunteerName,
-                                  String projectTitle,
-                                  String projectTypeLabel,
-                                  java.math.BigDecimal amount,
-                                  java.time.LocalDateTime establishedTime,
+                                  String statement,
+                                  java.time.LocalDateTime time,
                                   String certNo,
                                   byte[] templatePdf) {
     }
 
     /**
-     * 渲染捐赠证书：把结对人、项目、认捐金额与日期套印到协会样本上。
+     * 渲染捐赠证书：「您于 某日 {statement}。特发此证，以资鼓励。」套印到协会的捐赠样本上。
      *
-     * <p><b>措辞只说「认捐 / 结对」，不说「已捐款」</b>——本批不碰支付，系统并不知道钱有没有到账；
-     * 印一张写着「已捐赠 N 元」的盖章证书，是拿协会的公章为一件未经证实的事背书。</p>
+     * <p>那半句话由捐赠域按类别给（{@code DonateCertificateQueryService}）：结对写「结对成功」、<b>不写金额</b>
+     * （协会 2026-10-16 乙-1：证书在结对成功时出，不是付款后——系统那时并不知道钱有没有到账，
+     * 印一张「已捐赠 N 元」的盖章证书是拿协会的公章为一件未经证实的事背书）；只有众筹捐款是钱到账后才出，才写金额。</p>
      */
     public byte[] render(DonationContent c) {
         if (c.templatePdf() == null || c.templatePdf().length == 0) {
@@ -87,18 +86,11 @@ public class CertificatePdfRenderer {
             doc.add(new Paragraph(nullSafe(c.volunteerName()) + "　爱心人士：")
                     .setFontSize(15).setMarginTop(120));
 
-            StringBuilder body = new StringBuilder("　　您于 ");
-            if (c.establishedTime() != null) {
-                body.append(c.establishedTime().format(DATE));
+            StringBuilder body = new StringBuilder("　　您");
+            if (c.time() != null) {
+                body.append("于 ").append(c.time().format(DATE)).append(" ");
             }
-            body.append(" 认捐「").append(nullSafe(c.projectTitle())).append("」");
-            if (c.projectTypeLabel() != null && !c.projectTypeLabel().isBlank()) {
-                body.append("（").append(c.projectTypeLabel()).append("）");
-            }
-            if (c.amount() != null) {
-                body.append("，金额人民币 ").append(c.amount().stripTrailingZeros().toPlainString()).append(" 元");
-            }
-            body.append("，与受助人结成帮扶对子。特发此证，以资鼓励。");
+            body.append(nullSafe(c.statement())).append("。特发此证，以资鼓励。");
             doc.add(new Paragraph(body.toString()).setFontSize(14).setMarginTop(20).setMultipliedLeading(1.8f));
             doc.add(new Paragraph("证书编号：" + nullSafe(c.certNo()))
                     .setFontSize(11).setMarginTop(40));

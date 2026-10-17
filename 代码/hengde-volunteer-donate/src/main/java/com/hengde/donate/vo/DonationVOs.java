@@ -40,6 +40,12 @@ public final class DonationVOs {
         private Integer invoiceStatus;
         private String invoiceStatusLabel;
         private String invoiceNo;
+        @Schema(description = "发票文件是否已上传（true 时可调「下载发票」取短期链接）")
+        private Boolean invoiceFileReady;
+        @Schema(description = "是否已完结：已到账且不需要发票，或发票已开出（协会 2026-10-16 丁-5「订单显示已完结」）")
+        private Boolean completed;
+        @Schema(description = "给捐款人看的进度：待支付 / 已到账，待开票 / 已完结 / 已取消 / 已退款")
+        private String progressLabel;
         private LocalDateTime refundTime;
         private String refundReason;
         private LocalDateTime createTime;

@@ -5,8 +5,8 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hengde.activity.service.ActivityCertificateQueryService;
 import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.common.exception.BusinessException;
-import com.hengde.donate.constant.PairFlow;
-import com.hengde.donate.service.DonatePairQueryService;
+import com.hengde.donate.constant.DonateCertRefs;
+import com.hengde.donate.service.DonateCertificateQueryService;
 import com.hengde.common.oss.FileStorageService;
 import com.hengde.common.oss.FileValidator;
 import com.hengde.common.page.PageQuery;
@@ -27,6 +27,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -75,7 +76,7 @@ public class CertificateService {
     private HonorCertificateTemplateMapper templateMapper;
     private ActivityCertificateQueryService activityQueryService;
     private VolunteerQueryService volunteerQueryService;
-    private DonatePairQueryService pairQueryService;
+    private DonateCertificateQueryService donationQueryService;
     private FileStorageService fileStorageService;
     private CertificatePdfRenderer pdfRenderer;
     private HonorProperties honorProperties;
@@ -101,10 +102,10 @@ public class CertificateService {
         this.volunteerQueryService = volunteerQueryService;
     }
 
-    /** 捐赠证书的事实来源（结对域的窄接口，方向 honor → donate，不成环）。 */
+    /** 捐赠证书的事实来源（捐赠域的窄接口，方向 honor → donate，不成环）。 */
     @Autowired
-    public void setPairQueryService(DonatePairQueryService pairQueryService) {
-        this.pairQueryService = pairQueryService;
+    public void setDonationQueryService(DonateCertificateQueryService donationQueryService) {
+        this.donationQueryService = donationQueryService;
     }
 
     @Autowired
@@ -293,15 +294,53 @@ public class CertificateService {
 
     /** 我的证书（软删的不返回，由 {@code @TableLogic} 自动过滤）。 */
     public PageResult<CertificateVO> myCertificates(Long volunteerId, PageQuery query) {
+        return myCertificates(volunteerId, query, null);
+    }
+
+    /**
+     * 我的证书，可按分类筛（原型 P83「协会证书」的页签：志愿活动 / 助学助困 / 微心愿 / 公益捐书 / 项目众筹）。
+     *
+     * @param category null＝全部；activity / pair / wish / book / crowdfund
+     */
+    public PageResult<CertificateVO> myCertificates(Long volunteerId, PageQuery query, String category) {
         // 分页而不是一次全量：证书随参加的活动逐场累积，老志愿者手上会有几十上百张，
         // 小程序那边要做触底加载就必须拿到 total。V43 之前这里回的是裸 List，
         // 改成 PageResult 是【破坏性改动】，已与小程序侧约定同步切换。
+        var wrapper = Wrappers.<HonorCertificate>lambdaQuery()
+                .eq(HonorCertificate::getVolunteerId, volunteerId);
+        if (category != null && !category.isBlank()) {
+            if (CATEGORY_ACTIVITY.equals(category)) {
+                wrapper.eq(HonorCertificate::getType, CertificateType.ACTIVITY);
+            } else {
+                String prefix = DonateCertRefs.prefixOfCategory(category);
+                if (prefix == null) {
+                    throw new BusinessException("category 只能是 activity / pair / wish / book / crowdfund");
+                }
+                wrapper.eq(HonorCertificate::getType, CertificateType.DONATION).likeRight(HonorCertificate::getBizRef, prefix);
+            }
+        }
         Page<HonorCertificate> page = query.toPage();
-        certificateMapper.selectPage(page, Wrappers.<HonorCertificate>lambdaQuery()
-                .eq(HonorCertificate::getVolunteerId, volunteerId)
-                .orderByDesc(HonorCertificate::getId));
+        certificateMapper.selectPage(page, wrapper.orderByDesc(HonorCertificate::getId));
         return PageResult.of(toVos(page.getRecords()), page.getTotal(), page.getCurrent(), page.getSize());
     }
+
+    /**
+     * 按来源键找本人的那张捐赠证书（小程序在捐物记录 / 心愿详情上放「查看证书」用）；没有或不是本人的返回 null。
+     *
+     * <p>不是本人的与不存在同样返回 null——与下载那边「归属不符与不存在同一句话」一致，防枚举。</p>
+     */
+    public CertificateVO findMineByRef(Long volunteerId, String bizRef) {
+        if (DonateCertRefs.categoryOf(bizRef) == null) {
+            throw new BusinessException("bizRef 不是捐赠证书的来源键");
+        }
+        HonorCertificate c = certificateMapper.selectOne(Wrappers.<HonorCertificate>lambdaQuery()
+                .eq(HonorCertificate::getType, CertificateType.DONATION)
+                .eq(HonorCertificate::getBizRef, bizRef)
+                .eq(HonorCertificate::getVolunteerId, volunteerId));
+        return c == null ? null : toVos(List.of(c)).get(0);
+    }
+
+    private static final String CATEGORY_ACTIVITY = "activity";
 
     /**
      * 后台证书汇总查询（可按志愿者/活动筛选）。
@@ -325,19 +364,9 @@ public class CertificateService {
                         .filter(java.util.Objects::nonNull).distinct().toList());
         Map<Long, String> nameById = volunteerQueryService.listNamesByIds(
                 rows.stream().map(HonorCertificate::getVolunteerId).distinct().toList());
-        // 捐赠证书的「来源」是结对项目名，一次批量换名，不按行查
-        Map<Long, Long> pairIdByCert = rows.stream()
-                .filter(c -> pairIdOf(c.getBizRef()) != null)
-                .collect(java.util.stream.Collectors.toMap(HonorCertificate::getId,
-                        c -> pairIdOf(c.getBizRef()), (a, b) -> a));
-        Map<Long, String> titleByPairId = pairQueryService.projectTitlesByPairIds(pairIdByCert.values());
-        Map<String, String> pairTitles = new java.util.HashMap<>();
-        rows.forEach(c -> {
-            Long pid = pairIdOf(c.getBizRef());
-            if (pid != null && titleByPairId.get(pid) != null) {
-                pairTitles.put(c.getBizRef(), titleByPairId.get(pid));
-            }
-        });
+        // 捐赠证书的「来源」是项目 / 心愿 / 捐书活动名，由捐赠域一次批量换名，不按行查
+        Map<String, String> donationTitles = donationQueryService.sourceTitles(rows.stream()
+                .map(HonorCertificate::getBizRef).filter(java.util.Objects::nonNull).distinct().toList());
 
         return rows.stream().map(c -> {
             CertificateVO vo = new CertificateVO();
@@ -358,7 +387,11 @@ public class CertificateService {
                 vo.setSlotEndTime(s.slotEndTime());
             }
             vo.setBizRef(c.getBizRef());
-            vo.setSourceTitle(pairTitles.get(c.getBizRef()));
+            vo.setSourceTitle(c.getBizRef() == null ? null : donationTitles.get(c.getBizRef()));
+            String category = Integer.valueOf(CertificateType.ACTIVITY).equals(c.getType()) ? CATEGORY_ACTIVITY
+                    : DonateCertRefs.categoryOf(c.getBizRef());
+            vo.setCategory(category);
+            vo.setCategoryLabel(CATEGORY_ACTIVITY.equals(category) ? "志愿活动" : DonateCertRefs.categoryLabel(category));
             vo.setSource(c.getSource());
             vo.setDownloadCount(c.getDownloadCount());
             vo.setFileReady(c.getFileKey() != null);
@@ -373,30 +406,50 @@ public class CertificateService {
 
     /**
      * 结对成立 → 建一张捐赠证书（xlsx Row 10，V3 结对批）。<b>幂等</b>：同一条结对登记只会有一张。
+     * 是 {@link #createForDonationRef} 的一个入口，保留它是因为人工补发接口与既有调用方按结对登记 id 调。
+     *
+     * @param pairRecordId 结对登记 id
+     * @return 证书 id
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
+    public Long createForDonation(Long pairRecordId) {
+        if (pairRecordId == null) {
+            throw new BusinessException("创建捐赠证书需要结对登记 id");
+        }
+        return doCreateDonation(DonateCertRefs.pair(pairRecordId));
+    }
+
+    /**
+     * 一次捐赠够格了 → 建一张捐赠证书（协会 2026-10-16 答复五 乙-2：所有捐赠都有证书）。<b>幂等</b>：同一次捐赠只会有一张。
      *
      * <p><b>发证资格在这里判，而不是只在事件里判</b>：人工补发接口走的也是这一条
-     * （与活动证书把闸门放在 {@code createForSlot} 内是同一个理由）。判据是结对域的
-     * 「这条登记已成立」——口径收在 {@code DonatePairQueryService}，honor 不自己拼条件。</p>
+     * （与活动证书把闸门放在 {@code createForSlot} 内是同一个理由）。「什么算够格」收在捐赠域的
+     * {@link DonateCertificateQueryService}，honor 不自己拼条件。</p>
      *
      * <p><b>幂等靠唯一键不靠先查</b>：{@code uk_slot_cert} 对捐赠证书不起作用（slot_id 为 NULL，
      * MySQL 视多个 NULL 互不相同），改由 V54 的 {@code uk_cert_biz_ref} 兜底；
      * 撞键之后取回赢家那一行<b>必须用当前读</b>（{@code selectByBizRefForShare}），
      * 理由与 {@code createForSlot} 里那一大段完全相同。</p>
      *
-     * @param pairRecordId 结对登记 id
+     * <p><b>REQUIRES_NEW</b>：监听器在发布方事务提交之后（AFTER_COMMIT）调进来，加入那个已提交的事务等于写了不提交。
+     * 高并发的付款回调是在事务之外发布的，那里只会新开这一个事务、不会同时占两条连接。</p>
+     *
+     * @param bizRef {@link DonateCertRefs} 定义的来源键
      * @return 证书 id
      */
-    @Transactional(rollbackFor = Exception.class)
-    public Long createForDonation(Long pairRecordId) {
-        if (pairRecordId == null) {
-            throw new BusinessException("创建捐赠证书需要结对登记 id");
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
+    public Long createForDonationRef(String bizRef) {
+        if (DonateCertRefs.categoryOf(bizRef) == null) {
+            throw new BusinessException("不认识的捐赠证书来源：" + bizRef);
         }
-        DonatePairQueryService.PairCertificateSubject subject =
-                pairQueryService.findEstablishedSubject(pairRecordId);
+        return doCreateDonation(bizRef);
+    }
+
+    private Long doCreateDonation(String bizRef) {
+        DonateCertificateQueryService.Subject subject = donationQueryService.find(bizRef);
         if (subject == null) {
-            throw new BusinessException("这条结对登记尚未成立（或已取消），不能发证");
+            throw new BusinessException(notEligibleMessage(bizRef));
         }
-        String bizRef = PairFlow.certBizRef(pairRecordId);
         HonorCertificate exist = certificateMapper.selectByBizRefIncludeDeleted(CertificateType.DONATION, bizRef);
         if (exist != null) {
             restoreIfDeleted(exist);
@@ -422,9 +475,24 @@ public class CertificateService {
                 if (attempt >= CERT_NO_MAX_ATTEMPTS - 1) {
                     throw e;
                 }
-                log.warn("捐赠证书编号碰撞，换号重试 attempt={} pairRecordId={}", attempt + 1, pairRecordId);
+                log.warn("捐赠证书编号碰撞，换号重试 attempt={} bizRef={}", attempt + 1, bizRef);
             }
         }
+    }
+
+    /** 不够格时的报错：按类别说清楚差在哪一步，后台补发时一眼看得懂。 */
+    private static String notEligibleMessage(String bizRef) {
+        String category = DonateCertRefs.categoryOf(bizRef);
+        if (DonateCertRefs.CATEGORY_PAIR.equals(category)) {
+            return "这条结对登记尚未成立（或已取消），不能发证";
+        }
+        if (DonateCertRefs.CATEGORY_WISH.equals(category)) {
+            return "这条微心愿认领还没有实现，不能发证";
+        }
+        if (bizRef.startsWith(DonateCertRefs.CROWDFUND_MONEY)) {
+            return "这笔众筹捐款还没有到账（或已退款），不能发证";
+        }
+        return "这个包裹还没有核对出合格物资，不能发证";
     }
 
     /**
@@ -432,18 +500,30 @@ public class CertificateService {
      *
      * <p>没有证书就什么也不做——结对可能在成立之前就被取消，那时本来就没发过证。</p>
      */
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
     public void revokeForPair(Long pairRecordId, String reason) {
         if (pairRecordId == null) {
             return;
         }
-        HonorCertificate cert = certificateMapper.selectByBizRefIncludeDeleted(
-                CertificateType.DONATION, PairFlow.certBizRef(pairRecordId));
+        doRevoke(DonateCertRefs.pair(pairRecordId),
+                "结对已取消：" + (reason == null || reason.isBlank() ? "未填原因" : reason.trim()));
+    }
+
+    /** 一次捐赠不再够格（当前只有众筹捐款退款）→ 撤销那张证书（软删，留痕可恢复）。没有证书就什么也不做。 */
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
+    public void revokeForDonationRef(String bizRef, String reason) {
+        if (bizRef == null) {
+            return;
+        }
+        doRevoke(bizRef, reason == null || reason.isBlank() ? "捐赠已撤销" : reason.trim());
+    }
+
+    private void doRevoke(String bizRef, String reason) {
+        HonorCertificate cert = certificateMapper.selectByBizRefIncludeDeleted(CertificateType.DONATION, bizRef);
         if (cert == null || Integer.valueOf(1).equals(cert.getIsDeleted())) {
             return;
         }
-        certificateMapper.softDelete(cert.getId(), null,
-                "结对已取消：" + (reason == null || reason.isBlank() ? "未填原因" : reason.trim()));
+        certificateMapper.softDelete(cert.getId(), null, reason);
     }
 
     // ---------- ③ 预览/下载：懒渲染 + 短期签名 URL + 计数 ----------
@@ -666,11 +746,9 @@ public class CertificateService {
      * 项目被删）时<b>拒绝出证</b>，而不是渲染一张姓名与项目都空着、却有编号有公章的「正式证书」。</p>
      */
     private CertificatePdfRenderer.DonationContent buildDonationContent(HonorCertificate cert) {
-        Long pairRecordId = pairIdOf(cert.getBizRef());
-        DonatePairQueryService.PairCertificateSubject subject = pairRecordId == null ? null
-                : pairQueryService.findEstablishedSubject(pairRecordId);
+        DonateCertificateQueryService.Subject subject = donationQueryService.find(cert.getBizRef());
         if (subject == null) {
-            throw new BusinessException("该证书对应的结对记录已不存在或已取消，无法生成证书");
+            throw new BusinessException("该证书对应的捐赠已不存在或已撤销，无法生成证书");
         }
         HonorCertificateTemplate template = requireDonationTemplate();
         byte[] templatePdf = fileStorageService.download(template.getFileKey());
@@ -679,34 +757,25 @@ public class CertificateService {
         if (name == null || name.isBlank()) {
             throw new BusinessException("该志愿者尚未实名，无法生成证书");
         }
-        return new CertificatePdfRenderer.DonationContent(name, subject.projectTitle(),
-                subject.projectTypeLabel(), subject.amount(), subject.establishedTime(),
+        return new CertificatePdfRenderer.DonationContent(name, subject.statement(), subject.time(),
                 cert.getCertNo(), templatePdf);
     }
 
-    /** 捐赠证书的样本：先找 {@code donate-pair} 作用域，没有退回全局默认；都没有则拒绝出证。 */
+    /**
+     * 捐赠证书的样本：只认「捐赠」那一张（兼容改造前预留的旧键），都没有就拒绝出证。
+     *
+     * <p><b>不再退回全局默认</b>（协会 2026-10-16 答复五 甲-5：样本分志愿活动、捐赠两种）——全局默认是活动证书的样本，
+     * 拿它印捐赠证书比不出证更糟。</p>
+     */
     private HonorCertificateTemplate requireDonationTemplate() {
         HonorCertificateTemplate byScope = findTemplate(HonorCertificateTemplate.SCOPE_DONATION);
-        if (byScope != null) {
-            return byScope;
+        if (byScope == null) {
+            byScope = findTemplate(HonorCertificateTemplate.SCOPE_DONATION_LEGACY);
         }
-        HonorCertificateTemplate global = findTemplate(HonorCertificateTemplate.SCOPE_GLOBAL);
-        if (global == null) {
-            throw new BusinessException("尚未配置证书电子样本，无法生成证书，请先在后台设置");
+        if (byScope == null) {
+            throw new BusinessException("尚未配置捐赠证书的电子样本，无法生成证书，请先在后台「证书样本」新建一份捐赠证书样本");
         }
-        return global;
-    }
-
-    /** 从 {@code pair:{id}} 里取出结对登记 id；格式不对返回 null。 */
-    private static Long pairIdOf(String bizRef) {
-        if (bizRef == null || !bizRef.startsWith("pair:")) {
-            return null;
-        }
-        try {
-            return Long.valueOf(bizRef.substring("pair:".length()));
-        } catch (NumberFormatException e) {
-            return null;
-        }
+        return byScope;
     }
 
     private HonorCertificateTemplate findTemplate(String scopeKey) {

@@ -49,6 +49,48 @@ public final class PairDTOs {
         @DecimalMin(value = "0.01", message = "受助金额须大于 0")
         @Digits(integer = 10, fraction = 2, message = "受助金额格式不正确")
         private BigDecimal targetAmount;
+
+        // ---- 受助人基本情况（协会 2026-10-16 丙-2 选 B；全部可不填，改造前的项目没有这些） ----
+
+        @Schema(description = "受助人姓名（志愿者端打 *，只有已成立结对的人看得到全名）")
+        @Size(max = 32, message = "受助人姓名过长")
+        private String beneficiaryName;
+
+        @Schema(description = "受助人性别 1男/2女")
+        private Integer beneficiaryGender;
+
+        @Schema(description = "受助人年龄")
+        private Integer beneficiaryAge;
+
+        @Schema(description = "受助人学校（志愿者端只留前两个字）")
+        @Size(max = 128, message = "学校名称过长")
+        private String beneficiarySchool;
+
+        @Schema(description = "受助人年级")
+        @Size(max = 32, message = "年级过长")
+        private String beneficiaryGrade;
+
+        @Schema(description = "上报单位（受赠单位主数据 id）")
+        private Long reportOrgId;
+    }
+
+    /** 录入一条活动动态（发放凭证）。 */
+    @Data
+    @Schema(description = "结对项目活动动态")
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class UpdateSave {
+
+        @Schema(description = "内容")
+        @NotBlank(message = "请填写动态内容")
+        @Size(max = 2000, message = "内容不超过 2000 字")
+        private String content;
+
+        @Schema(description = "图片 URL，最多 9 张")
+        @Size(max = 9, message = "图片最多 9 张")
+        private List<String> images;
+
+        @Schema(description = "发生时间（发放那天；不填取录入时间）")
+        private LocalDateTime happenTime;
     }
 
     /** 结对登记（志愿者端）。<b>本批不含支付</b>：登记的是「我认捐多少」。 */
@@ -125,9 +167,8 @@ public final class PairDTOs {
         @Schema(description = "项目详情（图文）")
         private String detail;
 
-        @Schema(description = "预计金额（目标）")
-        @NotNull(message = "请填写预计金额")
-        @DecimalMin(value = "0.01", message = "预计金额须大于 0")
+        @Schema(description = "预计金额（目标）。收捐款的项目必填且大于 0；只收捐物的项目可不填（存 0）")
+        @DecimalMin(value = "0", message = "预计金额不能为负")
         @Digits(integer = 10, fraction = 2, message = "预计金额格式不正确")
         private BigDecimal targetAmount;
 
@@ -137,10 +178,11 @@ public final class PairDTOs {
         @Schema(description = "结束时间")
         private LocalDateTime endTime;
 
-        @Schema(description = "是否接受捐款（不传＝接受）")
+        @Schema(description = "是否接受捐款。每个项目只选一种（协会 2026-10-16）：acceptGoods=true 时不传即不收钱、传 true 报错；"
+                + "acceptGoods 不为 true 时不传即收钱")
         private Boolean acceptMoney;
 
-        @Schema(description = "是否接受捐物（不传＝不接受）")
+        @Schema(description = "是否接受捐物（不传＝不接受）。与 acceptMoney 二选一")
         private Boolean acceptGoods;
 
         @Schema(description = "需要哪些物资（给捐物的人看）")

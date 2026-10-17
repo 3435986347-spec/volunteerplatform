@@ -144,7 +144,7 @@ public class MallController {
         return Result.ok(orderService.detailMine(id, StpUtil.getLoginIdAsLong()));
     }
 
-    @Operation(summary = "取消兑换（退分 + 还库存 + 还卷；待支付的单先关交易单；已付款的单须联系协会）")
+    @Operation(summary = "取消兑换（只有待支付的单能自己取消，先关交易单；兑换成功之后须联系协会取消）")
     @DeleteMapping("/orders/{id}")
     public Result<Void> cancel(@PathVariable Long id) {
         orderService.cancel(id, StpUtil.getLoginIdAsLong());

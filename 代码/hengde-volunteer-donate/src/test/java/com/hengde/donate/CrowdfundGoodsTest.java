@@ -92,10 +92,22 @@ class CrowdfundGoodsTest {
         assertFalse(vo.getAcceptGoods());
         assertNull(vo.getRecvPhone());
 
-        assertMessage("项目至少要接受捐款或捐物中的一种",
+        assertMessage("请选择这个项目收捐款还是收捐物",
                 () -> crowdfundService.create(save("都不收-" + next(), false, false), ADMIN));
+        // 协会 2026-10-16（答复五 丙-1）：一个项目只选一种
+        assertMessage("每个众筹项目只能选一种：收捐款或收捐物",
+                () -> crowdfundService.create(withRecv(save("两样都收-" + next(), true, true)), ADMIN));
         assertMessage("接受捐物请填写物资收件人、电话与地址",
-                () -> crowdfundService.create(save("收物没地址-" + next(), true, true), ADMIN));
+                () -> crowdfundService.create(save("收物没地址-" + next(), null, true), ADMIN));
+        // 预计金额只对收钱的项目有意义：收钱的必须填，只收物的可以不填（存 0）
+        assertMessage("预计金额须大于 0", () -> crowdfundService.create(
+                noTarget(save("收钱没金额-" + next(), null, null)), ADMIN));
+        Long goodsNoTarget = crowdfundService.create(
+                withRecv(noTarget(save("只收物不填金额-" + next(), null, true))), ADMIN);
+        PairVOs.Crowdfund g = crowdfundService.detailForAdmin(goodsNoTarget);
+        assertTrue(g.getAcceptGoods());
+        assertFalse(g.getAcceptMoney(), "勾了收物、acceptMoney 不传＝不收钱");
+        assertEquals(0, g.getTargetAmount().signum());
         assertMessage("不接受捐物时不用填写物资需求与收件信息",
                 () -> crowdfundService.create(withRecv(save("只收钱却填地址-" + next(), true, false)), ADMIN),
                 "收件信息只对捐物有意义，填了又不收物会让志愿者以为可以寄");
@@ -118,7 +130,7 @@ class CrowdfundGoodsTest {
     @Test
     void goodsDonation_isAShipmentOfTheCrowdfund_andFlowsThroughTheWarehouse() {
         String title = "修路物资-" + next();
-        Long cf = open(withRecv(save(title, true, true)));
+        Long cf = open(withRecv(save(title, null, true)));
 
         String no = expressNo();
         DonateFlowVOs.Shipment s = crowdfundService.registerGoods(cf, donor, shipment(no,
@@ -157,19 +169,19 @@ class CrowdfundGoodsTest {
         Long moneyOnly = open(save("只收钱-" + next(), true, false));
         assertMessage("这个项目不接受捐物", () -> crowdfundService.registerGoods(moneyOnly, donor, parcel()));
 
-        Long draft = crowdfundService.create(withRecv(save("草稿-" + next(), true, true)), ADMIN);
+        Long draft = crowdfundService.create(withRecv(save("草稿-" + next(), null, true)), ADMIN);
         assertMessage("这个项目当前不在募集中", () -> crowdfundService.registerGoods(draft, donor, parcel()));
 
-        Long ended = open(withRecv(save("已结束-" + next(), true, true)));
+        Long ended = open(withRecv(save("已结束-" + next(), null, true)));
         crowdfundService.end(ended);
         assertMessage("这个项目当前不在募集中", () -> crowdfundService.registerGoods(ended, donor, parcel()));
 
-        Long notStarted = crowdfundService.create(withRecv(save("还没开始-" + next(), true, true),
+        Long notStarted = crowdfundService.create(withRecv(save("还没开始-" + next(), null, true),
                 d -> d.setStartTime(LocalDateTime.now().plusDays(1))), ADMIN);
         crowdfundService.publish(notStarted);
         assertMessage("这个项目当前不在募集中", () -> crowdfundService.registerGoods(notStarted, donor, parcel()));
 
-        Long ok = open(withRecv(save("要实名-" + next(), true, true)));
+        Long ok = open(withRecv(save("要实名-" + next(), null, true)));
         Long guest = BookDonationTestSupport.volunteer(volunteerMapper, cryptoUtil, "游客", phone(), false);
         assertMessage("请先完成实名注册再寄送物资", () -> crowdfundService.registerGoods(ok, guest, parcel()));
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM donate_shipment WHERE biz_type = 3 AND biz_id IN (?, ?, ?, ?, ?)",
@@ -199,6 +211,11 @@ class CrowdfundGoodsTest {
         d.setTargetAmount(new BigDecimal("5000"));
         d.setAcceptMoney(money);
         d.setAcceptGoods(goods);
+        return d;
+    }
+
+    private static PairDTOs.CrowdfundSave noTarget(PairDTOs.CrowdfundSave d) {
+        d.setTargetAmount(null);
         return d;
     }
 

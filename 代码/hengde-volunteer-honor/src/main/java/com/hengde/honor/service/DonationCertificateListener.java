@@ -1,5 +1,7 @@
 package com.hengde.honor.service;
 
+import com.hengde.donate.event.DonationCertRevokedEvent;
+import com.hengde.donate.event.DonationCertifiableEvent;
 import com.hengde.donate.event.PairCancelledEvent;
 import com.hengde.donate.event.PairEstablishedEvent;
 import org.slf4j.Logger;
@@ -70,6 +72,38 @@ public class DonationCertificateListener {
         } catch (Exception e) {
             log.error("撤销捐赠证书失败 pairRecordId={} volunteerId={}",
                     event.pairRecordId(), event.volunteerId(), e);
+        }
+    }
+
+    /**
+     * 微心愿已实现 / 捐书与众筹捐物核对出合格物资 / 众筹捐款到账：出证（协会 2026-10-16 答复五 乙-2）。
+     *
+     * <p>{@code fallbackExecution = true}：众筹捐款到账的事件是在付款回调的事务<b>之外</b>发布的（高并发入口，
+     * 在事务里发会让订阅方同时占两条连接），没有它监听器在那条路上一次都不会被调用。异常只记日志，理由同上；
+     * 人工救济是幂等的 {@code POST /a/honor/certificates/donations/{kind}/{id}}。</p>
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
+    public void onDonationCertifiable(DonationCertifiableEvent event) {
+        if (event.bizRef() == null) {
+            return;
+        }
+        try {
+            certificateService.createForDonationRef(event.bizRef());
+        } catch (Exception e) {
+            log.error("自动创建捐赠证书失败 bizRef={} volunteerId={}", event.bizRef(), event.volunteerId(), e);
+        }
+    }
+
+    /** 众筹捐款退款：撤销那张证书（软删，留原因可恢复）。 */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
+    public void onDonationCertRevoked(DonationCertRevokedEvent event) {
+        if (event.bizRef() == null) {
+            return;
+        }
+        try {
+            certificateService.revokeForDonationRef(event.bizRef(), event.reason());
+        } catch (Exception e) {
+            log.error("撤销捐赠证书失败 bizRef={} volunteerId={}", event.bizRef(), event.volunteerId(), e);
         }
     }
 }

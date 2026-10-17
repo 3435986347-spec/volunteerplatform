@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -96,7 +97,7 @@ class PlatformSummaryTest {
         assertNull(after.getAlbum().getViews(), "查看人次没有埋点");
         assertNull(after.getAlbum().getDownloaders());
         assertNull(after.getAlbum().getDownloads());
-        assertNull(after.getDonation().getBook().getBookHouses(), "「修建书屋数」系统里没有（V3 收尾批已定）");
+        assertNotNull(after.getDonation().getBook().getBookHouses(), "「修建书屋数」＝收到过捐书的受赠单位数（协会答复五 乙-6）");
 
         // 三块捐赠数据与专门那个接口是同一份
         assertEquals(dashboardService.donationSummary().getWish().getPublished(),

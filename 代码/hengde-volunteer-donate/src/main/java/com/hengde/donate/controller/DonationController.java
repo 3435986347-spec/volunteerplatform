@@ -84,6 +84,12 @@ public class DonationController {
         return Result.ok(donationService.detailMine(id, StpUtil.getLoginIdAsLong()));
     }
 
+    @Operation(summary = "下载我的发票（短期签名地址，约 2 分钟有效；还没开出时报「发票还没有开出」）")
+    @GetMapping("/donations/{id}/invoice-file")
+    public Result<String> invoiceFile(@PathVariable Long id) {
+        return Result.ok(donationService.invoiceFileUrlMine(id, StpUtil.getLoginIdAsLong()));
+    }
+
     @Operation(summary = "重新发起付款（仅待支付；复用活的交易单）")
     @PostMapping("/donations/{id}/pay")
     public Result<TradeVOs.Prepay> pay(@PathVariable Long id, @Valid @RequestBody DonationDTOs.Pay dto) {

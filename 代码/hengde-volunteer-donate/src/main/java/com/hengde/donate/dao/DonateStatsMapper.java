@@ -80,7 +80,12 @@ public interface DonateStatsMapper {
             + "(SELECT COALESCE(SUM(CASE WHEN i.item_type = #{typeSports} THEN i.quantity ELSE 0 END), 0) FROM donate_item i "
             + "   JOIN donate_shipment s ON s.id = i.shipment_id JOIN donate_campaign c ON c.id = i.biz_id "
             + "   WHERE i.biz_type = #{bizBook} AND i.status IN (#{qualified}, #{packed}, #{delivered}) AND i.is_deleted = 0 "
-            + "   AND c.is_deleted = 0 AND (c.stats_deadline IS NULL OR s.arrive_time <= c.stats_deadline)) AS sports")
+            + "   AND c.is_deleted = 0 AND (c.stats_deadline IS NULL OR s.arrive_time <= c.stats_deadline)) AS sports, "
+            // 修建书屋数（协会答复五 乙-6，2026-10-16：「一般受赠单位就是书屋数……一个小学一般只建立一间书屋」）：
+            // 收到过捐书物资（已送达）的受赠单位个数。不看统计截止——书屋建了就是建了，与某一期活动的统计窗口无关
+            + "(SELECT COUNT(DISTINCT i.recipient_org_id) FROM donate_item i "
+            + "   WHERE i.biz_type = #{bizBook} AND i.status = #{delivered} AND i.is_deleted = 0 "
+            + "   AND i.recipient_org_id IS NOT NULL) AS bookHouses")
     Map<String, Object> book(@Param("bizBook") int bizBook, @Param("cancelled") int cancelled,
                              @Param("arrived") int arrived, @Param("checked") int checked,
                              @Param("qualified") int qualified, @Param("packed") int packed,

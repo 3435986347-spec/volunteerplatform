@@ -25,6 +25,15 @@ public class DonatePairProject extends BaseEntity {
     private Integer projectType;
     private String coverUrl;
     private String detail;
+    /** 受助人姓名（密文，V97） */
+    private String beneficiaryName;
+    private Integer beneficiaryGender;
+    private Integer beneficiaryAge;
+    /** 受助人学校（密文，V97） */
+    private String beneficiarySchool;
+    private String beneficiaryGrade;
+    private Long reportOrgId;
+    private String reportOrgName;
     private BigDecimal targetAmount;
     private BigDecimal pledgedAmount;
     /** 已到账金额（V60，捐款成功累加、退款减回） */

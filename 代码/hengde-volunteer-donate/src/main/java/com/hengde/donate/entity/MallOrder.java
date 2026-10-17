@@ -60,6 +60,8 @@ public class MallOrder extends BaseEntity {
     private String pickupSiteAddr;
     /** 自提点快照·电话 */
     private String pickupSitePhone;
+    /** 所选自提点 id（V96）；NULL＝未选（配置里的唯一自提点，或快递单） */
+    private Long pickupPointId;
     /** 取货码，审核通过时生成 */
     private String pickupCode;
     /** 核销时间 */

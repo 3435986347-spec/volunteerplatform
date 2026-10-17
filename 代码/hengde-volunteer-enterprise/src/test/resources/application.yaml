@@ -1,0 +1,9 @@
+# 测试专用配置（只在本模块的测试 classpath 上）。
+#
+# 兑换单默认「下单 / 付款即成功」（协会答复五 乙-5，hengde.donate.mall.order-review 默认 false）。
+# 改造前的用例都是按「待审核 → 审核通过」写的，这里把它们留在审核流程上照常跑；
+# 新口径（兑换即成功、志愿者不能取消、协会取消）由 MallImmediateOrderTest 单独起上下文、显式关掉审核来测。
+hengde:
+  donate:
+    mall:
+      order-review: true

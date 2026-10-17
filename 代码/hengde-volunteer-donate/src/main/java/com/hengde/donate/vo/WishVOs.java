@@ -19,6 +19,19 @@ public final class WishVOs {
     private WishVOs() {
     }
 
+    /** 心愿详情的一位查看人（协会 2026-10-16 丁-7：后台收集看过心愿的人的手机号）。 */
+    @Data
+    @Schema(description = "微心愿查看人")
+    public static class Viewer {
+        private Long volunteerId;
+        private String volunteerName;
+        @Schema(description = "查看时的手机号（快照）")
+        private String phone;
+        private Integer viewCount;
+        private LocalDateTime firstViewTime;
+        private LocalDateTime lastViewTime;
+    }
+
     /** 一个心愿。{@link #masked} 为 true 时姓名 / 学校已打 *（认领前对志愿者）。 */
     @Data
     @Schema(description = "微心愿")

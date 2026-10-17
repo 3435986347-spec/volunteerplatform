@@ -72,6 +72,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @SpringBootTest(properties = {
         "hengde.donate.logistics.push.enabled=true",
+        "hengde.donate.logistics.poll-enabled=true",
         "hengde.donate.logistics.push.callback-url=https://example.test/api/callback/logistics/kuaidi100",
         "hengde.donate.logistics.push.retry-interval-minutes=30",
         "hengde.donate.logistics.push.max-attempts=3",

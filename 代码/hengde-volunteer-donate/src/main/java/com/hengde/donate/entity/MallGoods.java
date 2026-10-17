@@ -43,6 +43,23 @@ public class MallGoods extends BaseEntity {
      * null = 不要求。它是「谁能买、花多少」的一部分，改它与改价格一样要退回重审。
      */
     private Long requireCouponId;
+    /**
+     * 领取方式（V95，协会答复五 丙-3：「后台发布商品时必须选自提或快递，也可以同时选择」）。
+     * <b>NULL＝还没按新口径设置过</b>，沿用改造前的全局行为（自提恒可、快递跟全局开关、快递费取配置）。
+     */
+    private Integer allowPickup;
+    /** 可快递 1/0；NULL 同上 */
+    private Integer allowExpress;
+    /** 可选自提点 id，逗号分隔；空＝不限定（沿用配置里的那一个） */
+    private String pickupPointIds;
+    /** 快递费【分】（现金）；NULL＝不收现金快递费 */
+    private Integer expressFeeFen;
+    /** 运费积分；NULL＝不收积分运费 */
+    private Integer expressPoints;
+    /** 虚拟商品 1/0：只能自提，详情展示兑换二维码，「让他联系协会兑换」 */
+    private Integer virtualGoods;
+    /** 虚拟商品的兑换二维码图片（本系统上传） */
+    private String redeemQrUrl;
     /** 审核 / 上架状态，见 {@code MallGoodsStatus} */
     private Integer status;
     /** 隐藏 0否/1是；与 status 正交，改它不触发重审 */

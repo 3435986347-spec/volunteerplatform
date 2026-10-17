@@ -47,7 +47,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * @author hengde
  */
-@SpringBootTest(properties = {"hengde.donate.logistics.refresh-minutes=30",
+@SpringBootTest(properties = {"hengde.donate.logistics.refresh-minutes=30", "hengde.donate.logistics.poll-enabled=true",
         "hengde.donate.logistics.poll-interval-minutes=60", "hengde.donate.logistics.track-max-days=30"})
 @Import({TestcontainersConfig.class, RedisTestcontainersConfig.class, DonateTrackServiceTest.FakeLogistics.class})
 class DonateTrackServiceTest {

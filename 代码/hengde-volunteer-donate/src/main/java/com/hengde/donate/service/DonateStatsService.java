@@ -17,8 +17,8 @@ import java.util.Map;
  * <p><b>口径收在 donate</b>（{@code DonateStatsMapper} 的注释），data 模块只调这里、不碰捐赠的表——
  * 与活动看板由 activity 的 {@code ActivityStatsService} 定口径是同一条规矩。</p>
  *
- * <p>「修建书屋数」系统里没有这个概念（没有书屋表、捐书活动也不记建了什么），恒为 null——
- * 给 0 会被读成「一个都没建」。见协会待确认清单㉒。</p>
+ * <p>「修建书屋数」＝收到过捐书物资的受赠单位个数（协会答复五 乙-6：「一般受赠单位就是书屋数」，
+ * 一所小学一间书屋）。此前系统里没有这个口径时给 null，现在有了。</p>
  *
  * @author hengde
  */
@@ -65,7 +65,7 @@ public class DonateStatsService {
         book.setBooks(num(b.get("books")));
         book.setStationery(num(b.get("stationery")));
         book.setSports(num(b.get("sports")));
-        book.setBookHouses(null);
+        book.setBookHouses(num(b.get("bookHouses")));
         s.setBook(book);
         return s;
     }

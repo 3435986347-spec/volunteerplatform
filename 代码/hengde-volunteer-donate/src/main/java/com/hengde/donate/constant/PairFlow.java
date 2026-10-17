@@ -105,6 +105,6 @@ public final class PairFlow {
 
     /** 证书的业务来源键（写进 {@code honor_certificate.biz_ref}）。 */
     public static String certBizRef(Long pairRecordId) {
-        return "pair:" + pairRecordId;
+        return DonateCertRefs.pair(pairRecordId);
     }
 }

@@ -70,6 +70,12 @@ public class MallOrderVO {
     @Schema(description = "取货码条码图 data URL，仅详情且待领取时返回")
     private String pickupBarcode;
 
+    @io.swagger.v3.oas.annotations.media.Schema(description = "虚拟商品的兑换二维码（协会 2026-10-16 丙-3：只在本人的兑换详情里、兑换成功后下发）")
+    private String redeemQrUrl;
+
+    @io.swagger.v3.oas.annotations.media.Schema(description = "是不是虚拟商品（只在本人的兑换详情里给）")
+    private Boolean virtualGoods;
+
     @Schema(description = "核销时间")
     private LocalDateTime pickupTime;
 

@@ -26,9 +26,12 @@ public class MallGoodsSpecDTO {
     @Size(max = 64, message = "规格名不超过 64 字")
     private String name;
 
-    @Schema(description = "所需积分")
-    @NotNull(message = "请填写所需积分")
-    @Min(value = 1, message = "所需积分必须大于 0")
+    /**
+     * 所需积分。<b>可以为 0</b>（协会答复五 丁-2：「只填金额则纯收金额，只填积分则纯收积分，两个都填则积分和收款同时」）；
+     * 积分与现金至少一个大于 0，由服务层校验。
+     */
+    @Schema(description = "所需积分；不填或 0 = 纯现金（积分与现金至少一个大于 0）")
+    @Min(value = 0, message = "所需积分不能为负")
     private Integer points;
 
     @Schema(description = "现金部分【分】；不填或 0＝纯积分（清单②默认：固定积分 + 固定现金，下单两者都付）")

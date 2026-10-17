@@ -29,8 +29,12 @@ public class DonateLogisticsProperties {
     /** 登记寄出超过这么多天仍未到终态的运单停止轮询——否则一个填错的单号会被查一辈子。 */
     private int trackMaxDays = 30;
 
-    /** 定时轮询总开关（同时要求快递100 已开通）。 */
-    private boolean pollEnabled = true;
+    /**
+     * 定时轮询总开关（同时要求快递100 已开通）。<b>默认关闭</b>：协会 2026-10-16（答复五 甲-3）只买了查询、
+     * 「用户打开快递单号时显示物流」——后台定时去查每一单是按次计费的，没人看的单子也在花钱。
+     * 关着时轨迹只在有人打开（志愿者查看 / 后台刷新）时按 {@code refreshMinutes} 去查。
+     */
+    private boolean pollEnabled = false;
 
     private Kuaidi100 kuaidi100 = new Kuaidi100();
 

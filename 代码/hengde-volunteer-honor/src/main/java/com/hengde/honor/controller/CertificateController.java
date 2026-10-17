@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -41,10 +42,19 @@ public class CertificateController {
         this.certificateService = certificateService;
     }
 
-    @Operation(summary = "我的证书列表（分页；软删的不返回）")
+    @Operation(summary = "我的证书列表（分页；软删的不返回）。category 可选：activity 志愿活动 / pair 助学助困 / wish 微心愿 / "
+            + "book 公益捐书 / crowdfund 项目众筹（原型 P83 的页签）")
     @GetMapping("/certificates")
-    public Result<PageResult<CertificateVO>> myCertificates(PageQuery query) {
-        return Result.ok(certificateService.myCertificates(StpUtil.getLoginIdAsLong(), query));
+    public Result<PageResult<CertificateVO>> myCertificates(PageQuery query,
+            @RequestParam(required = false) String category) {
+        return Result.ok(certificateService.myCertificates(StpUtil.getLoginIdAsLong(), query, category));
+    }
+
+    @Operation(summary = "按来源键取本人的捐赠证书（如捐物记录上的「证书」按钮传 cf-goods:运单id、心愿详情传 wish:认领id）；"
+            + "还没有证书（未审核 / 未实现 / 未到账）或不是本人的返回 null")
+    @GetMapping("/certificates/by-ref")
+    public Result<CertificateVO> byRef(@RequestParam String bizRef) {
+        return Result.ok(certificateService.findMineByRef(StpUtil.getLoginIdAsLong(), bizRef));
     }
 
     /**

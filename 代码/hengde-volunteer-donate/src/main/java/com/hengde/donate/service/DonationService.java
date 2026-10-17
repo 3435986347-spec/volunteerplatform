@@ -5,11 +5,16 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.hengde.auth.service.MiniappIdentityService;
 import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.common.exception.BusinessException;
+import com.hengde.common.oss.FileStorageService;
+import com.hengde.common.oss.FileValidator;
 import com.hengde.common.lock.DistributedLockSupport;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
 import com.hengde.donate.config.DonationProperties;
+import com.hengde.donate.constant.DonateCertRefs;
 import com.hengde.donate.constant.DonationFlow;
+import com.hengde.donate.event.DonationCertRevokedEvent;
+import com.hengde.donate.event.DonationCertifiableEvent;
 import com.hengde.donate.constant.PairFlow;
 import com.hengde.donate.dao.DonateDonationMapper;
 import com.hengde.donate.dao.DonatePairMappers.DonateCrowdfundMapper;
@@ -30,12 +35,14 @@ import com.hengde.trade.vo.TradeVOs;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -87,6 +94,20 @@ public class DonationService {
     private RedissonClient redissonClient;
     private TransactionTemplate transactionTemplate;
     private TransactionTemplate requiresNew;
+
+    private ApplicationEventPublisher eventPublisher;
+
+    @Autowired
+    public void setEventPublisher(ApplicationEventPublisher eventPublisher) {
+        this.eventPublisher = eventPublisher;
+    }
+
+    private FileStorageService fileStorageService;
+
+    @Autowired
+    public void setFileStorageService(FileStorageService fileStorageService) {
+        this.fileStorageService = fileStorageService;
+    }
 
     @Autowired
     public void setDonationMapper(DonateDonationMapper donationMapper) {
@@ -277,6 +298,7 @@ public class DonationService {
             log.error("[DONATION] 收到无法识别的捐款付款 bizType={} bizNo={} tradeOrderId={}", bizType, bizNo, tradeOrderId);
             return false;
         }
+        Long[] certifiable = new Long[1];
         Boolean moved = requiresNew.execute(s -> {
             LocalDateTime now = LocalDateTime.now();
             DonateDonation d = donationMapper.selectByIdForUpdate(donationId);
@@ -311,9 +333,15 @@ public class DonationService {
                 projectMapper.addRaised(d.getProjectId(), d.getAmount(), now);
             } else {
                 crowdfundMapper.addRaised(d.getProjectId(), d.getAmount(), now);
+                certifiable[0] = d.getVolunteerId();
             }
             return true;
         });
+        // 众筹捐款到账即出捐赠证书（协会 2026-10-16 答复五 乙-2）。在事务之外发布：付款回调是高并发入口，
+        // 在事务里发会让订阅方同时占两条连接（捐款批压测撞出的那一课），订阅方用 fallbackExecution 接
+        if (Boolean.TRUE.equals(moved) && certifiable[0] != null) {
+            eventPublisher.publishEvent(new DonationCertifiableEvent(DonateCertRefs.crowdfundMoney(donationId), certifiable[0]));
+        }
         return Boolean.TRUE.equals(moved);
     }
 
@@ -434,6 +462,11 @@ public class DonationService {
         DonateDonation peek = requireById(donationId);
         DonateDonation refunded = DistributedLockSupport.runLocked(redissonClient, lockKeyOf(peek),
                 () -> transactionTemplate.execute(s -> refundInTx(donationId, reason.trim(), adminId)));
+        if (Objects.equals(refunded.getBizType(), DonationFlow.BIZ_CROWDFUND)) {
+            // 钱退回去了，那张「捐款人民币 N 元」的证书就不能还留着
+            eventPublisher.publishEvent(new DonationCertRevokedEvent(DonateCertRefs.crowdfundMoney(donationId),
+                    refunded.getVolunteerId(), "捐款已退款：" + reason.trim()));
+        }
         refundCash(refunded, reason.trim(), adminId);
     }
 
@@ -509,6 +542,84 @@ public class DonationService {
                 .set(DonateDonation::getCashRefundError, error == null ? null : cut(error, 255))
                 .set(DonateDonation::getUpdateTime, LocalDateTime.now()));
     }
+
+    /**
+     * 上传发票文件（协会 2026-10-16 答复五 丁-5：财务把开好的发票传上来，用户可以下载，订单显示已完结）。
+     *
+     * <p>只收已到账、且提交时要了发票的捐款；传上来即「已开票」，再传一次是替换（开错了重开）。发票号可一起填，不填保留原值。
+     * 文件放<b>私有</b>存储（里面有抬头与税号），志愿者只拿短期签名地址。</p>
+     *
+     * <p>先传文件、再 CAS 改单：CAS 落空（这期间被退款了）就删掉刚传的文件再报错——不能留一份挂不到任何单子上的发票。</p>
+     */
+    public void uploadInvoiceFile(Long donationId, MultipartFile file, String invoiceNo, Long adminId) {
+        if (adminId == null) {
+            throw new BusinessException("操作人不能为空");
+        }
+        FileValidator.validate(file, INVOICE_EXTENSIONS, MAX_INVOICE_BYTES);
+        DonateDonation d = requireById(donationId);
+        if (!Objects.equals(d.getStatus(), DonationFlow.PAID) || Objects.equals(d.getInvoiceStatus(), DonationFlow.INVOICE_NONE)) {
+            throw new BusinessException("只有已到账、且提交时要了发票的捐款可以上传发票（当前：" + DonationFlow.statusLabel(d.getStatus())
+                    + " · " + DonationFlow.invoiceLabel(d.getInvoiceStatus()) + "）");
+        }
+        String original = file.getOriginalFilename() == null ? "invoice" : file.getOriginalFilename().trim();
+        String ext = FileValidator.extensionOf(original);
+        String key = INVOICE_KEY_PREFIX + d.getDonationNo() + "-" + java.util.UUID.randomUUID().toString().replace("-", "")
+                + "." + ext;
+        try {
+            fileStorageService.uploadPrivate(file.getBytes(), key, FileValidator.contentTypeOf(original));
+        } catch (java.io.IOException e) {
+            throw new BusinessException("读取上传文件失败：" + e.getMessage());
+        }
+        LocalDateTime now = LocalDateTime.now();
+        int rows = donationMapper.update(null, Wrappers.<DonateDonation>lambdaUpdate()
+                .eq(DonateDonation::getId, donationId)
+                .eq(DonateDonation::getStatus, DonationFlow.PAID)
+                .in(DonateDonation::getInvoiceStatus, DonationFlow.INVOICE_PENDING, DonationFlow.INVOICE_ISSUED)
+                .set(DonateDonation::getInvoiceStatus, DonationFlow.INVOICE_ISSUED)
+                .set(StringUtils.hasText(invoiceNo), DonateDonation::getInvoiceNo, invoiceNo == null ? null : invoiceNo.trim())
+                .set(DonateDonation::getInvoiceFileKey, key)
+                .set(DonateDonation::getInvoiceFileName, cut(original, 255))
+                .set(DonateDonation::getInvoiceTime, now)
+                .set(DonateDonation::getInvoiceBy, adminId)
+                .set(DonateDonation::getUpdateTime, now));
+        if (rows != 1) {
+            try {
+                fileStorageService.delete(key);
+            } catch (RuntimeException e) {
+                log.warn("[DONATION] 发票文件 {} 没能删掉（这笔捐款状态已变化）：{}", key, e.getMessage());
+            }
+            DonateDonation now2 = requireById(donationId);
+            throw new BusinessException("这笔捐款当前不能上传发票（" + DonationFlow.statusLabel(now2.getStatus()) + " · "
+                    + DonationFlow.invoiceLabel(now2.getInvoiceStatus()) + "）");
+        }
+    }
+
+    /** 捐款人下载自己的发票：短期签名地址。不是本人的与不存在同一句话。 */
+    public String invoiceFileUrlMine(Long donationId, Long volunteerId) {
+        DonateDonation d = donationId == null ? null : donationMapper.selectById(donationId);
+        if (d == null || !Objects.equals(d.getVolunteerId(), volunteerId)) {
+            throw new BusinessException("捐款记录不存在");
+        }
+        return invoiceUrl(d);
+    }
+
+    /** 后台查看发票文件。 */
+    public String invoiceFileUrlForAdmin(Long donationId) {
+        return invoiceUrl(requireById(donationId));
+    }
+
+    private String invoiceUrl(DonateDonation d) {
+        if (!StringUtils.hasText(d.getInvoiceFileKey())) {
+            throw new BusinessException("发票还没有开出");
+        }
+        return fileStorageService.presignGet(d.getInvoiceFileKey(), INVOICE_URL_TTL);
+    }
+
+    /** 发票文件：PDF 或图片（财务拍照也行），上限 10MB。 */
+    static final java.util.Set<String> INVOICE_EXTENSIONS = java.util.Set.of("pdf", "jpg", "jpeg", "png");
+    private static final long MAX_INVOICE_BYTES = 10L * 1024 * 1024;
+    private static final String INVOICE_KEY_PREFIX = "invoice/";
+    private static final java.time.Duration INVOICE_URL_TTL = java.time.Duration.ofSeconds(120);
 
     /** 登记开票（清单⑦只预留：发票在系统外开，这里记发票号）。仅已到账且需要发票的。 */
     public void markInvoiced(Long donationId, String invoiceNo, Long adminId) {
@@ -790,6 +901,11 @@ public class DonationService {
         vo.setInvoiceStatus(d.getInvoiceStatus());
         vo.setInvoiceStatusLabel(DonationFlow.invoiceLabel(d.getInvoiceStatus()));
         vo.setInvoiceNo(d.getInvoiceNo());
+        vo.setInvoiceFileReady(StringUtils.hasText(d.getInvoiceFileKey()));
+        boolean paid = Objects.equals(d.getStatus(), DonationFlow.PAID);
+        boolean invoiceDone = !Objects.equals(d.getInvoiceStatus(), DonationFlow.INVOICE_PENDING);
+        vo.setCompleted(paid && invoiceDone);
+        vo.setProgressLabel(!paid ? DonationFlow.statusLabel(d.getStatus()) : invoiceDone ? "已完结" : "已到账，待开票");
         vo.setRefundTime(d.getRefundTime());
         vo.setRefundReason(d.getRefundReason());
         vo.setCreateTime(d.getCreateTime());

@@ -70,6 +70,14 @@ public class AdminMallOrderController {
         return Result.ok();
     }
 
+    @Operation(summary = "协会取消已成功的兑换单（待领取 / 待发货；退分 + 还库存 + 还卷，付过现金的原路退款，短信告知）")
+    @SaCheckPermission(value = PermissionCode.DONATE_ORDER_AUDIT, type = "admin")
+    @PostMapping("/orders/{id}/cancel")
+    public Result<Void> cancel(@PathVariable Long id, @Valid @RequestBody com.hengde.donate.dto.MallOrderCancelDTO dto) {
+        orderService.cancelByAdmin(id, dto.getReason(), StpAdminUtil.getLoginIdAsLong());
+        return Result.ok();
+    }
+
     /**
      * 快递单登记发货。权限与现场核销同一个点：两者都是「把东西交出去」这一步。
      */

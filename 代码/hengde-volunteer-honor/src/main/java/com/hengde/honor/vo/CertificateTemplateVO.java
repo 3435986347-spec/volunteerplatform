@@ -20,6 +20,9 @@ public class CertificateTemplateVO {
     /** 从 scopeKey 解析出的活动 id；全局样本为 null */
     private Long activityId;
 
+    /** 样本种类：activity 志愿活动 / donation 捐赠 */
+    private String kind;
+
     private String name;
 
     /** 样本文件的私有对象 key */

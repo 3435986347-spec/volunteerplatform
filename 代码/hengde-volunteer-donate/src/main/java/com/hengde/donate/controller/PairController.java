@@ -88,6 +88,12 @@ public class PairController {
         return Result.ok(projectService.lettersForVolunteer(id, StpUtil.getLoginIdAsLong(), query));
     }
 
+    @Operation(summary = "活动动态（协会的发放凭证，一律公开；时间倒序）")
+    @GetMapping("/pair-projects/{id}/updates")
+    public Result<PageResult<PairVOs.PairUpdate>> updates(@PathVariable Long id, PageQuery query) {
+        return Result.ok(projectService.updatesForVolunteer(id, query));
+    }
+
     @Operation(summary = "结对登记（指定金额或全款；须已实名）")
     @PostMapping("/pair-projects/{id}/pairs")
     public Result<PairVOs.PairRecord> register(@PathVariable Long id, @Valid @RequestBody PairDTOs.Register dto) {

@@ -166,6 +166,30 @@ public class AdminPairController {
         return Result.ok();
     }
 
+    // ---------- 活动动态（发放凭证，协会 2026-10-16 丙-2） ----------
+
+    @Operation(summary = "活动动态列表（发放凭证，一律公开）")
+    @SaCheckPermission(value = PermissionCode.DONATE_PROJECT, type = "admin")
+    @GetMapping("/pair-projects/{id}/updates")
+    public Result<PageResult<PairVOs.PairUpdate>> updates(@PathVariable Long id, PageQuery query) {
+        return Result.ok(projectService.updatesFor(id, query));
+    }
+
+    @Operation(summary = "录入一条活动动态（图文，最多 9 张图；不填时间取录入时间）")
+    @SaCheckPermission(value = PermissionCode.DONATE_PROJECT, type = "admin")
+    @PostMapping("/pair-projects/{id}/updates")
+    public Result<Long> addUpdate(@PathVariable Long id, @Valid @RequestBody PairDTOs.UpdateSave dto) {
+        return Result.ok(projectService.addUpdate(id, dto, StpAdminUtil.getLoginIdAsLong()));
+    }
+
+    @Operation(summary = "删除活动动态")
+    @SaCheckPermission(value = PermissionCode.DONATE_PROJECT, type = "admin")
+    @DeleteMapping("/pair-updates/{id}")
+    public Result<Void> deleteUpdate(@PathVariable Long id) {
+        projectService.deleteUpdate(id);
+        return Result.ok();
+    }
+
     // ---------- 众筹项目 ----------
 
     @Operation(summary = "众筹项目列表")

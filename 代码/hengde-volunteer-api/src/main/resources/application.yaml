@@ -223,7 +223,10 @@ hengde:
       refund-notify-url: ${TRADE_WECHAT_REFUND_NOTIFY_URL:}
   donate:
     mall:
-      # 自提点（商城批）：审核通过时快照进兑换单。只有一个当前值，换办公地点不影响历史单据
+      # 兑换单要不要后台审核。默认不要（协会 2026-10-16 答复五 乙-5）：纯积分的单下单即成功、有现金的付款即成功，
+      # 取消由协会在后台操作。置 true 回到改造前「待审核 → 通过 / 驳回」
+      order-review: ${DONATE_MALL_ORDER_REVIEW:false}
+      # 自提点（商城批）：协会 2026-10-16 起改由后台维护多个、每件商品各选几个；这一组只给没设置过领取方式的老商品兜底
       pickup-site:
         name: ${DONATE_MALL_PICKUP_NAME:}
         address: ${DONATE_MALL_PICKUP_ADDRESS:}
@@ -264,7 +267,8 @@ hengde:
         key: ${KUAIDI100_KEY:}
       # 查询：志愿者端快照超过这么多分钟才重查；定时轮询的间隔、每轮单数、寄出多少天后停止
       refresh-minutes: ${KUAIDI100_REFRESH_MINUTES:30}
-      poll-enabled: ${KUAIDI100_POLL_ENABLED:true}
+      # 定时轮询默认关：协会只买了查询、要的是「打开单号时显示物流」（2026-10-16 答复五 甲-3），没人看的单不去查
+      poll-enabled: ${KUAIDI100_POLL_ENABLED:false}
       poll-cron: ${KUAIDI100_POLL_CRON:0 20 */2 * * ?}
       poll-interval-minutes: ${KUAIDI100_POLL_INTERVAL_MINUTES:120}
       poll-batch: ${KUAIDI100_POLL_BATCH:50}

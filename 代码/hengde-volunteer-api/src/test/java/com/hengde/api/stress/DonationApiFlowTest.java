@@ -120,7 +120,8 @@ class DonationApiFlowTest {
         JsonNode summary = ok(c.get("/a/data/donation-summary", admin, "捐赠数据汇总")).data();
         assertTrue(summary.get("pair").get("published").asLong() >= 1, summary.toString());
         JsonNode bookHouses = summary.get("book").get("bookHouses");
-        assertTrue(bookHouses == null || bookHouses.isNull(), "书屋数给 null（出参省略 null 字段，前端拿到的是没有这个键）：" + summary);
+        assertTrue(bookHouses != null && bookHouses.isNumber() || bookHouses != null && bookHouses.isTextual(),
+                "书屋数＝收到过捐书的受赠单位数（协会答复五 乙-6），不再是 null：" + summary);
         assertNotEquals(200, neg.get("/a/data/donation-summary", donor, "志愿者 token 调后台汇总").code());
 
         assertTrue(neg.post("/v/donate/crowdfunds/" + crowdId + "/goods-donations", donor, Map.of(

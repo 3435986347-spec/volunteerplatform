@@ -30,6 +30,7 @@ import com.hengde.donate.entity.MallGoods;
 import com.hengde.donate.entity.MallGoodsReview;
 import com.hengde.donate.entity.MallGoodsSpec;
 import com.hengde.donate.entity.MallOrder;
+import com.hengde.donate.entity.MallPickupPoint;
 import com.hengde.donate.entity.MallVerifier;
 import com.hengde.donate.dto.ExpressDTO;
 import com.hengde.donate.dto.MallOrderPlaceDTO;
@@ -119,6 +120,7 @@ public class MallOrderService {
     private TradeRefundService tradeRefundService;
     private MiniappIdentityService identityService;
     private CryptoUtil cryptoUtil;
+    private MallPickupPointService pickupPointService;
     /** 付款成功回写用的独立事务：它在交易提交之后的事件回调里跑，不能加入（已提交的）外层事务 */
     private TransactionTemplate requiresNew;
 
@@ -140,6 +142,11 @@ public class MallOrderService {
     @Autowired
     public void setIdentityService(MiniappIdentityService identityService) {
         this.identityService = identityService;
+    }
+
+    @Autowired
+    public void setPickupPointService(MallPickupPointService pickupPointService) {
+        this.pickupPointService = pickupPointService;
     }
 
     @Autowired
@@ -267,8 +274,9 @@ public class MallOrderService {
             throw new BusinessException("领取方式不正确");
         }
         if (delivery == MallDeliveryType.EXPRESS) {
-            if (!shippingCalculator.expressEnabled()) {
-                throw new BusinessException("暂不支持快递寄送，请选择自提");
+            // 「能不能快递、快递费多少」自 V95 起是商品级设置，在锁内读到商品之后判（doPlaceOrder）
+            if (req.getPickupPointId() != null) {
+                throw new BusinessException("快递寄送不用选择自提点");
             }
             if (!MallShippingPayType.isValid(req.getShippingPayType())) {
                 throw new BusinessException("请选择快递费的支付方式（现金或积分抵扣）");
@@ -303,26 +311,31 @@ public class MallOrderService {
         MallGoodsSpec spec = specMapper.selectById(specId);
         MallGoods goods = goodsMapper.selectById(spec.getGoodsId());
         int price = spec.getPoints() == null ? 0 : spec.getPoints();
-        if (price <= 0) {
-            throw new BusinessException("该规格未设置所需积分");
+        int goodsCash = spec.getCashFen() == null ? 0 : spec.getCashFen();
+        if (price <= 0 && goodsCash <= 0) {
+            throw new BusinessException("该规格未设置所需积分或金额");
         }
-        // ③ 判卷（只读）：没带卷而商品要求卷，当场拒绝
+        // ③ 判卷（只读）：没带卷而商品要求卷，当场拒绝。卷抵的是积分，纯现金的规格（丁-2）用不上
         LocalDateTime now = LocalDateTime.now();
         MallCouponService.CouponQuote quote = null;
         if (couponGrantId != null) {
+            if (price <= 0) {
+                throw new BusinessException("这个规格只收现金，不能用卷");
+            }
             quote = couponService.quote(volunteerId, couponGrantId, goods, price, now);
         } else if (goods != null && goods.getRequireCouponId() != null) {
             throw new BusinessException("该商品只能使用「" + couponService.nameOf(goods.getRequireCouponId())
                     + "」兑换，请先选择卷");
         }
         int goodsPay = quote == null ? price : quote.payPoints();
-        // ③' 快递费与现金：计价器算快递费（快照），积分抵扣的折成积分并进扣分，现金的并进应付现金
-        int fee = shippingCalculator.feeFen(delivery, goods, spec);
-        int rate = shippingCalculator.pointsPerYuan();
+        // ③' 领取方式与快递费（V95 起按商品设置；没设置过的商品沿用改造前的全局行为）
         Integer shippingPayType = delivery == MallDeliveryType.EXPRESS ? req.getShippingPayType() : null;
-        int shippingPoints = shippingPayType != null && shippingPayType == MallShippingPayType.POINTS
-                ? MallShippingCalculator.pointsFor(fee, rate) : 0;
-        int goodsCash = spec.getCashFen() == null ? 0 : spec.getCashFen();
+        Shipping shipping = delivery == MallDeliveryType.EXPRESS
+                ? expressQuote(goods, spec, shippingPayType)
+                : new Shipping(0, 0, null);
+        MallPickupPoint chosenPoint = delivery == MallDeliveryType.PICKUP ? pickupPointFor(goods, req.getPickupPointId()) : null;
+        int fee = shipping.feeFen();
+        int shippingPoints = shipping.points();
         int payCash = goodsCash + (shippingPayType != null && shippingPayType == MallShippingPayType.CASH ? fee : 0);
         if (payCash > 0 && !tradeOrderService.paymentEnabled()) {
             // 先拦在这里：付不了的单占着库存与积分等超时，只会让别人也兑不到
@@ -355,7 +368,14 @@ public class MallOrderService {
         order.setGoodsCashFen(goodsCash);
         order.setShippingFeeFen(fee);
         order.setShippingPayType(shippingPayType);
-        order.setPointsPerYuan(delivery == MallDeliveryType.EXPRESS ? rate : null);
+        order.setPointsPerYuan(shipping.pointsPerYuan());
+        if (chosenPoint != null) {
+            // 兑换时就定下「去哪儿领」并快照：自提点之后改名、停用、删除都不改写这张单
+            order.setPickupPointId(chosenPoint.getId());
+            order.setPickupSiteName(chosenPoint.getName());
+            order.setPickupSiteAddr(chosenPoint.getAddress());
+            order.setPickupSitePhone(chosenPoint.getPhone());
+        }
         order.setShippingPoints(shippingPoints);
         order.setPayCashFen(payCash);
         if (delivery == MallDeliveryType.EXPRESS) {
@@ -385,7 +405,67 @@ public class MallOrderService {
             pointService.record(volunteerId, -pay, PointSourceType.EXCHANGE, order.getId(), remark,
                     PointSourceType.OPERATOR_SYSTEM, null);
         }
+        // ⑦ 不需要付现金、也不需要后台审核的：兑换即成功（协会答复五 乙-5）。同一事务，失败整单回滚
+        if (payCash <= 0 && !mallProperties.isOrderReview()) {
+            return markReady(order.getId(), null);
+        }
         return order;
+    }
+
+    /** 快递费报价：快照进订单的现金快递费、积分运费，以及（仅存量商品）当时的汇率。 */
+    record Shipping(int feeFen, int points, Integer pointsPerYuan) {
+    }
+
+    /**
+     * 快递费怎么收（协会答复五 丙-3：「勾选快递，并设置快递费或运费积分」）。
+     *
+     * <p>按新口径设置过的商品：现金付取 {@code express_fee_fen}、积分付取 {@code express_points}，商品没给的那一种不能选。
+     * 没设置过的存量商品：跟改造前一样——全局开关、配置快递费、按汇率折积分。</p>
+     */
+    private Shipping expressQuote(MallGoods goods, MallGoodsSpec spec, Integer payType) {
+        if (goods != null && goods.getVirtualGoods() != null && goods.getVirtualGoods() == 1) {
+            throw new BusinessException("虚拟商品只能自提");
+        }
+        boolean configured = goods != null && (goods.getAllowPickup() != null || goods.getAllowExpress() != null);
+        if (!configured) {
+            int fee = shippingCalculator.feeFen(MallDeliveryType.EXPRESS, goods, spec);
+            int rate = shippingCalculator.pointsPerYuan();
+            int points = payType != null && payType == MallShippingPayType.POINTS ? MallShippingCalculator.pointsFor(fee, rate) : 0;
+            return new Shipping(fee, points, rate);
+        }
+        if (goods.getAllowExpress() == null || goods.getAllowExpress() != 1) {
+            throw new BusinessException("该商品不支持快递，请选择自提");
+        }
+        if (payType != null && payType == MallShippingPayType.CASH) {
+            if (goods.getExpressFeeFen() == null) {
+                throw new BusinessException("该商品的快递费只能用积分支付");
+            }
+            return new Shipping(goods.getExpressFeeFen(), 0, null);
+        }
+        if (goods.getExpressPoints() == null) {
+            throw new BusinessException("该商品的快递费只能用现金支付");
+        }
+        return new Shipping(goods.getExpressFeeFen() == null ? 0 : goods.getExpressFeeFen(), goods.getExpressPoints(), null);
+    }
+
+    /**
+     * 自提：商品列了可选自提点的，必须从里面选一个（还得启用中）；没列的不用选，到配置里的唯一自提点领。
+     *
+     * @return 选中的自提点；不用选时返回 null
+     */
+    private MallPickupPoint pickupPointFor(MallGoods goods, Long chosen) {
+        boolean configured = goods != null && (goods.getAllowPickup() != null || goods.getAllowExpress() != null);
+        if (configured && (goods.getAllowPickup() == null || goods.getAllowPickup() != 1)) {
+            throw new BusinessException("该商品不支持自提，请选择快递");
+        }
+        String ids = goods == null ? null : goods.getPickupPointIds();
+        if (MallPickupPointService.parseIds(ids).isEmpty()) {
+            if (chosen != null) {
+                throw new BusinessException("该商品没有可选的自提点，不用选择");
+            }
+            return null;
+        }
+        return pickupPointService.requireChoosable(ids, chosen);
     }
 
     /**
@@ -449,6 +529,11 @@ public class MallOrderService {
                         // 已付款的单退现金要走原路退款，发起人须是后台（trade 的退款要记操作人）；
                         // 让志愿者一点就把钱退出去，等于把「谁决定退款」交给了一个按钮
                         throw new BusinessException("已付款的兑换单请联系协会取消，款项会原路退回");
+                    } else if (order.getStatus() != null && order.getStatus() != MallOrderStatus.PENDING) {
+                        // 协会答复五 乙-5：兑换成功之后（待领取 / 待发货 / 已发货 / 已领取）志愿者不能自己取消，由协会在后台取消。
+                        // 只有改造前留下的待审核单还能自己取消（那时的规则如此）
+                        throw new BusinessException(MallOrderStatus.isRefunded(order.getStatus())
+                                ? "这张兑换单已经取消了" : "兑换已成功，如需取消请联系协会");
                     }
                     int fromStatus = from;
                     transactionTemplate.execute(s -> {
@@ -489,7 +574,48 @@ public class MallOrderService {
                 });
         // 驳回已提交之后才退现金：先退后驳，退款成功而驳回输给并发的「通过」，就是钱退了、东西照发
         if (rejected != null && isPaidCashOrder(rejected)) {
-            refundCash(rejected, reason, adminId);
+            refundCash(rejected, "被驳回" + (StringUtils.hasText(reason) ? "：" + reason : ""), adminId);
+        }
+    }
+
+    /**
+     * 协会在后台取消一张<b>已成功</b>的兑换单（协会答复五 乙-5：「点击兑换之后则进入成功状态，取消需要协会操作」）：
+     * 退分、还库存、还卷，付过现金的原路退款，短信告知。
+     *
+     * <p>只对「待领取 / 待发货」：东西已经交出去（已领取 / 已发货）的不能取消。与核销、发货抢的是同一行的
+     * {@code status = 待领取}——三个动作都是 CAS，只会成一个。改造前留下的待审核单走 {@link #reject}。</p>
+     */
+    public void cancelByAdmin(Long orderId, String reason, Long adminId) {
+        if (adminId == null) {
+            throw new BusinessException("操作人不能为空");
+        }
+        if (!StringUtils.hasText(reason)) {
+            throw new BusinessException("请填写取消原因");
+        }
+        if (reason.length() > 512) {
+            throw new BusinessException("取消原因不超过 512 字");
+        }
+        MallOrder order = orderId == null ? null : orderMapper.selectById(orderId);
+        if (order == null) {
+            throw new BusinessException("兑换单不存在");
+        }
+        MallOrder cancelled = DistributedLockSupport.runLocked(redissonClient,
+                PointService.LOCK_KEY_PREFIX + order.getVolunteerId(), () -> {
+                    MallOrder current = orderMapper.selectById(orderId);
+                    if (current.getStatus() == null || current.getStatus() != MallOrderStatus.READY) {
+                        throw new BusinessException("只有待领取 / 待发货的兑换单能由协会取消（当前："
+                                + MallOrderStatus.labelOf(current.getStatus(), current.getDeliveryType()) + "）");
+                    }
+                    return transactionTemplate.execute(s -> {
+                        MallOrder snap = refundOrder(orderId, order.getVolunteerId(), MallOrderStatus.READY,
+                                MallOrderStatus.CANCELLED, reason.trim(), adminId);
+                        notifyResult(snap, "已取消", "原因：" + reason.trim() + "。" + returnedText(snap));
+                        return snap;
+                    });
+                });
+        // 取消已提交之后才退现金（同驳回：先退后取消，退款成功而取消输给并发的核销，就是钱退了、东西照领）
+        if (cancelled != null && isPaidCashOrder(cancelled)) {
+            refundCash(cancelled, "被协会取消：" + reason.trim(), adminId);
         }
     }
 
@@ -503,7 +629,7 @@ public class MallOrderService {
      * 原路退款。<b>失败不回滚驳回</b>（驳回已提交），把原因记在订单上，后台据此到收付页用交易单 id 重试——
      * 与「通知失败绝不影响业务」同一取舍，代价是它必须被看得见，所以落库而不只打日志。
      */
-    private void refundCash(MallOrder order, String reason, Long adminId) {
+    private void refundCash(MallOrder order, String why, Long adminId) {
         Long tradeOrderId = order.getTradeOrderId();
         if (tradeOrderId == null) {
             TradeOrder t = tradeOrderService.findLatestByBiz(TradeFlow.BIZ_MALL_SHIPPING, bizNoOf(order.getId()));
@@ -515,8 +641,8 @@ public class MallOrderService {
             error = "找不到已支付的交易单，无法自动退款";
         } else {
             TradeDTOs.Refund dto = new TradeDTOs.Refund();
-            String why = "兑换单 " + order.getOrderNo() + " 被驳回" + (StringUtils.hasText(reason) ? "：" + reason : "");
-            dto.setReason(why.length() > 512 ? why.substring(0, 512) : why);
+            String full = "兑换单 " + order.getOrderNo() + " " + why;
+            dto.setReason(full.length() > 512 ? full.substring(0, 512) : full);
             try {
                 refundNo = tradeRefundService.refund(tradeOrderId, dto, adminId);
             } catch (BusinessException e) {
@@ -524,7 +650,7 @@ public class MallOrderService {
             }
         }
         if (error != null) {
-            log.error("[MALL] 兑换单 {} 驳回后现金退款未发起：{}（交易单 {}）", order.getId(), error, tradeOrderId);
+            log.error("[MALL] 兑换单 {} 退单后现金退款未发起：{}（交易单 {}）", order.getId(), error, tradeOrderId);
         }
         orderMapper.update(null, Wrappers.<MallOrder>lambdaUpdate()
                 .eq(MallOrder::getId, order.getId())
@@ -594,23 +720,40 @@ public class MallOrderService {
         if (adminId == null) {
             throw new BusinessException("操作人不能为空");
         }
+        notifyReviewResult(markReady(orderId, adminId), true, null);
+    }
+
+    /**
+     * 待审核 → 待领取 / 待发货。三处共用：后台审核通过、兑换即成功（下单）、付款即成功（付款回写）——
+     * 三条路的结果必须一模一样，分开写迟早漂开一处（同奖惩 {@code applyApproval} 那条）。
+     *
+     * <p>自提：<b>同一条语句里生成取货码</b>（分两步的话中间崩一次就留下一张没有取货码的待领取单）。
+     * 下单时选过自提点的已经快照好了；没选的（商品没列自提点）在这一刻快照配置里的那一个。
+     * 撞 {@code uk_pickup_code} 时换码重试（上限 5）。快递：直接进入待发货。</p>
+     *
+     * @param adminId 后台审核人；自动成功时为 null（不记审核人）
+     * @return 迁移后的订单
+     */
+    private MallOrder markReady(Long orderId, Long adminId) {
         MallOrder target = orderMapper.selectById(orderId);
-        if (target != null && target.getDeliveryType() != null
-                && target.getDeliveryType() == MallDeliveryType.EXPRESS) {
-            // 快递单没有取货码、也没有自提点：通过即进入「待发货」（领取方式下单后不可改，普通读足够）
+        if (target == null) {
+            throw new BusinessException("兑换单不存在");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        if (target.getDeliveryType() != null && target.getDeliveryType() == MallDeliveryType.EXPRESS) {
             int rows = orderMapper.update(null, Wrappers.<MallOrder>lambdaUpdate()
                     .eq(MallOrder::getId, orderId)
                     .eq(MallOrder::getStatus, MallOrderStatus.PENDING)
                     .set(MallOrder::getStatus, MallOrderStatus.READY)
-                    .set(MallOrder::getReviewBy, adminId)
-                    .set(MallOrder::getReviewTime, LocalDateTime.now())
-                    .set(MallOrder::getUpdateTime, LocalDateTime.now()));
+                    .set(adminId != null, MallOrder::getReviewBy, adminId)
+                    .set(adminId != null, MallOrder::getReviewTime, now)
+                    .set(MallOrder::getUpdateTime, now));
             if (rows != 1) {
                 throw new BusinessException("该兑换单当前状态不可审核");
             }
-            notifyReviewResult(orderMapper.selectById(orderId), true, null);
-            return;
+            return orderMapper.selectById(orderId);
         }
+        boolean siteChosen = StringUtils.hasText(target.getPickupSiteName());
         MallProperties.PickupSite site = mallProperties.getPickupSite();
         for (int attempt = 0; attempt < CODE_RETRY; attempt++) {
             String code = PickupCodeUtil.generate(PickupCodeUtil.DOMAIN_MALL);
@@ -620,17 +763,16 @@ public class MallOrderService {
                         .eq(MallOrder::getStatus, MallOrderStatus.PENDING)
                         .set(MallOrder::getStatus, MallOrderStatus.READY)
                         .set(MallOrder::getPickupCode, code)
-                        .set(MallOrder::getPickupSiteName, site.getName())
-                        .set(MallOrder::getPickupSiteAddr, site.getAddress())
-                        .set(MallOrder::getPickupSitePhone, site.getPhone())
-                        .set(MallOrder::getReviewBy, adminId)
-                        .set(MallOrder::getReviewTime, LocalDateTime.now())
-                        .set(MallOrder::getUpdateTime, LocalDateTime.now()));
+                        .set(!siteChosen, MallOrder::getPickupSiteName, site.getName())
+                        .set(!siteChosen, MallOrder::getPickupSiteAddr, site.getAddress())
+                        .set(!siteChosen, MallOrder::getPickupSitePhone, site.getPhone())
+                        .set(adminId != null, MallOrder::getReviewBy, adminId)
+                        .set(adminId != null, MallOrder::getReviewTime, now)
+                        .set(MallOrder::getUpdateTime, now));
                 if (rows != 1) {
                     throw new BusinessException("该兑换单当前状态不可审核");
                 }
-                notifyReviewResult(orderMapper.selectById(orderId), true, null);
-                return;
+                return orderMapper.selectById(orderId);
             } catch (DuplicateKeyException e) {
                 // 撞的一定是 uk_pickup_code——这条语句只写这一个唯一列
                 log.warn("取货码碰撞，换一个重试（第 {} 次）", attempt + 1);
@@ -650,34 +792,44 @@ public class MallOrderService {
         if (order == null) {
             return;
         }
+        String remark;
+        if (approved && order.getDeliveryType() != null && order.getDeliveryType() == MallDeliveryType.EXPRESS) {
+            remark = "我们会尽快寄出，发货后可在小程序「我的兑换」查看快递单号。";
+        } else if (approved) {
+            String siteName = StringUtils.hasText(order.getPickupSiteName())
+                    ? order.getPickupSiteName() : mallProperties.getPickupSite().getName();
+            remark = StringUtils.hasText(siteName)
+                    ? "请凭取货码到" + siteName + "领取。"
+                    : "请在小程序「我的兑换」查看取货码。";
+        } else {
+            remark = "原因：" + (reason == null ? "" : reason) + "。" + returnedText(order);
+        }
+        notifyResult(order, approved ? "通过" : "未通过", remark);
+    }
+
+    /** 退单时退回了哪些东西（短信里说清楚，免得他以为积分 / 卷 / 钱没了）。 */
+    private static String returnedText(MallOrder order) {
+        List<String> returned = new ArrayList<>();
+        if (order.getPoints() != null && order.getPoints() > 0) {
+            returned.add("积分");
+        }
+        if (order.getCouponGrantId() != null) {
+            returned.add("卷");
+        }
+        if (isPaidCashOrder(order)) {
+            returned.add("所付款项（原路退回）");
+        }
+        return returned.isEmpty() ? "" : "所用" + String.join("与", returned) + "已退回。";
+    }
+
+    /** 兑换结果短信。<b>必须在事务里调</b>（挂 afterCommit），失败只记日志。 */
+    private void notifyResult(MallOrder order, String result, String remark) {
         try {
             String goods = order.getGoodsName() + "（" + order.getSpecName() + "）";
-            String remark;
-            if (approved && order.getDeliveryType() != null && order.getDeliveryType() == MallDeliveryType.EXPRESS) {
-                remark = "我们会尽快寄出，发货后可在小程序「我的兑换」查看快递单号。";
-            } else if (approved) {
-                String siteName = mallProperties.getPickupSite().getName();
-                remark = StringUtils.hasText(siteName)
-                        ? "请凭取货码到" + siteName + "领取。"
-                        : "请在小程序「我的兑换」查看取货码。";
-            } else {
-                List<String> returned = new ArrayList<>();
-                if (order.getPoints() != null && order.getPoints() > 0) {
-                    returned.add("积分");
-                }
-                if (order.getCouponGrantId() != null) {
-                    returned.add("卷");
-                }
-                if (isPaidCashOrder(order)) {
-                    returned.add("所付款项（原路退回）");
-                }
-                remark = "原因：" + (reason == null ? "" : reason) + "。"
-                        + (returned.isEmpty() ? "" : "所用" + String.join("与", returned) + "已退回。");
-            }
             smsNotifyService.notifyVolunteer(order.getVolunteerId(), SmsNotifyTemplate.POINTS_ORDER_REVIEW,
-                    SmsNotifyTemplate.POINTS_ORDER_REVIEW.params(goods, approved ? "通过" : "未通过", remark));
+                    SmsNotifyTemplate.POINTS_ORDER_REVIEW.params(goods, result, remark));
         } catch (Exception ex) {
-            log.error("[SMS-NOTIFY] 兑换审核通知失败 orderId={}", order.getId(), ex);
+            log.error("[SMS-NOTIFY] 兑换结果通知失败 orderId={}", order.getId(), ex);
         }
     }
 
@@ -855,6 +1007,10 @@ public class MallOrderService {
                     .set(MallOrder::getPaidTime, now)
                     .set(MallOrder::getUpdateTime, now));
             if (rows == 1) {
+                // 付款即成功（协会答复五 乙-5）：同一个独立事务里推进到待领取 / 待发货
+                if (!mallProperties.isOrderReview()) {
+                    markReady(orderId, null);
+                }
                 return true;
             }
             MallOrder order = orderMapper.selectById(orderId);
@@ -1061,6 +1217,14 @@ public class MallOrderService {
         }
         MallOrderVO vo = toVO(order, false, true);
         markReviewed(List.of(vo));
+        // 虚拟商品（协会 2026-10-16 丙-3）：兑换成功后，兑换二维码在本人的兑换详情里（不在公开的商品页上）
+        MallGoods goods = goodsMapper.selectById(order.getGoodsId());
+        boolean virtual = goods != null && goods.getVirtualGoods() != null && goods.getVirtualGoods() == 1;
+        vo.setVirtualGoods(virtual);
+        if (virtual && order.getStatus() != null
+                && (order.getStatus() == MallOrderStatus.READY || order.getStatus() == MallOrderStatus.PICKED)) {
+            vo.setRedeemQrUrl(goods.getRedeemQrUrl());
+        }
         return vo;
     }
 

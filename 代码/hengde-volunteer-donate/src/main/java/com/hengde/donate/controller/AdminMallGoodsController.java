@@ -10,12 +10,15 @@ import com.hengde.donate.constant.PermissionCode;
 import com.hengde.donate.dto.GoodsDisplayDTO;
 import com.hengde.donate.dto.ExchangeRuleSaveDTO;
 import com.hengde.donate.dto.MallGoodsSaveDTO;
+import com.hengde.donate.dto.MallPickupPointDTO;
 import com.hengde.donate.dto.RejectReasonDTO;
 import com.hengde.donate.service.MallExchangeRuleService;
 import com.hengde.donate.service.MallGoodsService;
+import com.hengde.donate.service.MallPickupPointService;
 import com.hengde.donate.service.MallReviewService;
 import com.hengde.donate.vo.ExchangeRuleVO;
 import com.hengde.donate.vo.MallGoodsVO;
+import com.hengde.donate.vo.MallPickupPointVO;
 import com.hengde.donate.vo.MallReviewVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -49,6 +52,12 @@ public class AdminMallGoodsController {
     private MallGoodsService goodsService;
     private MallReviewService reviewService;
     private MallExchangeRuleService exchangeRuleService;
+    private MallPickupPointService pickupPointService;
+
+    @Autowired
+    public void setPickupPointService(MallPickupPointService pickupPointService) {
+        this.pickupPointService = pickupPointService;
+    }
 
     @Autowired
     public void setExchangeRuleService(MallExchangeRuleService exchangeRuleService) {
@@ -182,6 +191,39 @@ public class AdminMallGoodsController {
     @DeleteMapping("/reviews/{id}")
     public Result<Void> delistReview(@PathVariable Long id) {
         reviewService.delist(id);
+        return Result.ok();
+    }
+
+    // ---------------- 自提点（V94，协会答复五 丙-3）：与商品同一个权限点 ----------------
+
+    @Operation(summary = "自提点列表（含已停用的）")
+    @SaCheckPermission(value = {PermissionCode.DONATE_GOODS, PermissionCode.DONATE_GOODS_AUDIT},
+            mode = SaMode.OR, type = "admin")
+    @GetMapping("/pickup-points")
+    public Result<java.util.List<MallPickupPointVO>> pickupPoints() {
+        return Result.ok(pickupPointService.listAll());
+    }
+
+    @Operation(summary = "新增自提点")
+    @SaCheckPermission(value = PermissionCode.DONATE_GOODS, type = "admin")
+    @PostMapping("/pickup-points")
+    public Result<Long> createPickupPoint(@Valid @RequestBody MallPickupPointDTO dto) {
+        return Result.ok(pickupPointService.create(dto));
+    }
+
+    @Operation(summary = "修改自提点（全量；停用后不能再被选，已兑换的单有快照不受影响）")
+    @SaCheckPermission(value = PermissionCode.DONATE_GOODS, type = "admin")
+    @PutMapping("/pickup-points/{id}")
+    public Result<Void> updatePickupPoint(@PathVariable Long id, @Valid @RequestBody MallPickupPointDTO dto) {
+        pickupPointService.update(id, dto);
+        return Result.ok();
+    }
+
+    @Operation(summary = "删除自提点（逻辑删除；商品上残留的引用在展示与兑换时自动滤掉）")
+    @SaCheckPermission(value = PermissionCode.DONATE_GOODS, type = "admin")
+    @DeleteMapping("/pickup-points/{id}")
+    public Result<Void> deletePickupPoint(@PathVariable Long id) {
+        pickupPointService.delete(id);
         return Result.ok();
     }
 }

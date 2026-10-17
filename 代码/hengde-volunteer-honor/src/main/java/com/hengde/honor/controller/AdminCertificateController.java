@@ -1,5 +1,7 @@
 package com.hengde.honor.controller;
 
+import com.hengde.donate.constant.DonateCertRefs;
+import com.hengde.common.exception.BusinessException;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.hengde.auth.config.StpAdminUtil;
 import com.hengde.common.page.PageQuery;
@@ -124,6 +126,18 @@ public class AdminCertificateController {
     @PostMapping("/certificates/pairs/{pairRecordId}")
     public Result<Long> reissueDonation(@PathVariable Long pairRecordId) {
         return Result.ok(certificateService.createForDonation(pairRecordId));
+    }
+
+    @Operation(summary = "补发某次捐赠的捐赠证书（幂等）——出证事件丢失时的人工救济。kind：pair 结对登记 / wish 微心愿认领 / "
+            + "book 捐书运单 / crowdfund-goods 众筹捐物运单 / crowdfund-money 众筹捐款记录；不够格（未成立 / 未实现 / 没有合格物资 / 未到账）报错")
+    @SaCheckPermission(value = PermissionCode.HONOR_CERTIFICATE, type = "admin")
+    @PostMapping("/certificates/donations/{kind}/{id}")
+    public Result<Long> reissueDonationOf(@PathVariable String kind, @PathVariable Long id) {
+        String ref = DonateCertRefs.of(kind, id);
+        if (ref == null) {
+            throw new BusinessException("kind 只能是 pair / wish / book / crowdfund-goods / crowdfund-money");
+        }
+        return Result.ok(certificateService.createForDonationRef(ref));
     }
 
     @Operation(summary = "后台查看（同样只返回短期签名 URL；不计下载次数）")

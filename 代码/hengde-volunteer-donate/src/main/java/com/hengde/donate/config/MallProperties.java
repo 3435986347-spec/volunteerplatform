@@ -16,6 +16,14 @@ public class MallProperties {
 
     /** 自提点。 */
     private PickupSite pickupSite = new PickupSite();
+    /**
+     * 兑换单要不要后台审核。<b>默认不要</b>（协会答复五 乙-5，2026-10-16：「纯积分兑换的用户点击兑换之后则进入成功状态，
+     * 取消需要协会操作」）——纯积分的单下单即成功、有现金的单付款即成功，直接进入待领取 / 待发货；
+     * 志愿者不能再取消成功的单，由协会在后台取消（退分、还库存、还卷、原路退款）。
+     *
+     * <p>打开它回到改造前的流程（待审核 → 后台通过 / 驳回）。改造前已经落库的待审核单不论开关都还能审。</p>
+     */
+    private boolean orderReview = false;
 
     /** 快递寄送（商城快递批）。 */
     private Express express = new Express();

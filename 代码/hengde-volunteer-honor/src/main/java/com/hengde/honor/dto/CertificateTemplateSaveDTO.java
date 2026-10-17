@@ -20,6 +20,13 @@ public class CertificateTemplateSaveDTO {
      */
     private Long activityId;
 
+    /**
+     * 样本种类：{@code activity}（默认，志愿活动证书）/ {@code donation}（捐赠证书，所有捐赠共用一张）。
+     *
+     * <p>协会 2026-10-16（答复五 甲-5）：盖章样本有志愿活动、捐赠两种。选 {@code donation} 时不能再带 {@code activityId}。</p>
+     */
+    private String kind;
+
     @NotBlank(message = "样本名称不能为空")
     @Size(max = 128, message = "样本名称不超过 128 字")
     private String name;

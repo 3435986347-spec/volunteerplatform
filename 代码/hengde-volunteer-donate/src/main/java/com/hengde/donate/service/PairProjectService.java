@@ -3,17 +3,22 @@ package com.hengde.donate.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.hengde.common.crypto.CryptoUtil;
 import com.hengde.common.exception.BusinessException;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
 import com.hengde.donate.constant.PairFlow;
+import com.hengde.donate.constant.WishFlow;
 import com.hengde.donate.dao.DonatePairMappers.DonatePairLetterMapper;
 import com.hengde.donate.dao.DonatePairMappers.DonatePairProjectMapper;
 import com.hengde.donate.dao.DonatePairMappers.DonatePairRecordMapper;
+import com.hengde.donate.dao.DonatePairMappers.DonatePairUpdateMapper;
 import com.hengde.donate.dto.PairDTOs;
 import com.hengde.donate.entity.DonatePairLetter;
 import com.hengde.donate.entity.DonatePairProject;
 import com.hengde.donate.entity.DonatePairRecord;
+import com.hengde.donate.entity.DonatePairUpdate;
+import com.hengde.donate.entity.DonateRecipientOrg;
 import com.hengde.donate.vo.PairVOs;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -67,6 +72,25 @@ public class PairProjectService {
         this.letterMapper = letterMapper;
     }
 
+    private DonatePairUpdateMapper updateMapper;
+    private CryptoUtil cryptoUtil;
+    private DonateMasterDataService masterDataService;
+
+    @Autowired
+    public void setUpdateMapper(DonatePairUpdateMapper updateMapper) {
+        this.updateMapper = updateMapper;
+    }
+
+    @Autowired
+    public void setCryptoUtil(CryptoUtil cryptoUtil) {
+        this.cryptoUtil = cryptoUtil;
+    }
+
+    @Autowired
+    public void setMasterDataService(DonateMasterDataService masterDataService) {
+        this.masterDataService = masterDataService;
+    }
+
     // ================= 管理端：项目 =================
 
     /** 新建项目（落草稿，志愿者端不可见）。 */
@@ -74,6 +98,7 @@ public class PairProjectService {
         requireAdmin(adminId);
         DonatePairProject p = new DonatePairProject();
         apply(p, dto);
+        applyBeneficiary(p, dto, null);
         p.setStatus(PairFlow.PROJECT_DRAFT);
         p.setPledgedAmount(BigDecimal.ZERO);
         p.setCreateBy(adminId);
@@ -90,6 +115,7 @@ public class PairProjectService {
     public void update(Long id, PairDTOs.ProjectSave dto) {
         DonatePairProject p = new DonatePairProject();
         apply(p, dto);
+        applyBeneficiary(p, dto, require(id));
         int rows = projectMapper.update(null, Wrappers.<DonatePairProject>lambdaUpdate()
                 .eq(DonatePairProject::getId, id)
                 .in(DonatePairProject::getStatus, PairFlow.PROJECT_DRAFT, PairFlow.PROJECT_OPEN,
@@ -99,6 +125,14 @@ public class PairProjectService {
                 .set(DonatePairProject::getCoverUrl, p.getCoverUrl())
                 .set(DonatePairProject::getDetail, p.getDetail())
                 .set(DonatePairProject::getTargetAmount, p.getTargetAmount())
+                // 受助人信息显式 set：不填即清空（updateById 跳 null，清不掉）
+                .set(DonatePairProject::getBeneficiaryName, p.getBeneficiaryName())
+                .set(DonatePairProject::getBeneficiaryGender, p.getBeneficiaryGender())
+                .set(DonatePairProject::getBeneficiaryAge, p.getBeneficiaryAge())
+                .set(DonatePairProject::getBeneficiarySchool, p.getBeneficiarySchool())
+                .set(DonatePairProject::getBeneficiaryGrade, p.getBeneficiaryGrade())
+                .set(DonatePairProject::getReportOrgId, p.getReportOrgId())
+                .set(DonatePairProject::getReportOrgName, p.getReportOrgName())
                 .set(DonatePairProject::getUpdateTime, LocalDateTime.now()));
         if (rows != 1) {
             throw new BusinessException("已结束的项目不能再修改（当前：" + PairFlow.projectLabel(require(id).getStatus()) + "）");
@@ -152,13 +186,19 @@ public class PairProjectService {
                         .like(StringUtils.hasText(keyword), DonatePairProject::getTitle,
                                 keyword == null ? null : keyword.trim())
                         .orderByDesc(DonatePairProject::getId));
-        return toPage(page, null, false);
+        // 先留下实体：toPage 里的 IPage.convert 会把 page 的 records 原地换成 VO
+        Map<Long, DonatePairProject> byId = page.getRecords().stream()
+                .collect(Collectors.toMap(DonatePairProject::getId, x -> x));
+        PageResult<PairVOs.Project> result = toPage(page, null, false);
+        result.getRecords().forEach(vo -> fillBeneficiary(vo, byId.get(vo.getId()), true, true));
+        return result;
     }
 
     public PairVOs.Project detailForAdmin(Long id) {
         DonatePairProject p = require(id);
         PairVOs.Project vo = toVO(p, participantCounts(List.of(p.getId())).get(p.getId()));
         vo.setDetail(p.getDetail());
+        fillBeneficiary(vo, p, true, true);
         return vo;
     }
 
@@ -184,7 +224,13 @@ public class PairProjectService {
             }
         }
         IPage<DonatePairProject> page = projectMapper.selectPage(query.toPage(), q.orderByDesc(DonatePairProject::getId));
-        return toPage(page, volunteerId, true);
+        // 先留下实体：toPage 里的 IPage.convert 会把 page 的 records 原地换成 VO
+        Map<Long, DonatePairProject> byId = page.getRecords().stream()
+                .collect(Collectors.toMap(DonatePairProject::getId, x -> x));
+        PageResult<PairVOs.Project> result = toPage(page, volunteerId, true);
+        // 列表一律打 *：全名只在详情里、只给已成立结对的人
+        result.getRecords().forEach(vo -> fillBeneficiary(vo, byId.get(vo.getId()), false, false));
+        return result;
     }
 
     /** 项目详情（含我的登记与「此刻能不能登记」）。草稿对志愿者等于不存在。 */
@@ -196,7 +242,63 @@ public class PairProjectService {
         PairVOs.Project vo = toVO(p, participantCounts(List.of(p.getId())).get(p.getId()));
         vo.setDetail(p.getDetail());
         attachMyPair(List.of(vo), volunteerId);
+        boolean paired = vo.getMyPair() != null && Objects.equals(vo.getMyPair().getStatus(), PairFlow.PAIR_ESTABLISHED);
+        fillBeneficiary(vo, p, paired, false);
         return vo;
+    }
+
+    // ================= 活动动态（发放凭证，V98） =================
+
+    /** 录入一条活动动态（协会 2026-10-16 丙-2：原型 P48 / P102 的发放凭证一栏）。 */
+    public Long addUpdate(Long projectId, PairDTOs.UpdateSave dto, Long adminId) {
+        requireAdmin(adminId);
+        require(projectId);
+        if (dto == null || !StringUtils.hasText(dto.getContent())) {
+            throw new BusinessException("请填写动态内容");
+        }
+        DonatePairUpdate u = new DonatePairUpdate();
+        u.setProjectId(projectId);
+        u.setContent(dto.getContent().trim());
+        u.setImageUrls(joinImages(dto.getImages()));
+        u.setHappenTime(dto.getHappenTime() == null ? LocalDateTime.now() : dto.getHappenTime());
+        u.setCreateBy(adminId);
+        updateMapper.insert(u);
+        return u.getId();
+    }
+
+    /** 删除动态（逻辑删除）。 */
+    public void deleteUpdate(Long updateId) {
+        if (updateMapper.deleteById(updateId) != 1) {
+            throw new BusinessException("动态不存在");
+        }
+    }
+
+    /** 志愿者看活动动态：一律公开，草稿项目等于不存在。 */
+    public PageResult<PairVOs.PairUpdate> updatesForVolunteer(Long projectId, PageQuery query) {
+        DonatePairProject p = projectId == null ? null : projectMapper.selectById(projectId);
+        if (p == null || Objects.equals(p.getStatus(), PairFlow.PROJECT_DRAFT)) {
+            throw new BusinessException("项目不存在");
+        }
+        return updatesFor(projectId, query);
+    }
+
+    public PageResult<PairVOs.PairUpdate> updatesFor(Long projectId, PageQuery query) {
+        IPage<DonatePairUpdate> page = updateMapper.selectPage(query.toPage(), Wrappers.<DonatePairUpdate>lambdaQuery()
+                .eq(DonatePairUpdate::getProjectId, projectId)
+                .orderByDesc(DonatePairUpdate::getHappenTime)
+                .orderByDesc(DonatePairUpdate::getId));
+        return PageResult.of(page.convert(u -> {
+            PairVOs.PairUpdate vo = new PairVOs.PairUpdate();
+            vo.setId(u.getId());
+            vo.setProjectId(u.getProjectId());
+            vo.setContent(u.getContent());
+            if (StringUtils.hasText(u.getImageUrls())) {
+                vo.setImages(new ArrayList<>(Arrays.asList(u.getImageUrls().split("\n"))));
+            }
+            vo.setHappenTime(u.getHappenTime());
+            vo.setCreateTime(u.getCreateTime());
+            return vo;
+        }));
     }
 
     // ================= 受助方来信 =================
@@ -356,6 +458,68 @@ public class PairProjectService {
         p.setCoverUrl(trimToNull(dto.getCoverUrl()));
         p.setDetail(trimToNull(dto.getDetail()));
         p.setTargetAmount(dto.getTargetAmount());
+    }
+
+    /**
+     * 受助人基本情况（V97）：姓名、学校加密落库；上报单位取受赠单位主数据并快照名称（与微心愿同一处理）。
+     *
+     * @param existing 修改时的原项目（上报单位没换就沿用原快照，主数据里改了名也不追溯）；新建为 null
+     */
+    private void applyBeneficiary(DonatePairProject p, PairDTOs.ProjectSave dto, DonatePairProject existing) {
+        Integer gender = dto.getBeneficiaryGender();
+        if (gender != null && gender != 1 && gender != 2) {
+            throw new BusinessException("受助人性别只能是 1男 / 2女");
+        }
+        Integer age = dto.getBeneficiaryAge();
+        if (age != null && (age < 0 || age > 120)) {
+            throw new BusinessException("受助人年龄不正确");
+        }
+        String name = trimToNull(dto.getBeneficiaryName());
+        String school = trimToNull(dto.getBeneficiarySchool());
+        p.setBeneficiaryName(name == null ? null : cryptoUtil.encrypt(name));
+        p.setBeneficiarySchool(school == null ? null : cryptoUtil.encrypt(school));
+        p.setBeneficiaryGender(gender);
+        p.setBeneficiaryAge(age);
+        p.setBeneficiaryGrade(trimToNull(dto.getBeneficiaryGrade()));
+        if (dto.getReportOrgId() == null) {
+            p.setReportOrgId(null);
+            p.setReportOrgName(null);
+        } else if (existing != null && dto.getReportOrgId().equals(existing.getReportOrgId())) {
+            p.setReportOrgId(existing.getReportOrgId());
+            p.setReportOrgName(existing.getReportOrgName());
+        } else {
+            DonateRecipientOrg org = masterDataService.requireEnabledOrg(dto.getReportOrgId());
+            p.setReportOrgId(org.getId());
+            p.setReportOrgName(org.getName());
+        }
+    }
+
+    /**
+     * 受助人信息下发：{@code full} 时给全文，否则姓名留首字、学校留前两个字（与微心愿同一套打码，丙-2「与微心愿同样处理」）。
+     *
+     * <p>谁算 full：后台；志愿者端只有<b>这个项目上已成立结对</b>的那位（待确认的登记还没被协会认可，可能被驳回）。
+     * 判定在服务端——前端不显示代替不了服务端不下发。</p>
+     */
+    private void fillBeneficiary(PairVOs.Project vo, DonatePairProject p, boolean full, boolean forAdmin) {
+        if (vo == null || p == null) {
+            return;
+        }
+        String name = decrypt(p.getBeneficiaryName());
+        String school = decrypt(p.getBeneficiarySchool());
+        vo.setBeneficiaryName(full ? name : WishFlow.maskName(name));
+        vo.setBeneficiarySchool(full ? school : WishFlow.maskSchool(school));
+        vo.setBeneficiaryMasked(!full && (name != null || school != null));
+        vo.setBeneficiaryGender(p.getBeneficiaryGender());
+        vo.setBeneficiaryAge(p.getBeneficiaryAge());
+        vo.setBeneficiaryGrade(p.getBeneficiaryGrade());
+        vo.setReportOrgName(p.getReportOrgName());
+        if (forAdmin) {
+            vo.setReportOrgId(p.getReportOrgId());
+        }
+    }
+
+    private String decrypt(String cipher) {
+        return StringUtils.hasText(cipher) ? cryptoUtil.decrypt(cipher) : null;
     }
 
     private PageResult<PairVOs.Project> toPage(IPage<DonatePairProject> page, Long volunteerId, boolean withMyPair) {

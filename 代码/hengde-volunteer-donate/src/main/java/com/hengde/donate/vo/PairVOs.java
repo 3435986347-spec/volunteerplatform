@@ -29,6 +29,19 @@ public final class PairVOs {
         private String coverUrl;
         @Schema(description = "详情（仅详情接口返回）")
         private String detail;
+
+        @Schema(description = "受助人姓名（志愿者端除已成立结对的人外打 *）")
+        private String beneficiaryName;
+        private Integer beneficiaryGender;
+        private Integer beneficiaryAge;
+        @Schema(description = "受助人学校（志愿者端除已成立结对的人外只留前两个字）")
+        private String beneficiarySchool;
+        private String beneficiaryGrade;
+        @Schema(description = "上报单位 id（仅管理端，编辑回填用）")
+        private Long reportOrgId;
+        private String reportOrgName;
+        @Schema(description = "受助人信息是不是打了 *")
+        private Boolean beneficiaryMasked;
         @Schema(description = "受助金额（目标）")
         private BigDecimal targetAmount;
         @Schema(description = "已认捐金额——**登记额，不是已到账金额**")
@@ -103,6 +116,18 @@ public final class PairVOs {
         private boolean forMe;
         @Schema(description = "收信的结对登记 id（仅管理端）")
         private Long pairRecordId;
+        private LocalDateTime createTime;
+    }
+
+    /** 结对项目的活动动态（发放凭证，V98）。 */
+    @Data
+    @Schema(description = "结对项目活动动态")
+    public static class PairUpdate {
+        private Long id;
+        private Long projectId;
+        private String content;
+        private List<String> images = new ArrayList<>();
+        private LocalDateTime happenTime;
         private LocalDateTime createTime;
     }
 

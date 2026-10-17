@@ -1,5 +1,7 @@
 package com.hengde.auth;
 
+import cn.dev33.satoken.context.mock.SaTokenContextMockUtil;
+import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.hengde.auth.dao.VolunteerMapper;
 import com.hengde.auth.entity.Volunteer;
@@ -8,6 +10,7 @@ import com.hengde.auth.constant.SanctionScope;
 import com.hengde.auth.service.SanctionService;
 import com.hengde.auth.service.VolunteerDeactivationService;
 import com.hengde.auth.service.VolunteerQueryService;
+import com.hengde.auth.vo.LoginVO;
 import com.hengde.common.constant.UserStatus;
 import com.hengde.common.crypto.CryptoUtil;
 import com.hengde.common.exception.BusinessException;
@@ -134,6 +137,54 @@ class VolunteerDeactivationTest {
         assertNotNull(fresh, "号释放出来后同号可以重新建号");
         assertNotEquals(v.getId(), fresh.getId());
         assertNull(fresh.getRegisterTime(), "新账号是游客，要重新实名（身份证那一关挡着）");
+    }
+
+    /**
+     * 协会答复五 乙-4（2026-10-16）：「7天冷静期即退出账号登录。再次登录时显示注销冷静期中。如登录则自动打断注销流程，账号恢复正常」。
+     *
+     * <p>申请即踢下线；冷静期里任何一种登录都撤销注销，登录结果带 {@code deactivationCancelled=true} 让小程序提示他；
+     * 找回密码不是登录，不打断。</p>
+     */
+    @Test
+    void requestLogsOut_andLoggingBackInDuringCoolingOffCancelsIt() {
+        String phone = phone();
+        Volunteer v = registered(phone);
+        SaTokenContextMockUtil.setMockContext(() -> {
+            StpUtil.login(v.getId());
+            String token = StpUtil.getTokenValue();
+            authService.sendSmsCode(phone, SmsScene.ACCOUNT_DEACTIVATE, null);
+            deactivationService.request(v.getId(), code(SmsScene.ACCOUNT_DEACTIVATE, phone));
+            assertNull(StpUtil.getLoginIdByToken(token), "申请即退出登录（所有设备）");
+            assertTrue(deactivationService.status(v.getId()).pending());
+
+            authService.sendSmsCode(phone, SmsScene.VOLUNTEER_PASSWORD_RESET, null);
+            authService.resetPasswordBySms(phone, code(SmsScene.VOLUNTEER_PASSWORD_RESET, phone), "pass12345");
+            assertTrue(deactivationService.status(v.getId()).pending(), "找回密码不是登录，不打断注销");
+
+            authService.sendSmsCode(phone, SmsScene.LOGIN, null);
+            LoginVO login = authService.smsLogin(phone, code(SmsScene.LOGIN, phone), null);
+            assertTrue(login.isDeactivationCancelled(), "登录结果告诉小程序：这次登录撤销了注销");
+            assertFalse(deactivationService.status(v.getId()).pending(), "账号恢复正常");
+            assertEquals(UserStatus.NORMAL, reload(v.getId()).getStatus());
+
+            LoginVO again = authService.passwordLogin(phone, "pass12345", null);
+            assertFalse(again.isDeactivationCancelled(), "已经撤销过，再登录没什么可撤");
+        });
+    }
+
+    /** 冷静期已过再登录：不是撤销，而是当场落定、报「账号已注销」。 */
+    @Test
+    void loginAfterCoolingOff_finalizesInsteadOfCancelling() {
+        String phone = phone();
+        Volunteer v = registered(phone);
+        makeDue(v.getId());
+        SaTokenContextMockUtil.setMockContext(() -> {
+            authService.sendSmsCode(phone, SmsScene.LOGIN, null);
+            String code = code(SmsScene.LOGIN, phone);
+            LoginVO stranger = authService.smsLogin(phone, code, null);
+            assertFalse(stranger.isDeactivationCancelled(), "到期的号已释放，这次登录建的是一个新游客");
+        });
+        assertEquals(UserStatus.DELETED, reload(v.getId()).getStatus());
     }
 
     @Test

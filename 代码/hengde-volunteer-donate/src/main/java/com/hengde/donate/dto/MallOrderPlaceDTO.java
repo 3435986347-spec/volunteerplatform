@@ -39,6 +39,10 @@ public class MallOrderPlaceDTO {
     @Schema(description = "领取方式 1自提（默认）/2快递")
     private Integer deliveryType;
 
+    /** 自提且商品给了可选自提点时必填（V95，协会答复五 丙-3）。 */
+    @Schema(description = "自提点 id（自提且商品列出了自提点时必填）")
+    private Long pickupPointId;
+
     /** 快递时必填：1 现金支付快递费 / 2 积分抵扣。 */
     @Schema(description = "快递费支付方式 1现金/2积分抵扣（快递时必填）")
     private Integer shippingPayType;

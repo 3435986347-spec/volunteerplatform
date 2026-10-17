@@ -27,13 +27,16 @@ public class HonorCertificateTemplate extends BaseEntity {
     public static final String SCOPE_ACTIVITY_PREFIX = "activity:";
 
     /**
-     * 捐赠证书的作用域键（V3 结对批）。
+     * 捐赠证书的作用域键：<b>所有捐赠证书共用一张</b>（结对 / 微心愿 / 公益捐书 / 众筹）。
      *
-     * <p>协会现有的电子样本只有活动证书那一张（《协会待确认清单-v3》⑨ 未答）。
-     * 出捐赠证书时<b>先找这个作用域、找不到退回 {@link #SCOPE_GLOBAL}</b>：
-     * 协会日后给了专用样本，配一条这个键即可生效，代码不用动。</p>
+     * <p>协会 2026-10-16（答复五 甲-5）：盖章的样本有两种——志愿活动、捐赠。所以捐赠证书<b>只认这一张</b>，
+     * 找不到就拒绝出证，<b>不再退回 {@link #SCOPE_GLOBAL}</b>：全局默认是活动证书的样本，
+     * 拿它印捐赠证书等于在一张写着「志愿服务」的盖章纸上写「捐款 N 元」。后台新建样本时选「捐赠证书」即是这个键。</p>
      */
-    public static final String SCOPE_DONATION = "donate-pair";
+    public static final String SCOPE_DONATION = "donation";
+
+    /** 改造前结对批预留的捐赠样本键：没有入口能建出它，只为兼容手工插过这一行的库，查找时排在 {@link #SCOPE_DONATION} 之后。 */
+    public static final String SCOPE_DONATION_LEGACY = "donate-pair";
 
     /**
      * 作用域键：{@code activity:{活动id}} 或 {@code global}。

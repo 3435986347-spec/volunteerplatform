@@ -62,6 +62,36 @@ public class MallGoodsSaveDTO {
      *
      * <p>新增时至少一条；修改时传 null=不动规格，传列表=全量替换。</p>
      */
+    // ---- 领取方式（V95，协会答复五 丙-3）----
+
+    /**
+     * 可自提 / 可快递。<b>两个都不传＝不改领取方式</b>（新增时＝沿用全局行为），给旧客户端留的口子；
+     * 后台表单两个都传，且至少一个为 1。
+     */
+    @Schema(description = "可自提 1/0（与 allowExpress 一起传；都不传=不改领取方式）")
+    private Integer allowPickup;
+
+    @Schema(description = "可快递 1/0")
+    private Integer allowExpress;
+
+    @Schema(description = "可选自提点 id（自提时可选；不传或空=不限定，沿用配置里的唯一自提点）")
+    private List<Long> pickupPointIds;
+
+    @Schema(description = "快递费【分】（现金）；快递时与 expressPoints 至少给一个")
+    @jakarta.validation.constraints.Min(value = 0, message = "快递费不能为负")
+    private Integer expressFeeFen;
+
+    @Schema(description = "运费积分；快递时与 expressFeeFen 至少给一个")
+    @jakarta.validation.constraints.Min(value = 0, message = "运费积分不能为负")
+    private Integer expressPoints;
+
+    @Schema(description = "虚拟商品 1/0：只能自提，须上传兑换二维码")
+    private Integer virtualGoods;
+
+    @Schema(description = "虚拟商品的兑换二维码图片（先经上传接口拿到地址）")
+    @Size(max = 512, message = "图片 URL 过长")
+    private String redeemQrUrl;
+
     @Schema(description = "规格列表（库存的唯一存放处）")
     @Valid
     private List<MallGoodsSpecDTO> specs;

@@ -167,10 +167,23 @@ public class CertificateTemplateService {
      * 造出一堆永远匹配不上的作用域，而错误要到「生成证书时找不到样本」才暴露。</p>
      */
     private static String resolveScopeKey(CertificateTemplateSaveDTO dto) {
+        String kind = dto.getKind() == null || dto.getKind().isBlank() ? KIND_ACTIVITY : dto.getKind().trim();
+        if (KIND_DONATION.equals(kind)) {
+            if (dto.getActivityId() != null) {
+                throw new BusinessException("捐赠证书样本所有捐赠共用一张，不绑定活动");
+            }
+            return HonorCertificateTemplate.SCOPE_DONATION;
+        }
+        if (!KIND_ACTIVITY.equals(kind)) {
+            throw new BusinessException("样本种类只能是 activity（志愿活动）或 donation（捐赠）");
+        }
         return dto.getActivityId() == null
                 ? HonorCertificateTemplate.SCOPE_GLOBAL
                 : HonorCertificateTemplate.activityScope(dto.getActivityId());
     }
+
+    private static final String KIND_ACTIVITY = "activity";
+    private static final String KIND_DONATION = "donation";
 
     private static CertificateTemplateVO toVo(HonorCertificateTemplate t) {
         CertificateTemplateVO vo = new CertificateTemplateVO();
@@ -181,6 +194,8 @@ public class CertificateTemplateService {
         vo.setLayout(t.getLayout());
         vo.setEnabled(t.getEnabled());
         vo.setCreateTime(t.getCreateTime());
+        vo.setKind(HonorCertificateTemplate.SCOPE_DONATION.equals(t.getScopeKey())
+                || HonorCertificateTemplate.SCOPE_DONATION_LEGACY.equals(t.getScopeKey()) ? KIND_DONATION : KIND_ACTIVITY);
         String prefix = HonorCertificateTemplate.SCOPE_ACTIVITY_PREFIX;
         if (t.getScopeKey() != null && t.getScopeKey().startsWith(prefix)) {
             vo.setActivityId(Long.valueOf(t.getScopeKey().substring(prefix.length())));

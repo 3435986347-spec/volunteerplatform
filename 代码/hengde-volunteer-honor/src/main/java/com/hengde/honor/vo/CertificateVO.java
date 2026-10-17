@@ -38,7 +38,7 @@ public class CertificateVO {
     private LocalDateTime slotEndTime;
 
     /**
-     * 证书来源的一句话说明：捐赠证书＝结对项目名。
+     * 证书来源的一句话说明：捐赠证书＝项目 / 心愿 / 捐书活动的名称。
      *
      * <p>活动证书为空——它有 {@code activityTitle} / {@code slotProjectName}。
      * 不复用 {@code activityTitle} 装项目名：前端按字段名理解含义，
@@ -46,8 +46,17 @@ public class CertificateVO {
      */
     private String sourceTitle;
 
-    /** 业务来源键（捐赠证书＝{@code pair:{结对登记id}}；活动证书为空） */
+    /**
+     * 业务来源键（活动证书为空）：{@code pair:结对登记id} / {@code wish:认领id} / {@code book:运单id} /
+     * {@code cf-goods:运单id} / {@code cf-money:捐款id}。小程序可拿它对上自己那一条捐赠记录（如捐物记录上的「证书」按钮）。
+     */
     private String bizRef;
+
+    /** 分类（原型 P83「协会证书」页签）：activity 志愿活动 / pair 助学助困 / wish 微心愿 / book 公益捐书 / crowdfund 项目众筹 */
+    private String category;
+
+    /** 分类名称 */
+    private String categoryLabel;
 
     /** 来源 1系统生成/2后台批量上传/3i志愿导出上传 */
     private Integer source;

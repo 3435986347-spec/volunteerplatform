@@ -258,7 +258,68 @@
 
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | /a/data/donation-summary | **✅ 收尾批** · Row 79 数据汇总里属捐赠的三块：**微心愿**（发布总数 / 认领成功 / 其中已实现 / 参与人数 / 参与人次 / 收到包裹）、**结对**（发布总数 / 结对成功 / 参与人次 / 结对金额分认捐额与到账额两个数）、**捐书活动**（参加人数 / 收到包裹 / 收到课外书籍 / 学习用品 / 运动器材，与单个活动「本次活动数据」同口径；**修建书屋数恒为 null**——系统里没有这个概念）。口径收在 donate 的 `DonateStatsMapper`，data 只转发；与 `/a/data/dashboard` 分开是因为它含金额、而头部统计志愿者端也在用 | 需登录（管理端，与 `/a/data/dashboard` 同为纯聚合、不挂权限点） |
+| GET | /a/data/donation-summary | **✅ 收尾批** · Row 79 数据汇总里属捐赠的三块：**微心愿**（发布总数 / 认领成功 / 其中已实现 / 参与人数 / 参与人次 / 收到包裹）、**结对**（发布总数 / 结对成功 / 参与人次 / 结对金额分认捐额与到账额两个数）、**捐书活动**（参加人数 / 收到包裹 / 收到课外书籍 / 学习用品 / 运动器材，与单个活动「本次活动数据」同口径；**修建书屋数＝收到过捐书物资的受赠单位数**——协会 2026-10-16 答复五 乙-6：一所乡村小学一间书屋，此前给 null）。口径收在 donate 的 `DonateStatsMapper`，data 只转发；与 `/a/data/dashboard` 分开是因为它含金额、而头部统计志愿者端也在用 | 需登录（管理端，与 `/a/data/dashboard` 同为纯聚合、不挂权限点） |
+
+## 协会答复五（2026-10-16）落地 —— 新增端点与口径改动
+
+> 迁移 V94–V100。不新增权限点（仍为 99）。逐条对应《待协会答复-2026-09-27》回执五。
+
+**积分商城（乙-5 / 丙-3 / 丁-2 / 丁-3）**
+
+| Method | Path | 说明 | 鉴权 |
+|---|---|---|---|
+| GET | /a/donate/pickup-points | 自提点列表（含已停用的）。自提点由后台维护多个，每件商品各选几个（丙-3） | 需登录（donate:goods 或 donate:goods-audit） |
+| POST | /a/donate/pickup-points | 新增自提点 `{name, address, phone, openHours, enabled, sort}` | 需登录（donate:goods） |
+| PUT | /a/donate/pickup-points/{id} | 修改自提点（全量；停用后不能再被选，已兑换的单有快照） | 需登录（donate:goods） |
+| DELETE | /a/donate/pickup-points/{id} | 删除自提点（逻辑删除；商品上残留的引用在展示与兑换时自动滤掉） | 需登录（donate:goods） |
+| POST | /a/donate/orders/{id}/cancel | 协会取消已成功的兑换单 `{reason}`（待领取 / 待发货）：退分、还库存、还卷，付过现金的原路退款，短信告知（乙-5：成功的单只能由协会取消） | 需登录（donate:order-audit） |
+
+口径改动（端点不变）：
+- **兑换不再审核**（`hengde.donate.mall.order-review` 默认 false）：纯积分的单 `POST /v/donate/orders` 下单即「待领取 / 待发货」，有现金的付款即成功；志愿者只能取消「待支付」的单（`DELETE /v/donate/orders/{id}`），成功之后须联系协会。置 true 回到「待审核 → 通过 / 驳回」。
+- **商品保存**（`POST/PUT /a/donate/goods`）新增 `allowPickup` / `allowExpress`（每件商品自选，至少一种）、`pickupPointIds`（自提时必选，最多 20 个）、`expressFeeFen` / `expressPoints`（快递时设现金快递费或积分快递费）、`virtualGoods`（只能自提，须上传 `redeemQrUrl`，只收本系统上传）。两个开关都没设过的老商品沿用全局配置。
+- **规格**：`points` 可为 0——只填金额＝纯现金、只填积分＝纯积分、都填＝积分 + 现金（丁-2）；纯现金的单不能用卷（丁-3 一单一卷照旧）。
+- **下单** `POST /v/donate/orders` 自提时带 `pickupPointId`（商品可选的自提点之一，快照进单）；快递费按商品自己的设置。
+- **商品详情** `GET /v/donate/goods/{id}` 出 `allowPickup` / `allowExpress` / `pickupPoints` / `expressFeeFen` / `expressPoints` / `virtualGoods`；**`redeemQrUrl` 不在商品页下发**，只在本人兑换成功后的 `GET /v/donate/orders/{id}` 里给（`virtualGoods` / `redeemQrUrl`）。
+
+**捐赠证书（乙-1 / 乙-2 / 甲-5）**
+
+| Method | Path | 说明 | 鉴权 |
+|---|---|---|---|
+| GET | /v/honor/certificates/by-ref | 按来源键取本人的捐赠证书（`bizRef=wish:认领id` / `book:运单id` / `cf-goods:运单id` / `cf-money:捐款id` / `pair:结对登记id`）；还没有证书或不是本人的返回 null。捐物记录上的「证书」按钮、心愿详情的「查看证书」用它 | 需登录 |
+| POST | /a/honor/certificates/donations/{kind}/{id} | 补发某次捐赠的捐赠证书（幂等）——出证事件丢失时的人工救济。`kind`：pair / wish / book / crowdfund-goods / crowdfund-money；不够格的报错说明差在哪一步 | 需登录（honor:certificate） |
+
+口径改动：所有捐赠都有证书——结对在**结对成功**时出、正文写「结对成功」**不写金额**；微心愿在**已实现**时出；公益捐书、众筹捐物在**核对出合格物资**时出（一个包裹一张，件数只数合格的）；众筹捐款在**到账**时出、退款即撤销。`GET /v/honor/certificates` 加可选 `category`（activity / pair / wish / book / crowdfund，原型 P83 的页签），每行带 `category` / `categoryLabel` / `sourceTitle`。**捐赠证书只用「捐赠证书样本」**：后台新建样本 `POST /a/honor/certificate-templates` 带 `kind=donation`（不能再带 `activityId`），没有就拒绝出证、**不再退回活动证书的全局样本**。
+
+**结对项目（丙-2）**
+
+| Method | Path | 说明 | 鉴权 |
+|---|---|---|---|
+| GET | /v/donate/pair-projects/{id}/updates | 活动动态（协会的发放凭证，图文，一律公开；发生时间倒序；草稿项目等于不存在） | 需登录 |
+| GET | /a/donate/pair-projects/{id}/updates | 活动动态列表 | 需登录（donate:project） |
+| POST | /a/donate/pair-projects/{id}/updates | 录入活动动态 `{content, images(≤9), happenTime}` | 需登录（donate:project） |
+| DELETE | /a/donate/pair-updates/{id} | 删除活动动态 | 需登录（donate:project） |
+
+口径改动：项目保存新增受助人 `beneficiaryName` / `beneficiaryGender` / `beneficiaryAge` / `beneficiarySchool` / `beneficiaryGrade` / `reportOrgId`（全部可不填，不填即清空）。姓名、学校**密文**存储；志愿者端列表一律打 *（姓名留首字、学校留前两个字），详情里只有**这个项目上已成立结对的人**看全文（`beneficiaryMasked` 标出是否打码），后台看全文。
+
+**众筹（丙-1）**：每个项目只选一种——`acceptGoods=true` 时 `acceptMoney` 不传即不收钱、传 true 报错；只收物的项目可不填预计金额（存 0）。
+
+**捐款发票（丁-5）**
+
+| Method | Path | 说明 | 鉴权 |
+|---|---|---|---|
+| POST | /a/donate/donations/{id}/invoice-file | 上传发票文件（multipart `file`：PDF / JPG / PNG ≤10MB，可带 `invoiceNo`）：传上即「已开票」，再传是替换；只收已到账且提交时要了发票的。文件放私有存储 | 需登录（donate:project） |
+| GET | /a/donate/donations/{id}/invoice-file | 查看发票文件（短期签名地址） | 需登录（donate:project） |
+| GET | /v/donate/donations/{id}/invoice-file | 下载我的发票（短期签名地址，约 2 分钟；还没开出报「发票还没有开出」；不是本人的报「捐款记录不存在」） | 需登录 |
+
+口径改动：捐款出参加 `invoiceFileReady` / `completed`（已到账且不需要发票或发票已开出）/ `progressLabel`（待支付 / 已到账，待开票 / 已完结 / 已取消 / 已退款）。
+
+**微心愿查看人（丁-7）**
+
+| Method | Path | 说明 | 鉴权 |
+|---|---|---|---|
+| GET | /a/donate/wishes/{id}/viewers | 看过这个心愿详情的人与他们当时的手机号（一人一行，`viewCount` 累计；最近看的在前）。志愿者打开 `GET /v/donate/wishes/{id}` 时记录（看详情本就要已验手机号） | 需登录（donate:wish） |
+
+**快递查询（甲-3）**：协会只买了查询，「打开快递单号时显示物流」——后台定时轮询默认关闭（`KUAIDI100_POLL_ENABLED=false`），轨迹在有人打开时按刷新间隔去查。
 
 ## 权限点登记（V3 新增，实施时同步 `permission` 种子与 `OrganizationRbacTest` 总数断言）
 
