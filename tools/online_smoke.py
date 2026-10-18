@@ -6,7 +6,8 @@
 
 **只发 GET**（外加一个 HEAD），不带任何 token。检查六类：
 
-  1. 版本    `/actuator/info` 报出构建时间与迁移号；迁移号要等于本地代码里的最大号；不许带连接串与口令
+  1. 版本    `/actuator/info` 报出构建时间与迁移号；迁移号要等于本地代码里的最大号；不许带连接串与口令；
+             报了提交号（2026-10-18 起的包）时，打包时工作区要干净、给了 --expect-commit 就比对
   2. 探针    不存在的路径 404（旧包是 500）；志愿者证核验、文件分享免登录（未知令牌回业务错误，不是 401 / 5xx）；
              支付与快递100 回调路由没被登录拦截（GET 回 405，不是 401）
   3. 鉴权    代码里的**每一个** GET 端点匿名打一遍：`/v` `/a` `/e` 下除公开白名单外必须 401；白名单与其他公开路径不许 401
@@ -15,12 +16,13 @@
   6. 文档    `/api/doc.html` 应是 403（不是就提示：nginx 还没加屏蔽规则）
 
 端点清单从本地 `代码/` 的 Controller 解析（与 `tools/gen_knowledge_base.py` 同一套），所以**本地代码要与线上包是同一版**——
-脚本会把线上的构建时间打出来，与发版手册第 1.1 步的值对一下。公开白名单从 `SaTokenConfigure` 的 `notMatch` 里读。
+脚本会把线上的构建时间与提交号打出来，与发版手册第 1.1 步的值、本地 `代码/` 的 HEAD 对一下。公开白名单从 `SaTokenConfigure` 的 `notMatch` 里读。
 
 用法（文档仓库根）：
 
     python3 tools/online_smoke.py --base http://<服务器>/api
     python3 tools/online_smoke.py --base http://<服务器>/api --expect-build-time 2026-10-17T07:49:47.599Z --report smoke.md
+    python3 tools/online_smoke.py --base http://<服务器>/api --expect-commit "$(git -C 代码 rev-parse HEAD)"
 
 退出码：0 = 全部符合；1 = 有不符合的；2 = 用法 / 连不上。
 """
@@ -113,6 +115,7 @@ def main() -> int:
     ap.add_argument("--root", default=".", help="文档仓库根（读 代码/ 里的端点清单）")
     ap.add_argument("--delay", type=float, default=0.15, help="两次请求之间的间隔秒数（别压线上）")
     ap.add_argument("--expect-build-time", help="发版手册第 1.1 步打出来的 build.time，给了就逐字比对")
+    ap.add_argument("--expect-commit", help="打包所用的后端提交号（完整或前缀），给了就与 /actuator/info 的 git.commit.id.full 比对")
     ap.add_argument("--report", help="把逐条结果写成 markdown")
     ap.add_argument("--use-proxy", action="store_true", help="走环境变量里的 HTTP_PROXY（默认直连）")
     args = ap.parse_args()
@@ -145,6 +148,16 @@ def main() -> int:
     if args.expect_build_time:
         run.check("版本", "build.time = 发版手册", f"线上 {build_time} / 期望 {args.expect_build_time}",
                   build_time == args.expect_build_time)
+    # git 一节只有从带 .git 的目录打的包才有（api 的 pom 里 git-commit-id 插件，2026-10-18 起）
+    git = info.get("git") if isinstance(info.get("git"), dict) else {}
+    commit_id = (git.get("commit") or {}).get("id") if isinstance(git.get("commit"), dict) else None
+    commit = (commit_id.get("full") or "") if isinstance(commit_id, dict) else str(commit_id or "")
+    if git:
+        dirty = str(git.get("dirty", "")).lower()
+        run.check("版本", "打包时工作区干净", f"git.dirty {dirty}（true 说明包里有没提交的改动）", dirty == "false")
+    if args.expect_commit:
+        run.check("版本", "提交号 = 期望", f"线上 {commit[:12] or '没报（打包时没有 .git，或是加这一项之前的包）'}"
+                  f" / 期望 {args.expect_commit[:12]}", bool(commit) and commit.startswith(args.expect_commit))
     leaked = [s for s in SECRETS if s in info_text.lower()]
     run.check("版本", "/actuator/info 不带口令", "无" if not leaked else f"出现 {leaked}", not leaked)
 
@@ -212,7 +225,7 @@ def main() -> int:
     run.check("文档", "/api/doc.html", f"HTTP {s}（应 403）", s == 403)
 
     total, bad = len(run.rows), len(run.failures)
-    print(f"线上 {base}：build.time {build_time}，迁移 V{schema}；匿名扫了 {swept} 个 GET 端点")
+    print(f"线上 {base}：build.time {build_time}，提交 {commit[:12] or '没报'}，迁移 V{schema}；匿名扫了 {swept} 个 GET 端点")
     print("✓ 全部符合" if not bad else f"✗ {bad} 项不符合（共 {total} 项汇总检查）")
     if args.report:
         lines = [f"# 线上只读冒烟 · {time.strftime('%Y-%m-%d %H:%M')}", "", f"基址 `{base}`", "",
