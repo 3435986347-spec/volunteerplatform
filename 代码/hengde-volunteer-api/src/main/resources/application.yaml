@@ -30,13 +30,18 @@ server:
   servlet:
     context-path: /api
 
-# actuator：只开 health 与 info。info 报构建版本 / 构建时间（build-info）与数据库迁移版本号
-# （SchemaVersionInfoContributor），用来不登录、不看日志判断线上跑的是哪个包；不含环境变量与连接信息。
+# actuator：只开 health 与 info。info 报构建版本 / 构建时间（build-info）、打包所用的提交与工作区是否干净
+# （git.properties，api 的 pom 里只留了几项）与数据库迁移版本号（SchemaVersionInfoContributor），
+# 用来不登录、不看日志判断线上跑的是哪个包；不含环境变量与连接信息。
+# info.git.mode=full：simple 只给分支、短提交号与时间，不给 dirty。
 management:
   endpoints:
     web:
       exposure:
         include: health,info
+  info:
+    git:
+      mode: full
 
 mybatis-plus:
   mapper-locations: classpath*:mapper/**/*.xml

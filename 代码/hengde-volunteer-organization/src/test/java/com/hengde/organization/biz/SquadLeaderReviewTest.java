@@ -16,6 +16,7 @@ import com.hengde.organization.biz.entity.VolunteerSquad;
 import com.hengde.organization.biz.service.SquadService;
 import com.hengde.organization.biz.vo.SquadApplicationVO;
 import com.hengde.organization.biz.vo.SquadVO;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -27,13 +28,19 @@ import java.sql.Connection;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -260,6 +267,171 @@ class SquadLeaderReviewTest {
         assertEquals(1L, volunteerMapper.selectCount(Wrappers.<Volunteer>lambdaQuery().eq(Volunteer::getSquadId, squad)),
                 "分队没有超员");
         assertEquals(0, applicationMapper.selectById(app).getStatus(), "被挡下的申请仍是待审");
+    }
+
+    /**
+     * 后台正在撤换负责人 / 停用分队时，原负责人在途的<b>拒绝</b>不能抢在前面落库（小程序侧 2026-10-17 交付材料提的竞争窗口）。
+     *
+     * <p>同上，确定性构造：裸 JDBC 事务把分队行改成「负责人换人」或「停用」、还没提交；这时原负责人点拒绝必须<b>等着</b>，
+     * 对方提交之后它要看得见、报「只有分队负责人…」，申请仍是待审。拒绝若不锁分队行：负责人检查读的是快照、
+     * 申请行上又没有冲突，它会直接成功——审核人记成一个此刻已经不是负责人（或分队已停用）的人。</p>
+     */
+    @Test
+    void leaderRejectWaitsForAnInFlightLeaderChangeOrDisable_andThenIsRefused() throws Exception {
+        Long otherLeader = volunteer();
+        for (String change : List.of("leader_id = " + otherLeader, "leader_id = NULL", "status = 0")) {
+            Long leader = volunteer();
+            Long squad = squad(leader, 1);
+            Long app = application(squad, volunteer());
+
+            ExecutorService pool = Executors.newSingleThreadExecutor();
+            try (Connection c = dataSource.getConnection()) {
+                c.setAutoCommit(false);
+                try (var update = c.prepareStatement("UPDATE volunteer_squad SET " + change + " WHERE id = ?")) {
+                    update.setLong(1, squad);
+                    assertEquals(1, update.executeUpdate());
+                }
+                Future<Throwable> leaderRejects = pool.submit(() -> {
+                    try {
+                        squadService.rejectByLeader(leader, app, "名额已满");
+                        return null;
+                    } catch (Throwable t) {
+                        return t;
+                    }
+                });
+                assertThrows(TimeoutException.class,
+                        () -> leaderRejects.get(1, TimeUnit.SECONDS),
+                        change + "：撤换 / 停用还没提交时，原负责人的拒绝必须等着");
+                c.commit();
+
+                Throwable outcome = leaderRejects.get(15, TimeUnit.SECONDS);
+                assertTrue(outcome instanceof BusinessException, change + "：应被挡下：" + outcome);
+                assertEquals("只有分队负责人可以审核本分队的加入申请", outcome.getMessage());
+            } finally {
+                pool.shutdownNow();
+            }
+            SquadApplication row = applicationMapper.selectById(app);
+            assertEquals(0, row.getStatus(), change + "：被挡下的申请仍是待审");
+            assertNull(row.getAuditBy(), change + "：没有记下审核人");
+        }
+    }
+
+    /**
+     * 压测（{@code @Tag("stress")}）：负责人与部门乱序批准 / 拒绝，同时后台不停地换负责人、停用又启用分队。
+     *
+     * <p>断言：除业务拒绝外零异常（拒绝也锁分队行之后，死锁、锁超时都算失败）；每个分队不超员；
+     * 归属与「已通过」一一对应；报成功的负责人审核恰好就是落库的审核人；负责人拒绝的「成功」与「已不是负责人」两种结局都出现过。</p>
+     */
+    @Tag("stress")
+    @Test
+    void reviewChurnWithLeaderChangesAndDisables_keepsMembershipAndAuditSound() throws Exception {
+        int limit = 6;
+        List<Long> squads = new ArrayList<>();
+        List<Long> people = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            Long leader = volunteer();
+            people.add(leader);
+            squads.add(squad(leader, 1));
+            people.add(volunteer());
+        }
+        for (Long s : squads) {
+            jdbc.update("UPDATE volunteer_squad SET member_limit = ? WHERE id = ?", limit, s);
+        }
+        Random rnd = new Random(23L);
+        List<Long> apps = new ArrayList<>();
+        for (int i = 0; i < 80; i++) {
+            apps.add(application(squads.get(rnd.nextInt(squads.size())), volunteer()));
+        }
+        Map<String, AtomicInteger> outcomes = new ConcurrentHashMap<>();
+        Map<Long, Long> leaderWins = new ConcurrentHashMap<>();
+        List<String> failures = Collections.synchronizedList(new ArrayList<>());
+        List<Runnable> tasks = new ArrayList<>();
+        for (int i = 0; i < 1200; i++) {
+            int roll = rnd.nextInt(12);
+            Long app = apps.get(rnd.nextInt(apps.size()));
+            Long squad = squads.get(rnd.nextInt(squads.size()));
+            Long someone = people.get(rnd.nextInt(people.size()));
+            boolean actAsCurrentLeader = rnd.nextInt(3) > 0;
+            boolean clearLeader = rnd.nextInt(5) == 0;
+            tasks.add(() -> {
+                String kind = roll < 3 ? "负责人批准" : roll < 6 ? "负责人拒绝" : roll < 7 ? "部门批准" : roll < 8 ? "部门拒绝"
+                        : roll < 10 ? "换负责人" : roll < 11 ? "停用/启用" : "负责人看申请";
+                try {
+                    Long appSquad = applicationMapper.selectById(app).getSquadId();
+                    Long current = squadMapper.selectById(appSquad).getLeaderId();
+                    Long actor = actAsCurrentLeader && current != null ? current : someone;
+                    switch (kind) {
+                        case "负责人批准" -> {
+                            squadService.approveByLeader(actor, app);
+                            leaderWins.put(app, actor);
+                        }
+                        case "负责人拒绝" -> {
+                            squadService.rejectByLeader(actor, app, "压测拒绝");
+                            leaderWins.put(app, actor);
+                        }
+                        case "部门批准" -> squadService.approveApplication(app, ADMIN);
+                        case "部门拒绝" -> squadService.rejectApplication(app, "部门驳回", ADMIN);
+                        case "换负责人" -> {
+                            SquadDTO change = new SquadDTO();
+                            change.setLeaderId(clearLeader ? null : someone);
+                            squadService.update(squad, change);
+                        }
+                        case "停用/启用" -> {
+                            VolunteerSquad s = squadMapper.selectById(squad);
+                            SquadDTO toggle = new SquadDTO();
+                            toggle.setLeaderId(s.getLeaderId());
+                            toggle.setStatus(s.getStatus() == 1 ? 0 : 1);
+                            squadService.update(squad, toggle);
+                        }
+                        default -> squadService.applicationsForLeader(actor, appSquad, null, page());
+                    }
+                    outcomes.computeIfAbsent(kind + "·成功", k -> new AtomicInteger()).incrementAndGet();
+                } catch (BusinessException e) {
+                    outcomes.computeIfAbsent(kind + "·拒绝·" + e.getMessage(), k -> new AtomicInteger()).incrementAndGet();
+                } catch (Exception e) {
+                    failures.add(kind + " → " + e);
+                }
+            });
+        }
+        long t0 = System.currentTimeMillis();
+        ExecutorService pool = Executors.newFixedThreadPool(16);
+        List<Future<?>> futures = new ArrayList<>();
+        for (Runnable r : tasks) {
+            futures.add(pool.submit(r));
+        }
+        for (Future<?> f : futures) {
+            f.get(300, TimeUnit.SECONDS);
+        }
+        pool.shutdown();
+        System.out.println("==== 分队审核压测：" + tasks.size() + " 次 / 16 线程 / " + (System.currentTimeMillis() - t0)
+                + " ms ====\n  " + new TreeMap<>(outcomes));
+        assertTrue(failures.isEmpty(), "除业务拒绝外不应有任何异常（死锁、锁超时都算）：" + failures);
+        for (Long s : squads) {
+            assertTrue(volunteerMapper.selectCount(Wrappers.<Volunteer>lambdaQuery().eq(Volunteer::getSquadId, s)) <= limit,
+                    "分队 " + s + " 超员");
+        }
+        for (Long id : apps) {
+            SquadApplication row = applicationMapper.selectById(id);
+            Long joined = volunteerMapper.selectById(row.getVolunteerId()).getSquadId();
+            if (row.getStatus() == 1) {
+                assertEquals(row.getSquadId(), joined, "已通过的申请人归属到申请的分队");
+            } else {
+                assertNull(joined, "没通过的申请人不归属任何分队");
+            }
+            if (row.getStatus() == 0) {
+                assertNull(row.getAuditBy(), "待审的没有审核人");
+            }
+            Long winner = leaderWins.get(id);
+            if (winner != null) {
+                assertEquals(SquadService.AUDITOR_SQUAD_LEADER, row.getAuditByType(), "报成功的负责人审核要落成负责人审核");
+                assertEquals(winner, row.getAuditBy(), "落库的审核人就是报成功的那位负责人");
+            } else if (row.getAuditByType() != null) {
+                assertEquals(SquadService.AUDITOR_ADMIN, row.getAuditByType(), "没报成功的负责人不能出现在审核人里");
+            }
+        }
+        assertTrue(outcomes.containsKey("负责人拒绝·成功"), "负责人拒绝成功过：" + outcomes.keySet());
+        assertTrue(outcomes.containsKey("负责人拒绝·拒绝·只有分队负责人可以审核本分队的加入申请"),
+                "负责人拒绝因已不是负责人 / 分队停用被挡过：" + outcomes.keySet());
     }
 
     /** 负责人与部门同时审同一条：CAS 只放行一个，归属只写一次。 */

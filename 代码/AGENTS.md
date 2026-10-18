@@ -35,7 +35,7 @@
 - **迁移**：全项目唯一序列在 common，当前到 **V101**，下一个从 V102 起；**权限点现行 99 个**（清单 `../知识库/生成/权限点.md`，脚本生成）。
 - **控制台**：无构建、纯 `React.createElement`；⚠️ **在本地打开 `index.html` 时 API 基址指向线上**，点一下就写线上库，联调用 `../tools/serve_admin_local.py`。见 `../知识库/跨端/后台控制台.md`。
 - **小程序**：`app.js` 的 `globalData.useMockApi = false`、`apiBaseUrl` 指向**线上**服务器（开发版放行 HTTP）——开发者工具里点的也写线上库；本地联调改成 `http://localhost:8080/api`。（`utils/api-mode.js` 的 `DEFAULT_USE_MOCK_API` 只在 `app.js` 没给值时生效，现为 `false`；小程序 `README.md` 里「默认 mock」的说法已过期。）
-- **线上**：2026-10-17 仍是 9 月的旧包；`GET /api/actuator/info` 免登录查版本与迁移号。
+- **线上**：跑的是哪一版**以 `GET /api/actuator/info` 为准**（免登录：构建版本与时间、打包所用的后端提交与是否干净、迁移号），最近一次发版与线上冒烟结果记在 `../知识库/回归验证.md` 末节。入口里不写「线上是哪一版」——写了就会过期。
 - **只验到假渠道 / 未端到端**：微信支付、快递100 推送、小程序码、对象存储视频直传、服务号模板消息。
 
 ## 知识库路由
@@ -128,7 +128,7 @@ cd hengde-volunteer-parent
 | `/e/**` 其余 | 需企业登录（`StpEnterpriseUtil`）+ `EnterpriseAccountGate` 按状态放行 |
 | `/share/files/{token}` | 公开，靠随机令牌（要不要登录由那条分享决定） |
 | `/ws/social/chat?token=` | 握手时按 token 认身份；nginx 要放行 `Upgrade` / `Connection` 头 |
-| `/actuator/info` | 公开，只报构建版本、时间与迁移号 |
+| `/actuator/info` | 公开，只报构建版本与时间、打包所用的提交号与 dirty、迁移号 |
 | `/callback/**`（微信支付、快递100 webhook） | 公开，**靠验签不靠登录态** |
 
 ⚠️ 拦截器注册在 `/**`，处理器内部只对 `/v/**` `/a/**` `/e/**` 做 check，其余路径落不到 check 上才得以放行——**往处理器里加一条全局 `match("/**")` 会让 webhook 当场 401 且毫无征兆**（`TradeCallbackApiTest` 钉住）。

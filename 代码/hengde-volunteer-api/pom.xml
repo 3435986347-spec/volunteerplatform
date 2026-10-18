@@ -210,6 +210,27 @@
                     </execution>
                 </executions>
             </plugin>
+            <plugin>
+                <!-- 生成 git.properties：/actuator/info 的 git 一节报出这个包是从哪个提交打的、打包时工作区干不干净。
+                     build.time 只能对上发版手册里抄下的那个值，提交号才说得清线上是哪一版源码。
+                     版本与生成位置由 spring-boot-starter-parent 管；没有 .git 的目录（如 rsync 出来的临时副本）里打包就不生成，不报错。
+                     只留下面这几项：完整清单里有提交人邮箱与提交说明，这个端点公网可达。 -->
+                <groupId>io.github.git-commit-id</groupId>
+                <artifactId>git-commit-id-maven-plugin</artifactId>
+                <configuration>
+                    <verbose>false</verbose>
+                    <failOnNoGitDirectory>false</failOnNoGitDirectory>
+                    <!-- 键名用 commit.id.full / commit.id.abbrev（默认的 flat 是 commit.id，与 abbrev 嵌套成 JSON 时会撞） -->
+                    <commitIdGenerationMode>full</commitIdGenerationMode>
+                    <includeOnlyProperties>
+                        <includeOnlyProperty>^git\.branch$</includeOnlyProperty>
+                        <includeOnlyProperty>^git\.commit\.id\.abbrev$</includeOnlyProperty>
+                        <includeOnlyProperty>^git\.commit\.id\.full$</includeOnlyProperty>
+                        <includeOnlyProperty>^git\.commit\.time$</includeOnlyProperty>
+                        <includeOnlyProperty>^git\.dirty$</includeOnlyProperty>
+                    </includeOnlyProperties>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 

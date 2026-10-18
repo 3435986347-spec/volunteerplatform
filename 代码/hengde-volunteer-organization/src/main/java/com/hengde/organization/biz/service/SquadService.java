@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -394,21 +395,36 @@ public class SquadService {
      * @param leaderVolunteerId 分队负责人的志愿者 id；部门审核传 null
      */
     private void approveSerialized(Long applicationId, int auditorType, Long auditorId, Long leaderVolunteerId) {
+        withSquadLocked(applicationId, leaderVolunteerId, application -> doApprove(application, auditorType, auditorId));
+    }
+
+    /**
+     * 分队负责人拒绝加入：与批准一样<b>先锁分队行、锁内再核一次负责人</b>。
+     *
+     * <p>拒绝不占名额，锁不是为了人数上限，而是让后台的撤换负责人 / 停用分队（都是对分队行的 UPDATE）与它互斥：
+     * 不锁的话，负责人检查读的是快照、申请行上又没有冲突，撤换已经在写、甚至刚提交，原负责人在途的拒绝照样落库，
+     * 审核人记成一个此刻已经不是负责人的人。</p>
+     */
+    public void rejectByLeader(Long volunteerId, Long applicationId, String reason) {
+        requireApplicationForLeader(applicationId, volunteerId);
+        withSquadLocked(applicationId, volunteerId,
+                application -> doReject(applicationId, reason, AUDITOR_SQUAD_LEADER, volunteerId));
+    }
+
+    /**
+     * 事务第一条语句锁住申请所属的分队行，再在锁内读申请（负责人审核时连带核负责人），交给 {@code action}。
+     *
+     * @param leaderVolunteerId 分队负责人的志愿者 id；部门审核传 null
+     */
+    private void withSquadLocked(Long applicationId, Long leaderVolunteerId, Consumer<SquadApplication> action) {
         // 事务外只为知道锁哪个分队（申请的分队不会变）
         Long squadId = requireApplication(applicationId).getSquadId();
         transactionTemplate.executeWithoutResult(s -> {
             squadMapper.selectByIdForUpdate(squadId);
-            SquadApplication application = leaderVolunteerId == null
+            action.accept(leaderVolunteerId == null
                     ? requireApplication(applicationId)
-                    : requireApplicationForLeader(applicationId, leaderVolunteerId);
-            doApprove(application, auditorType, auditorId);
+                    : requireApplicationForLeader(applicationId, leaderVolunteerId));
         });
-    }
-
-    /** 分队负责人拒绝加入。 */
-    public void rejectByLeader(Long volunteerId, Long applicationId, String reason) {
-        requireApplicationForLeader(applicationId, volunteerId);
-        doReject(applicationId, reason, AUDITOR_SQUAD_LEADER, volunteerId);
     }
 
     private SquadApplication requireApplicationForLeader(Long applicationId, Long volunteerId) {
