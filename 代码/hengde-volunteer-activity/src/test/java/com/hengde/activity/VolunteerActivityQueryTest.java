@@ -22,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -87,6 +88,9 @@ class VolunteerActivityQueryTest {
         assertNotNull(vo);
         assertEquals(id, vo.getId());
         assertEquals(2, vo.getSlots().size(), "详情应带出 2 个时间段");
+        // 详情页「活动积分」按角色展示 基数 × 倍率：不下发倍率时小程序三行都只能显示基数（2026-10-23 端到端点出来的）
+        assertEquals(0, new BigDecimal("1.4").compareTo(vo.getLeaderMultiplier()), "负责人倍率（库默认 1.4）");
+        assertEquals(0, new BigDecimal("1.2").compareTo(vo.getManagerMultiplier()), "管理团队倍率（库默认 1.2）");
     }
 
     @Test
@@ -108,6 +112,9 @@ class VolunteerActivityQueryTest {
         assertEquals(2, vo.getRegistrants().size(), "报名详情应含两名报名人");
         List<String> names = vo.getRegistrants().stream().map(ActivityRegistrantVO::getName).toList();
         assertTrue(names.contains("周怡汐") && names.contains("李明"), "报名详情显示完整姓名");
+        // 当前查看者报没报过：报了的按钮显示「已报名」（2026-10-23 端到端点出来：此前不下发，按钮恒为「我要报名」）
+        assertEquals(Boolean.TRUE, activityService.detailForVolunteer(id, zhou).getEnrolled());
+        assertEquals(Boolean.FALSE, activityService.detailForVolunteer(id, insertVolunteer("没报名的人")).getEnrolled());
     }
 
     @Test

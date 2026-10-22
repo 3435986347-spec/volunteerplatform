@@ -25,6 +25,9 @@ public class SquadVO {
     /** 当前志愿者是否已归属本分队 */
     private Boolean belonged;
 
+    /** 当前志愿者对本分队有待审核的加入申请（志愿者端列表填，后台列表不填） */
+    private Boolean applying;
+
     /** 同分队成员名单：仅当 belonged=true 时返回，字段按 visibleFields 控制 */
     private List<SquadMemberVO> members;
 }

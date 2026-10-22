@@ -53,6 +53,12 @@ public class ActivityVolunteerDetailVO {
     /** 积分基数 */
     private Integer pointsBase;
 
+    /** 负责人积分倍率（详情页「活动积分」按角色展示 基数 × 倍率；缺了小程序只能三行都显示基数） */
+    private BigDecimal leaderMultiplier;
+
+    /** 管理团队积分倍率 */
+    private BigDecimal managerMultiplier;
+
     /** 报名是否需审核 0否/1是 */
     private Integer needAudit;
 
@@ -136,6 +142,9 @@ public class ActivityVolunteerDetailVO {
 
     /** 已报名人数（活跃报名去重志愿者数：待审核 0 + 已通过 1） */
     private Long enrolledCount;
+
+    /** 当前查看的志愿者在本活动是否有活跃报名（待审核或已通过）；详情页据此把按钮显示成「已报名」 */
+    private Boolean enrolled;
 
     /** 报名详情预览：活跃报名者（按报名时间正序、去重志愿者），露完整姓名+报名时间 */
     private List<ActivityRegistrantVO> registrants;

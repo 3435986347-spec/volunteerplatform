@@ -154,7 +154,6 @@ public class MyActivityService {
         MyActivityDetailVO vo = new MyActivityDetailVO();
         fillBase(vo, a, att, violationCount,
                 leaders.stream().map(ActivityLeaderVO::getVolunteerName).filter(Objects::nonNull).toList());
-        vo.setLocation(a.getLocation());
         vo.setLat(a.getLat());
         vo.setLng(a.getLng());
         vo.setCheckInRadiusM(a.getCheckInRadiusM());
@@ -184,6 +183,7 @@ public class MyActivityService {
         vo.setActivityId(a.getId());
         vo.setSerialNo(a.getSerialNo());
         vo.setTitle(a.getTitle());
+        vo.setLocation(a.getLocation());
         vo.setStartTime(a.getStartTime());
         vo.setEndTime(a.getEndTime());
         vo.setRunStatus(a.getRunStatus());

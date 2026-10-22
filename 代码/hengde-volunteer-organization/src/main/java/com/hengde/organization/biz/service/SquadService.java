@@ -112,6 +112,31 @@ public class SquadService {
     }
 
     /**
+     * 志愿者端分队列表：在 {@link #list} 之上标出<b>当前志愿者</b>与每个分队的关系——
+     * {@code belonged}（已归属）与 {@code applying}（有待审核的加入申请）。
+     *
+     * <p>小程序「归属组织」页靠这两项显示「已通过 / 审核中 / 申请」；此前列表不下发，
+     * 批准之后页面仍是「未归属·申请」，再点申请只得到一句「已有待审核申请」（2026-10-23 端到端点出来的）。</p>
+     */
+    public PageResult<SquadVO> listForVolunteer(PageQuery query, Long volunteerId) {
+        PageResult<SquadVO> page = list(query, false);
+        Volunteer me = volunteerId == null ? null : volunteerMapper.selectById(volunteerId);
+        Set<Long> applyingTo = new HashSet<>();
+        if (volunteerId != null) {
+            applicationMapper.selectList(Wrappers.<SquadApplication>lambdaQuery()
+                            .select(SquadApplication::getSquadId)
+                            .eq(SquadApplication::getVolunteerId, volunteerId)
+                            .eq(SquadApplication::getStatus, APPLY_PENDING))
+                    .forEach(a -> applyingTo.add(a.getSquadId()));
+        }
+        for (SquadVO vo : page.getRecords()) {
+            vo.setBelonged(me != null && Objects.equals(me.getSquadId(), vo.getId()));
+            vo.setApplying(applyingTo.contains(vo.getId()));
+        }
+        return page;
+    }
+
+    /**
      * 后台列表补上「负责人志愿者」的姓名。{@code leaderName} 是展示给志愿者看的联系人文字、可以随便写，
      * 与真正拿到审核权的那个志愿者（{@code leaderId}）不一定是同一个人——后台要看得出是谁。
      * 只在后台列表填：志愿者端的分队卡片展示的仍是联系人文字。

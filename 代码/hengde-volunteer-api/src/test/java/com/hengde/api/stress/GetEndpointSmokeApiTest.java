@@ -159,7 +159,7 @@ class GetEndpointSmokeApiTest {
         for (String secret : List.of("jdbc:", "password", "secret", "access-key")) {
             assertTrue(!info.toLowerCase().contains(secret), "公网可达的端点不许带 " + secret + "：" + info);
         }
-        // git 一节只在带 .git 的目录里打包时才有；有的话只许是提交号、提交时间、分支与 dirty——完整清单里有提交人邮箱与提交说明
+        // git 一节只在带 .git 的目录里打包时才有内容（否则是空的 {}）；有的话只许是提交号、提交时间、分支与 dirty——完整清单里有提交人邮箱与提交说明
         for (String key : List.of("\"user\"", "\"email\"", "\"message\"", "\"remote\"", "\"tags\"")) {
             assertTrue(!info.contains(key), "公网可达的端点不许带 git 的 " + key + "：" + info);
         }

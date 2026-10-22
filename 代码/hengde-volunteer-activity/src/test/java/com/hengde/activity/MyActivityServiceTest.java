@@ -71,6 +71,9 @@ class MyActivityServiceTest {
         List<Long> ids = list.stream().map(MyActivityVO::getActivityId).toList();
         assertTrue(ids.contains(approved), "已通过报名的活动应出现");
         assertTrue(!ids.contains(pending), "未通过报名的活动不应出现");
+        // 列表卡片「活动地址」（2026-10-23 端到端点出来：此前只有详情带地点，列表那一行是空的）
+        assertEquals("雷州市西湖公园南门", list.stream().filter(v -> v.getActivityId().equals(approved))
+                .findFirst().orElseThrow().getLocation());
     }
 
     @Test
@@ -114,6 +117,7 @@ class MyActivityServiceTest {
         a.setLat(ACT_LAT);
         a.setLng(ACT_LNG);
         a.setCheckInRadiusM(500);
+        a.setLocation("雷州市西湖公园南门");
         activityMapper.insert(a);
         a.setSerialNo(a.getId());
         activityMapper.updateById(a);

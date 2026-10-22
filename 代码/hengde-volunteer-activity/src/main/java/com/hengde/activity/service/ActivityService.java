@@ -654,6 +654,16 @@ public class ActivityService {
     /**
      * 志愿者端活动详情：仅已发布可见（按 id 直达非已发布一律视为不存在）；不含管理字段。
      */
+    public ActivityVolunteerDetailVO detailForVolunteer(Long id, Long viewerId) {
+        ActivityVolunteerDetailVO vo = detailForVolunteer(id);
+        vo.setEnrolled(viewerId != null && activityEnrollmentMapper.selectCount(Wrappers.<ActivityEnrollment>lambdaQuery()
+                .eq(ActivityEnrollment::getActivityId, id)
+                .eq(ActivityEnrollment::getVolunteerId, viewerId)
+                .in(ActivityEnrollment::getStatus, 0, 1)) > 0);
+        return vo;
+    }
+
+    /** 同上，不带查看者（{@code enrolled} 留空）。 */
     public ActivityVolunteerDetailVO detailForVolunteer(Long id) {
         Activity activity = activityMapper.selectById(id);
         if (activity == null || !Integer.valueOf(STATUS_PUBLISHED).equals(activity.getStatus())) {

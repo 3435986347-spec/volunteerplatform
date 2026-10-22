@@ -33,6 +33,8 @@ public class MyActivityVO {
     private java.time.LocalDateTime slotEndTime;
     private Long serialNo;
     private String title;
+    /** 活动地点（列表卡片「活动地址」；此前只在详情里有，列表那一行一直是空的） */
+    private String location;
     private LocalDateTime startTime;
     private LocalDateTime endTime;
     /** 现场运行状态 0未开始/1进行中/2已结束 */

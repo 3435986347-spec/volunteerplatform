@@ -19,7 +19,6 @@ import java.util.List;
 @EqualsAndHashCode(callSuper = true)
 public class MyActivityDetailVO extends MyActivityVO {
 
-    private String location;
     /** 活动签到坐标与半径（供前端 GPS 自助签到） */
     private BigDecimal lat;
     private BigDecimal lng;

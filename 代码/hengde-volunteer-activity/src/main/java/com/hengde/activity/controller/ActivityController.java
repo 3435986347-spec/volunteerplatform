@@ -62,6 +62,6 @@ public class ActivityController {
     @Operation(summary = "活动详情（含时间段/报名须知，仅已发布）")
     @GetMapping("/{id}")
     public Result<ActivityVolunteerDetailVO> detail(@PathVariable Long id) {
-        return Result.ok(activityService.detailForVolunteer(id));
+        return Result.ok(activityService.detailForVolunteer(id, StpUtil.getLoginIdAsLong()));
     }
 }

@@ -434,6 +434,33 @@ class SquadLeaderReviewTest {
                 "负责人拒绝因已不是负责人 / 分队停用被挡过：" + outcomes.keySet());
     }
 
+    /**
+     * 志愿者端分队列表带出「我」与每个分队的关系：待审 → applying，批准 → belonged（2026-10-23 端到端点出来：
+     * 此前列表不下发，小程序「归属组织」批准之后仍显示「未归属·申请」）。
+     */
+    @Test
+    void volunteerListMarksPendingAndBelongedForTheViewer() {
+        Long squad = squad(volunteer(), 1);
+        Long other = squad(volunteer(), 1);
+        Long me = volunteer();
+        Long app = application(squad, me);
+
+        SquadVO pending = mine(squad, me);
+        assertTrue(pending.getApplying() && !pending.getBelonged(), "待审：applying");
+        SquadVO untouched = mine(other, me);
+        assertTrue(!untouched.getApplying() && !untouched.getBelonged(), "没申请的分队两项都是 false");
+
+        squadService.approveApplication(app, ADMIN);
+        SquadVO joined = mine(squad, me);
+        assertTrue(joined.getBelonged() && !joined.getApplying(), "批准后：belonged");
+        assertTrue(!mine(squad, volunteer()).getBelonged(), "别人看同一分队不是 belonged");
+    }
+
+    private SquadVO mine(Long squadId, Long viewer) {
+        return squadService.listForVolunteer(page(), viewer).getRecords().stream()
+                .filter(v -> v.getId().equals(squadId)).findFirst().orElseThrow();
+    }
+
     /** 负责人与部门同时审同一条：CAS 只放行一个，归属只写一次。 */
     @Test
     void leaderAndDepartmentReviewingTheSameApplication_onlyOneWins() throws Exception {

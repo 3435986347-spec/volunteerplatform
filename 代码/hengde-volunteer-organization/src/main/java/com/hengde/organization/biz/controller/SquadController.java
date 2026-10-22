@@ -34,10 +34,10 @@ public class SquadController {
         this.squadService = squadService;
     }
 
-    @Operation(summary = "分队列表")
+    @Operation(summary = "分队列表（每个分队带当前志愿者的 belonged 已归属 / applying 待审核申请）")
     @GetMapping
     public Result<PageResult<SquadVO>> list(PageQuery query) {
-        return Result.ok(squadService.list(query, false));
+        return Result.ok(squadService.listForVolunteer(query, StpUtil.getLoginIdAsLong()));
     }
 
     /*
