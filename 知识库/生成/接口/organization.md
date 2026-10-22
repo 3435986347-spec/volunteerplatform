@@ -32,7 +32,7 @@
 | POST | `/v/organization/manager-applications` |  | 提交报名管理团队申请 | `MyManagerApplicationController` |
 | GET | `/v/organization/manager-applications/mine` |  | 我的报名管理团队申请（最近一条，状态回显；无则 null） | `MyManagerApplicationController` |
 | GET | `/v/organization/my-permissions` |  | 我的权限码集合 | `MyPermissionController` |
-| GET | `/v/organization/squads` |  | 分队列表 | `SquadController` |
+| GET | `/v/organization/squads` |  | 分队列表（每个分队带当前志愿者的 belonged 已归属 / applying 待审核申请） | `SquadController` |
 | POST | `/v/organization/squads/applications/{applicationId}/approve` |  | 分队负责人批准加入（只能审自己负责的分队，不能审自己的申请） | `SquadController` |
 | POST | `/v/organization/squads/applications/{applicationId}/reject` |  | 分队负责人拒绝加入（可填原因，≤255 字） | `SquadController` |
 | GET | `/v/organization/squads/led` |  | 我负责的分队（分队负责人用，只列启用中的） | `SquadController` |

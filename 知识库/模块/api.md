@@ -16,7 +16,7 @@
 - 上传端点按 `dir` 双门槛（权限 + 文件类型），未知 `dir` 拒绝。
 - `/callback/**`、`/share/**` 靠验签 / 令牌公开：路由处理器里只对 `/v` `/a` `/e` 做 check，**别加全局 `match("/**")`**。
 - webhook 应答直接写 `HttpServletResponse`，不要返回 `String`（会被 Jackson 再序列化一层）。
-- `GET /actuator/info`（公开）报三节：`build`（`build-info`）、`git`（`git-commit-id-maven-plugin` 生成的 `git.properties`，pom 里只留分支 / 提交号 / 提交时间 / dirty 五项，`management.info.git.mode=full` 才给 dirty）、`database.schemaVersion`（`SchemaVersionInfoContributor`）。没有 `.git` 的目录（如 rsync 出来的临时副本）里打包就没有 `git` 一节；提交说明与提交人邮箱不许出现（`GetEndpointSmokeApiTest` 钉住）。
+- `GET /actuator/info`（公开）报三节：`build`（`build-info`）、`git`（`git-commit-id-maven-plugin` 生成的 `git.properties`，pom 里只留分支 / 提交号 / 提交时间 / dirty 五项，`management.info.git.mode=full` 才给 dirty）、`database.schemaVersion`（`SchemaVersionInfoContributor`）。没有 `.git` 的目录（如 rsync 出来的临时副本）里打包，`git` 一节是空的 `{}`（插件照样写出一个只有注释头的 `git.properties`）；提交说明与提交人邮箱不许出现（`GetEndpointSmokeApiTest` 钉住）。
 - api 的 HTTP 用例按 properties 起多个上下文，Sa-Token 静态状态由测试里的 `SaTokenContextRebinder` 指回当前上下文；单独跑绿不等于全量跑绿。
 
 ## 按批次的记录

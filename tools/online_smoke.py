@@ -148,7 +148,7 @@ def main() -> int:
     if args.expect_build_time:
         run.check("版本", "build.time = 发版手册", f"线上 {build_time} / 期望 {args.expect_build_time}",
                   build_time == args.expect_build_time)
-    # git 一节只有从带 .git 的目录打的包才有（api 的 pom 里 git-commit-id 插件，2026-10-18 起）
+    # git 一节只有从带 .git 的目录打的包才有内容、否则是空的 {}（api 的 pom 里 git-commit-id 插件，2026-10-18 起）
     git = info.get("git") if isinstance(info.get("git"), dict) else {}
     commit_id = (git.get("commit") or {}).get("id") if isinstance(git.get("commit"), dict) else None
     commit = (commit_id.get("full") or "") if isinstance(commit_id, dict) else str(commit_id or "")

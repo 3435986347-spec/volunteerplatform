@@ -73,3 +73,8 @@
 先占住那把锁、断言审核在等；变异「去掉分布式锁」→ 它与 `fiveBatchesApprovedAtOnce_neverExceedTheCap` 两条红。**教训：范围当前读锁多少行由执行计划决定，
 测试库小、统计信息新，优化器很容易选全表扫描——串行化别押在范围锁上。**
 
+**端到端点出来的三处（2026-10-23，鼠标点小程序模拟器 + 后台，记录见 `文档/端到端测试-2026-10-23.md`）**：
+① 志愿者端活动详情不下发 `leaderMultiplier` / `managerMultiplier`，小程序「活动积分」按角色那三行只能都显示基数——`ActivityVolunteerDetailVO` 补上两项（`BeanUtils.copyProperties` 直接带过去）；
+② 详情加 `enrolled`（当前志愿者在本活动有没有待审 / 已通过的报名，`detailForVolunteer(id, viewerId)`，控制器传登录 id），小程序据此挡重复报名、可显示「已报名」；
+③ 「我的活动」列表行没有地点（`MyActivityVO.location`，只有详情 VO 自己声明了一个同名字段），卡片「活动地址」一直是空的——挪到基类、详情不再重复声明。
+用例：`VolunteerActivityQueryTest`（倍率、enrolled 真假）、`MyActivityServiceTest`（列表带地点）。
