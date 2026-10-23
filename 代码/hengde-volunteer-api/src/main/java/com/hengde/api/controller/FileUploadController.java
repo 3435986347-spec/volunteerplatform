@@ -36,6 +36,7 @@ import java.util.Set;
  *   <tr><td>activity</td><td>activity:publish 或 edit</td><td>图片</td><td>活动封面</td></tr>
  *   <tr><td>summary</td><td>activity:manage</td><td>图片</td><td>活动总结图</td></tr>
  *   <tr><td>medal</td><td>honor:medal</td><td>图片</td><td>勋章图标</td></tr>
+ *   <tr><td>role-model</td><td>honor:role-model</td><td>图片</td><td>榜样头像（小程序按圆形展示）</td></tr>
  *   <tr><td>goods</td><td>donate:goods</td><td>图片</td><td>积分商品图片</td></tr>
  *   <tr><td>exchange-rule</td><td>donate:goods</td><td>图片</td><td>兑换规则配图（与商品同权限，另起目录只为对象存储可读）</td></tr>
  *   <tr><td>wish</td><td>donate:wish</td><td>图片</td><td>微心愿图片与物资发放反馈图</td></tr>
@@ -106,6 +107,8 @@ public class FileUploadController {
             case "activity" -> StpAdminUtil.STP_LOGIC.checkPermissionOr("activity:publish", "activity:edit");
             case "summary" -> StpAdminUtil.STP_LOGIC.checkPermission("activity:manage");
             case "medal" -> StpAdminUtil.STP_LOGIC.checkPermission("honor:medal");
+            // 榜样头像（V4 荣誉批只做了 imageUrl 字段没有上传目录，控制台只能手填地址；2026-10-23 端到端补）
+            case "role-model" -> StpAdminUtil.STP_LOGIC.checkPermission("honor:role-model");
             case "goods" -> StpAdminUtil.STP_LOGIC.checkPermission("donate:goods");
             case "exchange-rule" -> StpAdminUtil.STP_LOGIC.checkPermission("donate:goods");
             case "wish" -> StpAdminUtil.STP_LOGIC.checkPermission("donate:wish");

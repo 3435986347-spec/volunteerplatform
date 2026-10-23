@@ -35,6 +35,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -108,6 +109,39 @@ class OrganizationBizTest {
 
         assertNotNull(id);
         assertNotNull(squadMapper.selectById(id));
+    }
+
+    /**
+     * 志愿者端小组列表带出「我」在每个组里的成员状态：组长 / 已加入 → 1，申请待审 → 0，不相干 → null
+     * （2026-10-23 端到端点出来：此前不下发，组长在自己的小组上也看到「申请」）。
+     */
+    @Test
+    void volunteerGroupListMarksTheViewersMembership() {
+        Long leaderId = insertNormalVolunteer();
+        GroupCreateDTO dto = new GroupCreateDTO();
+        dto.setName("myStatus 小组" + System.nanoTime() % 100000);
+        Long gid = groupService.createForVolunteer(leaderId, dto);
+        groupService.approveCreate(gid, 1L);
+        Long applicant = insertNormalVolunteer();
+        VolunteerGroupMember pending = new VolunteerGroupMember();
+        pending.setGroupId(gid);
+        pending.setVolunteerId(applicant);
+        pending.setRole(com.hengde.organization.biz.constant.MemberRole.MEMBER);
+        pending.setStatus(com.hengde.organization.biz.constant.MemberStatus.PENDING);
+        pending.setApplyTime(java.time.LocalDateTime.now());
+        memberMapper.insert(pending);
+
+        assertEquals(Integer.valueOf(1), myStatus(gid, leaderId), "组长：已加入");
+        assertEquals(Integer.valueOf(0), myStatus(gid, applicant), "申请待审");
+        assertNull(myStatus(gid, insertNormalVolunteer()), "不相干的人");
+    }
+
+    private Integer myStatus(Long groupId, Long viewer) {
+        com.hengde.common.page.PageQuery q = new com.hengde.common.page.PageQuery();
+        q.setPage(1);
+        q.setSize(100);
+        return groupService.listForVolunteer(q, null, viewer).getRecords().stream()
+                .filter(g -> g.getId().equals(groupId)).findFirst().orElseThrow().getMyStatus();
     }
 
     // ---------- V7 fix 2: 建组期堵住「一人一组」漏洞 ----------

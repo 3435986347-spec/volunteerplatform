@@ -220,6 +220,30 @@ class AdminConsoleGapsApiTest {
         assertEquals(200, ok2.statusCode(), ok2.body());
     }
 
+    /**
+     * 榜样的 imageUrl 此前没有上传目录，控制台只能手填已有图片地址（端到端 2026-10-23 点出来）。
+     * 补 dir=role-model，认 honor:role-model；只收图片。
+     */
+    @Test
+    void roleModelUploadDirFollowsItsOwnPermission() throws Exception {
+        ApiStressClient c = new ApiStressClient(port);
+        String root = c.adminLogin(adminUser, adminPass);
+        String tag = Long.toString(System.nanoTime(), 36);
+        long accId = ok(c.post("/a/organization/sub-accounts", root, Map.of("username", "rm" + tag, "password", "pass1234",
+                "realName", "榜样编辑", "department", "宣传部"), "建子账号")).dataAsLong();
+        ok(c.put("/a/organization/sub-accounts/" + accId + "/permissions", root,
+                Map.of("permissionIds", List.of(permissionId(c, root, "honor:role-model"))), "只授 honor:role-model"));
+        String editor = c.adminLogin("rm" + tag, "pass1234");
+
+        java.net.http.HttpResponse<String> ok1 = upload("/a/files/upload", editor, "role-model", "avatar.png");
+        assertEquals(200, ok1.statusCode(), ok1.body());
+        assertTrue(ok1.body().contains("/role-model/"), "落在 role-model 目录：" + ok1.body());
+        java.net.http.HttpResponse<String> no1 = upload("/a/files/upload", editor, "medal", "avatar.png");
+        assertEquals(403, no1.statusCode(), "没有 honor:medal 不能往 medal 目录传：" + no1.body());
+        java.net.http.HttpResponse<String> doc = upload("/a/files/upload", editor, "role-model", "avatar.pdf");
+        assertEquals(400, doc.statusCode(), "图片目录不收文档：" + doc.body());
+    }
+
     private static long permissionId(ApiStressClient c, String root, String code) {
         for (JsonNode p : ok(c.get("/a/organization/permissions", root, "权限点列表")).data()) {
             if (code.equals(p.get("code").asText())) {

@@ -12,6 +12,7 @@
 - 权限点现行 **99** 个；改 seed 必须同步 `OrganizationRbacTest.permissionsSeeded` 的总数断言。`user:edit` / `org:perm-assign` 写死仅超管、不入权限表。
 - 志愿者端权限只给「活跃且 `manager_flag=1`」的人（`isActiveManager`），可授的点由 `permission.volunteer_grantable` 圈定。
 - 一人一组靠生成列唯一键 `uk_active_volunteer`；小组 create / join 按人上锁。
+- 发起小组扣 50（XH53）经接口 `GroupCreationFee`（activity 实现，`@Autowired(required = false)`）：`createForVolunteer` 先取小组锁、再取 `pointLockKey` 积分锁、再开事务；`rejectCreate` 在同一事务里退分。志愿者端列表走 `listForVolunteer`，每组带 `myStatus`（null / 0 待审 / 1 已加入，组长也是 1）。
 - 分队：两条审核路（部门、分队负责人）的批准都走 `approveSerialized`，**负责人的拒绝也一样**（`withSquadLocked`）——事务第一句先锁分队行、锁内再核负责人；撤换负责人 / 停用分队是对分队行的 UPDATE，与审核互斥，撤换提交之后原负责人在途的审核落不了库。负责人＝`volunteer_squad.leader_id`，取消要显式 `.set(leader_id, null)`。志愿者端分队列表（`listForVolunteer`）每行带当前志愿者的 `belonged` / `applying`。
 - 组织架构：全部写操作一把全局锁 `lock:org-structure`；最多 10 层、不能成环、有下级或有人的节点不能删。种子节点：协会根节点下理事会（V101 补种）、组织部、秘书部、宣传部。
 - 问卷：题目与答案的校验、规范化只在 `FormAnswerValidator`；发布后题目冻结；提交与停止靠 `selectByIdForShare` 串行；文件题只收本系统 `form/` 下的上传。
@@ -40,3 +41,10 @@
 **负责人拒绝也锁分队行（2026-10-18，小程序侧 10-17 交付材料第 5 条）**：原来 `rejectByLeader` 先普通读核负责人、再按申请 CAS——拒绝不占名额，按冲突图其实可串行化（等价于「拒绝先于撤换」），但后台撤换负责人 / 停用分队已经写下、甚至刚提交时，原负责人在途的拒绝照样落库，审核人记成一个此刻已不是负责人的人。改为与批准共用 `withSquadLocked`。确定性用例 `SquadLeaderReviewTest.leaderRejectWaitsForAnInFlightLeaderChangeOrDisable_andThenIsRefused`（裸 JDBC 事务先写换人 / 清负责人 / 停用不提交，拒绝必须等、提交后报「只有分队负责人…」；改前红）；压测 `reviewChurnWithLeaderChangesAndDisables_keepsMembershipAndAuditSound`（`@Tag("stress")`，1200 次 16 线程乱序批准 / 拒绝 / 换负责人 / 停用启用，零死锁、不超员、归属与已通过一一对应、报成功的负责人就是落库审核人）。部门那条拒绝路仍是单条 CAS、不锁分队行（部门的审核权不随负责人变）。
 
 **志愿者端分队列表带「我」的关系（2026-10-23，端到端点出来的）**：`GET /v/organization/squads` 原先走后台同一个 `list`，`belonged` 只有详情接口才填——小程序「归属组织」批准之后仍显示「未归属 · 申请」，再点申请得到「已归属分队，不能重复申请」；待审期间也看不出在审。新 `SquadService.listForVolunteer` 在列表上填 `belonged`（`volunteer.squad_id` 对得上）与 `applying`（有 status=0 的申请；一人同时只能有一条待审）。用例 `SquadLeaderReviewTest.volunteerListMarksPendingAndBelongedForTheViewer`。小程序的 `displayTeam` 还要把 `applying` 映射成「审核中」。
+
+**发起小组扣 50 积分 + 志愿者端小组列表带 myStatus（2026-10-23）**：扣分口径与锁见 [模块/activity.md](activity.md) 末节与 XH53。
+本模块只多了一个接口 `GroupCreationFee` 与费用常量 `GroupFee.CREATE_COST`，实现放在 activity（它依赖本模块，反过来会成环）；
+没有实现时 `GroupService` 照旧不扣——所以本模块自己的用例覆盖不到扣分，承重用例在 activity 的 `GroupCreationFeeTest` 与 api 的 `GroupCreationFeeApiFlowTest`。
+列表 `myStatus`：端到端时组长在自己的小组上也看到「申请」、点进去被拒「一个志愿者只能加入一个小组」——列表不下发成员状态。
+`listForVolunteer` 在原列表上按 `volunteer_id` + 本页小组 id 查一次成员行（PENDING / ACTIVE）；用例 `OrganizationBizTest.volunteerGroupListMarksTheViewersMembership`。
+

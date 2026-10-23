@@ -49,6 +49,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -89,6 +90,7 @@ public class GroupService {
     private SmsNotifyService smsNotifyService;
     private RedissonClient redissonClient;
     private TransactionTemplate transactionTemplate;
+    private GroupCreationFee groupCreationFee;
 
     @Autowired
     public void setGroupMapper(VolunteerGroupMapper groupMapper) {
@@ -125,6 +127,15 @@ public class GroupService {
         this.redissonClient = redissonClient;
     }
 
+    /**
+     * 发起小组的积分扣退（activity 模块实现）。organization 自己的测试上下文里没有实现，那时不扣分；
+     * 部署出来的 api 里一定有——api 的 HTTP 用例钉住了「发起即扣 50」。
+     */
+    @Autowired(required = false)
+    public void setGroupCreationFee(GroupCreationFee groupCreationFee) {
+        this.groupCreationFee = groupCreationFee;
+    }
+
     @Autowired
     public void setTransactionManager(PlatformTransactionManager transactionManager) {
         this.transactionTemplate = new TransactionTemplate(transactionManager);
@@ -141,6 +152,27 @@ public class GroupService {
         wrapper.orderByDesc(VolunteerGroup::getId);
         IPage<VolunteerGroup> page = groupMapper.selectPage(query.toPage(), wrapper);
         return PageResult.of(toGroupVOList(page.getRecords()), page.getTotal(), page.getCurrent(), page.getSize());
+    }
+
+    /**
+     * 志愿者端小组列表：在 {@link #list} 之上标出当前志愿者在每个组里的成员状态（{@code myStatus}）。
+     *
+     * <p>小程序据此把按钮显示成「已加入 / 审核中 / 申请」——此前列表不下发，组长在自己的小组上也看到「申请」
+     * （2026-10-23 端到端点出来的）。一人至多在一个组里（{@code uk_active_volunteer}），一次查完。</p>
+     */
+    public PageResult<GroupVO> listForVolunteer(PageQuery query, String keyword, Long volunteerId) {
+        PageResult<GroupVO> page = list(query, keyword, false);
+        if (volunteerId == null || page.getRecords().isEmpty()) {
+            return page;
+        }
+        Map<Long, Integer> mine = new HashMap<>();
+        memberMapper.selectList(Wrappers.<VolunteerGroupMember>lambdaQuery()
+                        .eq(VolunteerGroupMember::getVolunteerId, volunteerId)
+                        .in(VolunteerGroupMember::getStatus, MEMBER_PENDING, MEMBER_ACTIVE)
+                        .in(VolunteerGroupMember::getGroupId, page.getRecords().stream().map(GroupVO::getId).toList()))
+                .forEach(m -> mine.put(m.getGroupId(), m.getStatus()));
+        page.getRecords().forEach(vo -> vo.setMyStatus(mine.get(vo.getId())));
+        return page;
     }
 
     public PageResult<GroupVO> applications(PageQuery query) {
@@ -199,8 +231,13 @@ public class GroupService {
      * 业务正常调用仍走 {@link #create(GroupCreateDTO)}——后者从 Sa-Token 取 loginId，对外接口不变。</p>
      */
     public Long createForVolunteer(Long volunteerId, GroupCreateDTO dto) {
+        Supplier<Long> create = () -> transactionTemplate.execute(s -> doCreate(dto, volunteerId));
+        // 发起要扣 50 积分（原型 P23）：余额检查与扣减必须在积分锁里，与手工扣分、商城兑换互斥。
+        // 顺序固定「小组锁 → 积分锁」，其它路径都只取积分锁，不会反过来等。
         return DistributedLockSupport.runLocked(redissonClient, LOCK_KEY_PREFIX + volunteerId,
-                () -> transactionTemplate.execute(s -> doCreate(dto, volunteerId)));
+                groupCreationFee == null ? create
+                        : () -> DistributedLockSupport.runLocked(redissonClient,
+                        groupCreationFee.pointLockKey(volunteerId), create));
     }
 
     private Long doCreate(GroupCreateDTO dto, Long volunteerId) {
@@ -226,6 +263,9 @@ public class GroupService {
         pendingLeader.setApplyTime(LocalDateTime.now());
         memberMapper.insert(pendingLeader);
 
+        if (groupCreationFee != null) {
+            groupCreationFee.charge(volunteerId, group.getId(), group.getName());
+        }
         return group.getId();
     }
 
@@ -511,6 +551,10 @@ public class GroupService {
                 .eq(VolunteerGroupMember::getGroupId, groupId)
                 .eq(VolunteerGroupMember::getStatus, MEMBER_PENDING));
 
+        // 发起时扣的 50 积分如数退回（没扣过的——改造前发起的——不退）
+        if (groupCreationFee != null) {
+            groupCreationFee.refund(group.getLeaderId(), groupId, group.getName());
+        }
         notifyGroupResult(group.getLeaderId(), group.getName(), "未通过"
                 + (StringUtils.hasText(reason) ? "，原因：" + reason : ""));
     }

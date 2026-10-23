@@ -79,7 +79,7 @@ public class MallOrderVO {
     @Schema(description = "核销时间")
     private LocalDateTime pickupTime;
 
-    @Schema(description = "驳回原因")
+    @Schema(description = "驳回原因；协会取消（已成功的单）时是取消原因")
     private String rejectReason;
 
     @Schema(description = "下单时间")

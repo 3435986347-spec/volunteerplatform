@@ -13,6 +13,8 @@
 - 报名：按人上锁 + 事务内校验资格、全平台时段冲突（只算活动还在的时段）、处置闸门、三档开放时间（角色那一档留空＝没有提前）；代报名按每个被代的人各自判。
 - **积分只认账本**：读用 `PointService`，不要 `SUM(points_award)`；写在调用方事务内；新来源独占类型码并声明是否算消费；幂等键 + 载荷复核，撞键后的复核读用 `FOR SHARE`。
 - 积分发放＝基数 × 角色倍率 × 违规系数；0 分也发通知。
+- 消费类来源＝`PointSourceType.CONSUMPTION_TYPES`（兑换 4、发起小组 8），积分中心「已使用」与积分榜「累计获得」共用这一份；退回沿用原来源码记正数、幂等键走系统保留前缀（`MALL_REFUND_REQUEST_PREFIX` / `GROUP_REFUND_REQUEST_PREFIX`，别的来源用不了）。
+- 发起小组扣 50（XH53）：organization 只认接口 `GroupCreationFee`，本模块 `GroupCreationFeeService` 实现——余额检查与扣减在 `PointService.LOCK_KEY_PREFIX` 积分锁里（`GroupService` 在开事务前按「小组锁 → 积分锁」取），退回量以账本上那一笔为准（`PointService.amountBySource`），没扣过就不退。
 - 违规记录审核通过后才对志愿者可见，负责人端看全部。
 - 名单公示窗口按时间现算；普通成员电话打码，游客看负责人电话也打码。
 - 相册：只有报名已通过的人 / 本活动负责人 / 管理团队能传；积分按审核那一刻还在的张数算；同一个人同一相册的审核按 `AlbumService.POINTS_LOCK_PREFIX` 串行（锁在事务外），事务里只按主键锁这一批——**不要改回范围 `FOR UPDATE`**（2026-10-17 压测死锁，见按批次的记录末尾）。
@@ -78,3 +80,14 @@
 ② 详情加 `enrolled`（当前志愿者在本活动有没有待审 / 已通过的报名，`detailForVolunteer(id, viewerId)`，控制器传登录 id），小程序据此挡重复报名、可显示「已报名」；
 ③ 「我的活动」列表行没有地点（`MyActivityVO.location`，只有详情 VO 自己声明了一个同名字段），卡片「活动地址」一直是空的——挪到基类、详情不再重复声明。
 用例：`VolunteerActivityQueryTest`（倍率、enrolled 真假）、`MyActivityServiceTest`（列表带地点）。
+
+**发起小组扣 50 积分（XH53，2026-10-23）**：原型 P23 写着「发起小组（-50积分）」、按钮上也这么写，后端从没扣过；需方拍板补上。
+新来源 `GROUP_CREATE = 8`（消费类，进 `CONSUMPTION_TYPES`，积分榜跟着不把它算进累计获得）；驳回退分复用 8 记正数，`(8, groupId)` 已被扣分那笔占住，
+所以幂等走 `uk_request_id`、前缀 `sys:group-refund:` 系统保留（`PointService.record` 里挡别的来源，同商城退分）。
+**依赖方向**：activity 依赖 organization，扣分逻辑却在 organization 的建组事务里——由 organization 定接口 `GroupCreationFee`、本模块实现，
+`GroupService` 用 `@Autowired(required = false)` 注入（organization 自己的测试上下文里没有实现，不扣分；api 里一定有，HTTP 用例钉住）。
+**锁**：余额检查与扣减要和手工扣分、兑换互斥，所以建组在开事务之前先取小组锁、再取积分锁（其它路径只取积分锁，不会反过来等）；
+锁在事务外取，事务的读视图晚于其它扣减的提交，读到的余额就是最新的。用例 `GroupCreationFeeTest`（5：扣与退、余额不足整笔回滚且不占「一人一组」、
+批准不退与旧组驳回不白送、扣分等积分锁、退分前缀保留）、api `GroupCreationFeeApiFlowTest`（HTTP：+60 → 发起剩 10 → 穷人被拒 → 后台驳回回到 60）。
+变异：去掉积分锁 / 退分不看「扣过没有」/ 驳回不退 / 不进消费类 → 各自必红。积分中心「已使用」的提示语、`PointSummaryVO` 的注释原先写着「只有兑换」，一并改了。
+

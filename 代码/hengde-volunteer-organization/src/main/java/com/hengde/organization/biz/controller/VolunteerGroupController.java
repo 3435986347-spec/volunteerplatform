@@ -1,5 +1,6 @@
 package com.hengde.organization.biz.controller;
 
+import cn.dev33.satoken.stp.StpUtil;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
 import com.hengde.common.result.Result;
@@ -34,10 +35,10 @@ public class VolunteerGroupController {
         this.groupService = groupService;
     }
 
-    @Operation(summary = "小组列表")
+    @Operation(summary = "小组列表（每组带当前志愿者的 myStatus：空不在组里 / 0 待审 / 1 已加入）")
     @GetMapping
     public Result<PageResult<GroupVO>> list(PageQuery query, @RequestParam(required = false) String keyword) {
-        return Result.ok(groupService.list(query, keyword, false));
+        return Result.ok(groupService.listForVolunteer(query, keyword, StpUtil.getLoginIdAsLong()));
     }
 
     @Operation(summary = "小组详情")

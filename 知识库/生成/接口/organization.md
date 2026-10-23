@@ -17,7 +17,7 @@
 | GET | `/v/organization/forms/{id}` |  | 问卷详情（含题目；已停止的对志愿者等于不存在） | `FormController` |
 | POST | `/v/organization/forms/{id}/submissions` |  | 提交答卷（报名管理团队的问卷要随申请提交，不走这里） | `FormController` |
 | GET | `/v/organization/forms/{id}/submissions/mine` |  | 我在这份问卷上的答卷 | `FormController` |
-| GET | `/v/organization/groups` |  | 小组列表 | `VolunteerGroupController` |
+| GET | `/v/organization/groups` |  | 小组列表（每组带当前志愿者的 myStatus：空不在组里 / 0 待审 / 1 已加入） | `VolunteerGroupController` |
 | POST | `/v/organization/groups` |  | 发起新小组 | `VolunteerGroupController` |
 | GET | `/v/organization/groups/{id}` |  | 小组详情 | `VolunteerGroupController` |
 | POST | `/v/organization/groups/{id}/join` |  | 申请加入小组 | `VolunteerGroupController` |

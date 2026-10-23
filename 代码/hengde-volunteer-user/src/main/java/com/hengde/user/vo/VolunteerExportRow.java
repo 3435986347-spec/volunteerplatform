@@ -46,7 +46,7 @@ public class VolunteerExportRow {
     @ExcelProperty("服务时长(h)")
     private Double hours;
 
-    @ExcelProperty("累计积分")
+    @ExcelProperty("积分余额")
     private Integer points;
 
     @ExcelProperty("参与活动(次)")

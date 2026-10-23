@@ -652,18 +652,21 @@ public class ActivityService {
     }
 
     /**
-     * 志愿者端活动详情：仅已发布可见（按 id 直达非已发布一律视为不存在）；不含管理字段。
+     * 志愿者端活动详情（带查看者）：在 {@link #detailForVolunteer(Long)} 之上填 {@code enrolled}——
+     * 这位志愿者在本活动有没有待审核或已通过的报名。
      */
     public ActivityVolunteerDetailVO detailForVolunteer(Long id, Long viewerId) {
         ActivityVolunteerDetailVO vo = detailForVolunteer(id);
         vo.setEnrolled(viewerId != null && activityEnrollmentMapper.selectCount(Wrappers.<ActivityEnrollment>lambdaQuery()
                 .eq(ActivityEnrollment::getActivityId, id)
                 .eq(ActivityEnrollment::getVolunteerId, viewerId)
-                .in(ActivityEnrollment::getStatus, 0, 1)) > 0);
+                .in(ActivityEnrollment::getStatus, EnrollmentStatus.PENDING, EnrollmentStatus.APPROVED)) > 0);
         return vo;
     }
 
-    /** 同上，不带查看者（{@code enrolled} 留空）。 */
+    /**
+     * 志愿者端活动详情：仅已发布可见（按 id 直达非已发布一律视为不存在）；不含管理字段，{@code enrolled} 留空。
+     */
     public ActivityVolunteerDetailVO detailForVolunteer(Long id) {
         Activity activity = activityMapper.selectById(id);
         if (activity == null || !Integer.valueOf(STATUS_PUBLISHED).equals(activity.getStatus())) {
@@ -692,7 +695,7 @@ public class ActivityService {
     private List<ActivityRegistrantVO> loadRegistrants(Long activityId) {
         List<ActivityEnrollment> rows = activityEnrollmentMapper.selectList(Wrappers.<ActivityEnrollment>lambdaQuery()
                 .eq(ActivityEnrollment::getActivityId, activityId)
-                .in(ActivityEnrollment::getStatus, 0, 1)
+                .in(ActivityEnrollment::getStatus, EnrollmentStatus.PENDING, EnrollmentStatus.APPROVED)
                 .orderByAsc(ActivityEnrollment::getEnrollTime));
         // 去重志愿者（一人报多个 slot 只显示一行），保留最早一条报名
         LinkedHashMap<Long, ActivityEnrollment> firstByVolunteer = new LinkedHashMap<>();

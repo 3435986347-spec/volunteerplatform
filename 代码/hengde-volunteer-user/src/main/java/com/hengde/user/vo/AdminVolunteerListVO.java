@@ -63,7 +63,7 @@ public class AdminVolunteerListVO {
     /** 服务时长（小时，由已确认分钟换算，保留 1 位小数） */
     private Double hours;
 
-    /** 累计积分（已发放） */
+    /** 当前积分余额（取自积分账本，与积分中心的「当前余额」同一个数；不是累计获得） */
     private Integer points;
 
     /** 参与活动次数 */

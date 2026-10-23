@@ -16,6 +16,7 @@ package com.hengde.activity.constant;
  *   <tr><td>{@link #MANUAL}</td><td>{@code null}</td>
  *       <td>手工调整无天然单据，幂等改由 {@code point_record.request_id} 保证</td></tr>
  *   <tr><td>{@link #REWARD_PUNISH}</td><td>{@code honor_reward_punish.id}</td><td>V2 第 5 批启用</td></tr>
+ *   <tr><td>{@link #GROUP_CREATE}</td><td>{@code volunteer_group.id}</td><td>发起小组扣分；驳回退分走 {@link #GROUP_REFUND_REQUEST_PREFIX}</td></tr>
  * </table>
  *
  * <p><b>新增来源时必须分配新码，不要复用</b>——{@code uk_source} 只认 (source_type, source_id) 这一对，
@@ -47,6 +48,11 @@ public final class PointSourceType {
     public static final int REWARD_PUNISH = 6;
     /** 相册上传（V4 活动相册批，D10）：非消费类，计入累计获得；source_id＝相册上传批次 id，审核通过才入账 */
     public static final int ALBUM = 7;
+    /**
+     * 发起小组（原型 P23「发起小组（-50积分）」，需方 2026-10-23 拍板补上）：<b>消费类</b>，
+     * source_id＝小组 id；建组驳回时退回，退分与商城同理复用本码记正数（见 {@link #GROUP_REFUND_REQUEST_PREFIX}）。
+     */
+    public static final int GROUP_CREATE = 8;
 
     /**
      * 奖惩申诉成立时那笔<b>反向流水</b>的 {@code request_id} 前缀，<b>系统保留</b>。
@@ -84,6 +90,13 @@ public final class PointSourceType {
      */
     public static final String MALL_REFUND_REQUEST_PREFIX = "sys:mall-refund:";
 
+    /**
+     * 建组被驳回时退回发起积分那笔流水的 {@code request_id} 前缀，<b>系统保留</b>。
+     * 与 {@link #MALL_REFUND_REQUEST_PREFIX} 同一个道理：退分复用 {@link #GROUP_CREATE} 记正数，
+     * 「已使用」与「累计获得」都还原到没发起过的样子；{@code (8, groupId)} 已被扣分那笔占住，只能走 {@code uk_request_id}。
+     */
+    public static final String GROUP_REFUND_REQUEST_PREFIX = "sys:group-refund:";
+
     /** 操作方：系统自动 */
     public static final int OPERATOR_SYSTEM = 0;
     /** 操作方：管理员 */
@@ -97,7 +110,7 @@ public final class PointSourceType {
      * 若 SQL 那份没跟着改，同一个人在积分中心看到的总积分和在排行榜上的分数就会不一致——
      * 正是本项目反复强调的「两套口径显示两个数」。</p>
      */
-    public static final java.util.List<Integer> CONSUMPTION_TYPES = java.util.List.of(EXCHANGE);
+    public static final java.util.List<Integer> CONSUMPTION_TYPES = java.util.List.of(EXCHANGE, GROUP_CREATE);
 
     /**
      * 该来源是否属于「消费」——即需求里「已使用积分」统计的口径。
@@ -107,8 +120,9 @@ public final class PointSourceType {
      * 反过来，先加后减的修正也会把「累计获得」虚高。故修正 / 手工调整 / 奖惩一律计入<b>获得的净额</b>
      * （修正本就是在更正当初发多了或发少了），只有真正花出去的才算已使用。</p>
      *
-     * <p>当前只有兑换属消费，且 V3 才开放；本方法先立起来，是为了让口径有唯一出处，
-     * 免得届时又在 SQL 里按正负拍一个。</p>
+     * <p>当前消费类是兑换与发起小组（后者 2026-10-23 起，原型 P23）；口径只在这里立一处，
+     * 免得哪天又在 SQL 里按正负拍一个。被驳回的小组退回的那笔沿用发起小组的来源码，
+     * 所以「已使用」会如数冲减，不会把退分算成获得。</p>
      *
      * @param sourceType 来源类型码
      * @return true=消费类
@@ -135,6 +149,7 @@ public final class PointSourceType {
             case MANUAL -> "管理员调整";
             case REWARD_PUNISH -> "奖惩调整";
             case ALBUM -> "相册上传";
+            case GROUP_CREATE -> "发起小组";
             default -> "其他";
         };
     }

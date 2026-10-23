@@ -189,6 +189,11 @@ public class PointService {
                     && sourceType != PointSourceType.EXCHANGE) {
                 throw new BusinessException("幂等键前缀 " + PointSourceType.MALL_REFUND_REQUEST_PREFIX + " 为系统保留");
             }
+            if (key.regionMatches(true, 0, PointSourceType.GROUP_REFUND_REQUEST_PREFIX, 0,
+                    PointSourceType.GROUP_REFUND_REQUEST_PREFIX.length())
+                    && sourceType != PointSourceType.GROUP_CREATE) {
+                throw new BusinessException("幂等键前缀 " + PointSourceType.GROUP_REFUND_REQUEST_PREFIX + " 为系统保留");
+            }
         }
         // 统一在此截断：remark 列 512，而上游拼进来的活动名、修正理由等长度不受本服务控制，
         // 不截断会在严格模式下抛 data too long 把整个调用方事务带崩（发积分/审核都会连带失败）。
@@ -444,6 +449,18 @@ public class PointService {
      */
     public int balanceOf(Long volunteerId) {
         return pointRecordMapper.sumBalance(volunteerId);
+    }
+
+    /**
+     * 某张单据当初记的那一笔的变动值（按 {@code uk_source} 查），没有记过返回 null。
+     * 供「退回当初扣的分」类场景：退多少以账本上那一笔为准，没扣过就不退。
+     */
+    public Integer amountBySource(int sourceType, Long sourceId) {
+        if (sourceId == null) {
+            return null;
+        }
+        PointRecord r = pointRecordMapper.selectBySource(sourceType, sourceId);
+        return r == null ? null : r.getChangeAmount();
     }
 
     /**
