@@ -41,10 +41,10 @@ public class VolunteerGroupController {
         return Result.ok(groupService.listForVolunteer(query, keyword, StpUtil.getLoginIdAsLong()));
     }
 
-    @Operation(summary = "小组详情")
+    @Operation(summary = "小组详情（带当前志愿者的 myStatus 与 myRole：0 成员 / 1 组长 / 2 管理员）")
     @GetMapping("/{id}")
     public Result<GroupVO> detail(@PathVariable Long id) {
-        return Result.ok(groupService.detail(id));
+        return Result.ok(groupService.detailForVolunteer(id, StpUtil.getLoginIdAsLong()));
     }
 
     @Operation(summary = "发起新小组")

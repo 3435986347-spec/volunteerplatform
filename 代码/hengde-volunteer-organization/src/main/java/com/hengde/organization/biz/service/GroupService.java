@@ -214,6 +214,29 @@ public class GroupService {
     }
 
     /**
+     * 志愿者端小组详情：在 {@link #detail} 之上带出当前志愿者在本组的 {@code myStatus} 与 {@code myRole}。
+     *
+     * <p>小程序原先拿登录时存的手机号 / 姓名去成员列表里比对，猜自己是不是成员、是什么角色——
+     * 没绑手机号的组长在自己的小组详情里看到的是「申请加入」（2026-10-29 真机点出来的）。由后端直接说。</p>
+     */
+    public GroupVO detailForVolunteer(Long id, Long volunteerId) {
+        GroupVO vo = detail(id);
+        if (volunteerId == null) {
+            return vo;
+        }
+        VolunteerGroupMember mine = memberMapper.selectOne(Wrappers.<VolunteerGroupMember>lambdaQuery()
+                .eq(VolunteerGroupMember::getGroupId, id)
+                .eq(VolunteerGroupMember::getVolunteerId, volunteerId)
+                .in(VolunteerGroupMember::getStatus, MEMBER_PENDING, MEMBER_ACTIVE)
+                .last("LIMIT 1"));
+        if (mine != null) {
+            vo.setMyStatus(mine.getStatus());
+            vo.setMyRole(Objects.equals(mine.getStatus(), MEMBER_ACTIVE) ? mine.getRole() : null);
+        }
+        return vo;
+    }
+
+    /**
      * 发起新小组。
      *
      * <p>并发：以「志愿者维度」分布式锁串行化同一发起人的 create/join——单纯靠 ensureNoActiveGroup 的「读后写」

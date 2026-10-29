@@ -20,6 +20,7 @@ import com.hengde.organization.biz.entity.VolunteerGroupMember;
 import com.hengde.organization.biz.service.GroupService;
 import com.hengde.organization.biz.service.SquadService;
 import com.hengde.organization.biz.vo.GroupMemberVO;
+import com.hengde.organization.biz.vo.GroupVO;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -134,6 +135,17 @@ class OrganizationBizTest {
         assertEquals(Integer.valueOf(1), myStatus(gid, leaderId), "组长：已加入");
         assertEquals(Integer.valueOf(0), myStatus(gid, applicant), "申请待审");
         assertNull(myStatus(gid, insertNormalVolunteer()), "不相干的人");
+
+        // 详情同样带出（2026-10-29 真机：小程序靠手机号 / 姓名猜身份，没绑手机号的组长被当成外人）
+        GroupVO asLeader = groupService.detailForVolunteer(gid, leaderId);
+        assertEquals(Integer.valueOf(1), asLeader.getMyStatus());
+        assertEquals(Integer.valueOf(com.hengde.organization.biz.constant.MemberRole.LEADER), asLeader.getMyRole(), "组长的角色");
+        GroupVO asApplicant = groupService.detailForVolunteer(gid, applicant);
+        assertEquals(Integer.valueOf(0), asApplicant.getMyStatus());
+        assertNull(asApplicant.getMyRole(), "待审的人还没有角色");
+        GroupVO asStranger = groupService.detailForVolunteer(gid, insertNormalVolunteer());
+        assertNull(asStranger.getMyStatus());
+        assertNull(asStranger.getMyRole());
     }
 
     private Integer myStatus(Long groupId, Long viewer) {
