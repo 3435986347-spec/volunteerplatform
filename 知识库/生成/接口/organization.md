@@ -19,7 +19,7 @@
 | GET | `/v/organization/forms/{id}/submissions/mine` |  | 我在这份问卷上的答卷 | `FormController` |
 | GET | `/v/organization/groups` |  | 小组列表（每组带当前志愿者的 myStatus：空不在组里 / 0 待审 / 1 已加入） | `VolunteerGroupController` |
 | POST | `/v/organization/groups` |  | 发起新小组 | `VolunteerGroupController` |
-| GET | `/v/organization/groups/{id}` |  | 小组详情 | `VolunteerGroupController` |
+| GET | `/v/organization/groups/{id}` |  | 小组详情（带当前志愿者的 myStatus 与 myRole：0 成员 / 1 组长 / 2 管理员） | `VolunteerGroupController` |
 | POST | `/v/organization/groups/{id}/join` |  | 申请加入小组 | `VolunteerGroupController` |
 | GET | `/v/organization/groups/{id}/join-applications` |  | 待审核加入申请列表（仅组长/管理员可见，含申请人 memberId 供审批） | `VolunteerGroupController` |
 | POST | `/v/organization/groups/{id}/leave` |  | 退出小组 | `VolunteerGroupController` |

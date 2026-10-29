@@ -12,7 +12,7 @@
 - 权限点现行 **99** 个；改 seed 必须同步 `OrganizationRbacTest.permissionsSeeded` 的总数断言。`user:edit` / `org:perm-assign` 写死仅超管、不入权限表。
 - 志愿者端权限只给「活跃且 `manager_flag=1`」的人（`isActiveManager`），可授的点由 `permission.volunteer_grantable` 圈定。
 - 一人一组靠生成列唯一键 `uk_active_volunteer`；小组 create / join 按人上锁。
-- 发起小组扣 50（XH53）经接口 `GroupCreationFee`（activity 实现，`@Autowired(required = false)`）：`createForVolunteer` 先取小组锁、再取 `pointLockKey` 积分锁、再开事务；`rejectCreate` 在同一事务里退分。志愿者端列表走 `listForVolunteer`，每组带 `myStatus`（null / 0 待审 / 1 已加入，组长也是 1）。
+- 发起小组扣 50（XH53）经接口 `GroupCreationFee`（activity 实现，`@Autowired(required = false)`）：`createForVolunteer` 先取小组锁、再取 `pointLockKey` 积分锁、再开事务；`rejectCreate` 在同一事务里退分。志愿者端列表走 `listForVolunteer`、详情走 `detailForVolunteer`，都带 `myStatus`（null / 0 待审 / 1 已加入，组长也是 1）；详情另带 `myRole`（已加入才有：0 成员 / 1 组长 / 2 管理员）——小程序据此决定「我的小组」视图与管理操作，不再拿手机号 / 姓名去成员列表里猜。
 - 分队：两条审核路（部门、分队负责人）的批准都走 `approveSerialized`，**负责人的拒绝也一样**（`withSquadLocked`）——事务第一句先锁分队行、锁内再核负责人；撤换负责人 / 停用分队是对分队行的 UPDATE，与审核互斥，撤换提交之后原负责人在途的审核落不了库。负责人＝`volunteer_squad.leader_id`，取消要显式 `.set(leader_id, null)`。志愿者端分队列表（`listForVolunteer`）每行带当前志愿者的 `belonged` / `applying`。
 - 组织架构：全部写操作一把全局锁 `lock:org-structure`；最多 10 层、不能成环、有下级或有人的节点不能删。种子节点：协会根节点下理事会（V101 补种）、组织部、秘书部、宣传部。
 - 问卷：题目与答案的校验、规范化只在 `FormAnswerValidator`；发布后题目冻结；提交与停止靠 `selectByIdForShare` 串行；文件题只收本系统 `form/` 下的上传。
@@ -48,3 +48,8 @@
 列表 `myStatus`：端到端时组长在自己的小组上也看到「申请」、点进去被拒「一个志愿者只能加入一个小组」——列表不下发成员状态。
 `listForVolunteer` 在原列表上按 `volunteer_id` + 本页小组 id 查一次成员行（PENDING / ACTIVE）；用例 `OrganizationBizTest.volunteerGroupListMarksTheViewersMembership`。
 
+**小组详情带 myStatus / myRole（2026-10-29，真机点出来的）**：小程序小组详情原先按登录时存的手机号 / 姓名去成员列表里比对，
+猜「我」是不是成员、什么角色——没绑手机号的组长（开发登录、或只用微信登录的人）在自己的小组里看到的是「申请加入」。
+`GET /v/organization/groups/{id}` 改走 `GroupService.detailForVolunteer`，按 `volunteer_id` 查一次成员行（PENDING / ACTIVE）填两项；
+`JacksonConfig` 不输出 null，所以「不在组里」和「旧后端不下发」在小程序那头分不清——小程序的取舍是：下发了就信，没下发才退回旧的比对。
+用例 `OrganizationBizTest.volunteerGroupListMarksTheViewersMembership` 补了详情断言（组长 1/1、待审 0/null、外人 null/null）。
