@@ -559,6 +559,71 @@ class EnrollmentServiceTest {
         void apply(Activity a);
     }
 
+    /** XH54：游客（没实名注册）不是志愿者，自己报不了名。 */
+    @Test
+    void enroll_guest_rejected() {
+        Long guest = insertGuest();
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long slot = insertSlot(aid, A_START, A_START.plusHours(2));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> enrollmentService.enroll(aid, List.of(slot), guest));
+
+        assertEquals("请先完成志愿者注册再报名", ex.getMessage());
+        assertEquals(0, enrollmentCount(aid, guest));
+    }
+
+    /** XH54：别人也不能替游客报名；一批里有一个游客就整批不写，已实名的那个也不落库。 */
+    @Test
+    void proxyEnroll_guestTarget_rejectedRollsBackAll() {
+        Long actor = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
+        Long member = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
+        Long guest = insertGuest();
+        insertGroupWithMembers(actor, List.of(member, guest));
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long slot = insertSlot(aid, A_START, A_START.plusHours(2));
+        ProxyEnrollDTO dto = new ProxyEnrollDTO();
+        dto.setVolunteerIds(List.of(member, guest));
+        dto.setSlotIds(List.of(slot));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> enrollmentService.proxyEnroll(aid, dto, actor));
+
+        assertTrue(ex.getMessage().contains("还没有注册成为志愿者"), ex.getMessage());
+        assertEquals(0, enrollmentCount(aid, guest));
+        assertEquals(0, enrollmentCount(aid, member));
+    }
+
+    /** XH54：后台手动录入能越过报名条件，但游客不是志愿者，不在可越的范围内；已实名的照常录入。 */
+    @Test
+    void manualEnroll_guestRejected_registeredStillAllowed() {
+        Long guest = insertGuest();
+        Long registered = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long slot = insertSlot(aid, A_START, A_START.plusHours(2));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> enrollmentService.manualEnroll(aid, guest, List.of(slot), 1L));
+
+        assertEquals("该用户还没有注册成为志愿者，不能报名", ex.getMessage());
+        assertEquals(0, enrollmentCount(aid, guest));
+        assertEquals(1, enrollmentService.manualEnroll(aid, registered, List.of(slot), 1L));
+    }
+
+    private Long insertGuest() {
+        Long id = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
+        volunteerMapper.update(null, Wrappers.<Volunteer>lambdaUpdate()
+                .eq(Volunteer::getId, id)
+                .set(Volunteer::getRegisterTime, null));
+        return id;
+    }
+
+    private long enrollmentCount(Long activityId, Long volunteerId) {
+        return enrollmentMapper.selectCount(Wrappers.<ActivityEnrollment>lambdaQuery()
+                .eq(ActivityEnrollment::getActivityId, activityId)
+                .eq(ActivityEnrollment::getVolunteerId, volunteerId));
+    }
+
     private Long insertActivity(ActivityConfigurer configurer) {
         Activity a = new Activity();
         a.setTitle("报名测试活动_" + System.nanoTime());

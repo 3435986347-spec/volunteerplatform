@@ -13,6 +13,7 @@ import java.time.LocalDate;
  * @param birthday 生日（按身份证解析，用于算年龄）
  * @param grade    年级 code（对应 {@code Grade}，null 表示未填）
  * @param status   账号状态：0正常/1禁用/2注销（对应 {@code UserStatus}）
+ * @param registered 是否已实名注册成志愿者（{@code register_time} 非空）；false 是游客
  * @author hengde
  */
 public record VolunteerProfileView(
@@ -21,6 +22,7 @@ public record VolunteerProfileView(
         LocalDate birthday,
         Integer grade,
         Integer status,
-        Long squadId
+        Long squadId,
+        boolean registered
 ) {
 }

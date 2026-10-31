@@ -93,7 +93,7 @@ public class VolunteerQueryService {
         Integer genderCode = v.getGender() == null ? Gender.UNKNOWN.getCode() : v.getGender().getCode();
         Integer gradeCode = v.getGrade() == null ? null : v.getGrade().getCode();
         return new VolunteerProfileView(v.getId(), genderCode, v.getBirthday(), gradeCode, effectiveStatus(v),
-                v.getSquadId());
+                v.getSquadId(), v.getRegisterTime() != null);
     }
 
     /**

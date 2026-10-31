@@ -246,6 +246,10 @@ public class EnrollmentService {
         if (profile.status() == null || profile.status() != USER_STATUS_NORMAL) {
             throw new BusinessException("账号状态异常，无法报名");
         }
+        // 游客不是志愿者，不能报名（XH54）
+        if (!profile.registered()) {
+            throw new BusinessException("请先完成志愿者注册再报名");
+        }
         checkEligibility(activity, profile, volunteerId);
 
         // 防重：该活动已有活跃报名（待审核/已通过）即拒绝；取消(3)/拒绝(2)后可再报
@@ -337,6 +341,10 @@ public class EnrollmentService {
         }
         if (profile.status() == null || profile.status() != USER_STATUS_NORMAL) {
             throw new BusinessException("该志愿者账号状态异常，无法报名");
+        }
+        // 补录能越过的是报名条件；游客压根不是志愿者，不在可越的范围内（XH54）
+        if (!profile.registered()) {
+            throw new BusinessException("该用户还没有注册成为志愿者，不能报名");
         }
 
         List<ActivitySlot> slots = activitySlotMapper.selectList(Wrappers.<ActivitySlot>lambdaQuery()
@@ -467,6 +475,9 @@ public class EnrollmentService {
             }
             if (profile.status() == null || profile.status() != USER_STATUS_NORMAL) {
                 throw new BusinessException("被代报名同学(id=" + targetId + ")账号状态异常");
+            }
+            if (!profile.registered()) {
+                throw new BusinessException("同学(id=" + targetId + ")还没有注册成为志愿者，不能代报名");
             }
             checkEligibility(activity, profile, targetId);
 
