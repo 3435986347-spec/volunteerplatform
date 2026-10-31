@@ -1003,6 +1003,111 @@ class CertificateServiceTest {
     // ---------- 夹具 ----------
 
     /** 一个「已确认参加」的场景：活动 + 场次 + 志愿者 + 已确认考勤。 */
+    /** 重新生成：换成新文件，编号与下载次数不变，旧对象还在（修渲染问题后替换已缓存的文件）。 */
+    @Test
+    void reRender_swapsTheFile_keepsNumberAndCount_andLeavesTheOldObject() {
+        ensureGlobalTemplate();
+        Fixture f = confirmedFixture();
+        Long certId = certificateService.createForSlot(f.volunteerId, f.activityId, f.slotId);
+        certificateService.downloadUrlForVolunteer(certId, f.volunteerId);
+        HonorCertificate before = certificateMapper.selectById(certId);
+
+        certificateService.reRender(certId);
+
+        HonorCertificate after = certificateMapper.selectById(certId);
+        assertNotEquals(before.getFileKey(), after.getFileKey(), "应换成新文件");
+        assertTrue(after.getFileKey().contains("/system/"), "仍是系统渲染件");
+        assertTrue(InMemoryFileStorageConfig.OBJECTS.containsKey(after.getFileKey()), "新对象已写入");
+        assertEquals(1, InMemoryFileStorageConfig.WRITE_COUNT.get(before.getFileKey()), "旧对象不被覆盖");
+        assertEquals(before.getCertNo(), after.getCertNo());
+        assertEquals(1, after.getDownloadCount(), "下载次数不变");
+    }
+
+    /** 后台上传件是协会给的原件，不能拿样本顶掉。 */
+    @Test
+    void reRender_ofAdminUpload_isRefused_andFileIsUntouched() {
+        ensureGlobalTemplate();
+        Fixture f = confirmedFixture();
+        Long certId = certificateService.createForSlot(f.volunteerId, f.activityId, f.slotId);
+        HonorCertificate patch = new HonorCertificate();
+        patch.setId(certId);
+        patch.setSource(CertificateSource.ADMIN_UPLOAD);
+        patch.setFileKey("certificate/upload/original.pdf");
+        certificateMapper.updateById(patch);
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> certificateService.reRender(certId));
+
+        assertTrue(ex.getMessage().contains("重新上传"), ex.getMessage());
+        assertEquals("certificate/upload/original.pdf", certificateMapper.selectById(certId).getFileKey());
+    }
+
+    /** 样本已经没了：重新生成失败，但旧文件照常可用——不能把一张能看的证书弄成打不开。 */
+    @Test
+    void reRender_withoutTemplate_failsAndKeepsTheOldFile() {
+        ensureGlobalTemplate();
+        Fixture f = confirmedFixture();
+        Long certId = certificateService.createForSlot(f.volunteerId, f.activityId, f.slotId);
+        certificateService.previewUrlForVolunteer(certId, f.volunteerId);
+        String key = certificateMapper.selectById(certId).getFileKey();
+        clearTemplates();
+
+        assertThrows(BusinessException.class, () -> certificateService.reRender(certId));
+
+        assertEquals(key, certificateMapper.selectById(certId).getFileKey());
+        assertTrue(certificateService.previewUrlForVolunteer(certId, f.volunteerId).startsWith("https://"));
+    }
+
+    /** 还没渲染过的不用管：首次查看时自然按新渲染器出。 */
+    @Test
+    void reRender_beforeFirstRender_doesNothing() {
+        ensureGlobalTemplate();
+        Fixture f = confirmedFixture();
+        Long certId = certificateService.createForSlot(f.volunteerId, f.activityId, f.slotId);
+
+        certificateService.reRender(certId);
+
+        assertNull(certificateMapper.selectById(certId).getFileKey());
+    }
+
+    /** 已软删的不能重新生成（管理员的明确意思表示），报不存在。 */
+    @Test
+    void reRender_ofSoftDeleted_isRejected() {
+        ensureGlobalTemplate();
+        Fixture f = confirmedFixture();
+        Long certId = certificateService.createForSlot(f.volunteerId, f.activityId, f.slotId);
+        certificateService.previewUrlForVolunteer(certId, f.volunteerId);
+        certificateService.softDelete(certId, "用例", 1L);
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> certificateService.reRender(certId));
+
+        assertTrue(ex.getMessage().contains("不存在"), ex.getMessage());
+    }
+
+    /**
+     * 渲染途中管理员传了原件：换 key 的 CAS 必须落空，原件不被系统件顶掉。
+     * 从存储写入这个缝注入，正好落在「读到旧 key」与「换 key」之间。
+     */
+    @Test
+    void reRender_whenAdminUploadsMidway_doesNotOverwriteTheOriginal() {
+        ensureGlobalTemplate();
+        Fixture f = confirmedFixture();
+        Long certId = certificateService.createForSlot(f.volunteerId, f.activityId, f.slotId);
+        certificateService.previewUrlForVolunteer(certId, f.volunteerId);
+        InMemoryFileStorageConfig.BEFORE_UPLOAD_PRIVATE = () -> {
+            InMemoryFileStorageConfig.BEFORE_UPLOAD_PRIVATE = () -> {
+            };
+            HonorCertificate patch = new HonorCertificate();
+            patch.setId(certId);
+            patch.setSource(CertificateSource.ADMIN_UPLOAD);
+            patch.setFileKey("certificate/upload/original.pdf");
+            certificateMapper.updateById(patch);
+        };
+
+        assertThrows(BusinessException.class, () -> certificateService.reRender(certId));
+
+        assertEquals("certificate/upload/original.pdf", certificateMapper.selectById(certId).getFileKey());
+    }
+
     private record Fixture(Long activityId, Long slotId, Long volunteerId) {
     }
 

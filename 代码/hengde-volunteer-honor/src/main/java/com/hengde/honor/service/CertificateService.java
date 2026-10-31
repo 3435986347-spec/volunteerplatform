@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hengde.activity.service.ActivityCertificateQueryService;
 import com.hengde.auth.service.VolunteerQueryService;
 import com.hengde.common.exception.BusinessException;
+import com.hengde.common.lock.DistributedLockSupport;
 import com.hengde.donate.constant.DonateCertRefs;
 import com.hengde.donate.service.DonateCertificateQueryService;
 import com.hengde.common.oss.FileStorageService;
@@ -20,7 +21,6 @@ import com.hengde.honor.entity.HonorCertificate;
 import com.hengde.honor.entity.HonorCertificateTemplate;
 import com.hengde.honor.vo.CertificateBatchUploadVO;
 import com.hengde.honor.vo.CertificateVO;
-import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,7 +39,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -610,22 +610,13 @@ public class CertificateService {
         if (!Integer.valueOf(CertificateSource.SYSTEM).equals(cert.getSource())) {
             throw new BusinessException("该证书文件缺失，请联系管理员重新上传");
         }
-        RLock lock = redissonClient.getLock(RENDER_LOCK_PREFIX + cert.getId());
-        boolean locked = false;
-        try {
-            locked = lock.tryLock(honorProperties.getCertificate().getRenderLockWaitSeconds(),
-                    TimeUnit.SECONDS);
-            if (!locked) {
-                throw new BusinessException("证书正在生成中，请稍后重试");
-            }
+        return withRenderLock(cert.getId(), () -> {
             // 锁内二次读：可能在等锁期间已由他人渲染完成
             HonorCertificate fresh = certificateMapper.selectById(cert.getId());
             if (fresh != null && fresh.getFileKey() != null) {
                 return fresh.getFileKey();
             }
-            byte[] pdf = Integer.valueOf(CertificateType.DONATION).equals(cert.getType())
-                    ? pdfRenderer.render(buildDonationContent(cert))
-                    : pdfRenderer.render(buildContent(cert));
+            byte[] pdf = renderPdf(cert);
             String objectKey = systemObjectKey(cert.getCertNo());
             fileStorageService.uploadPrivate(pdf, objectKey, "application/pdf");
             int rows = certificateMapper.fillFileKeyIfAbsent(cert.getId(), objectKey);
@@ -636,14 +627,49 @@ public class CertificateService {
                 return winner != null && winner.getFileKey() != null ? winner.getFileKey() : objectKey;
             }
             return objectKey;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new BusinessException("证书生成被中断，请重试");
-        } finally {
-            if (locked && lock.isHeldByCurrentThread()) {
-                lock.unlock();
+        });
+    }
+
+    /**
+     * 按当前渲染器重新生成系统渲染件。懒渲染的文件被 {@code file_key} 缓存着，修过渲染问题后不会自己重出。
+     *
+     * <p><b>先传新对象、再换 key</b>：样本没了、渲染或上传失败时旧文件照常可用，不会有「证书没了」的窗口；
+     * 新对象带随机后缀，不覆盖旧的（对象只增不删，见 {@link #uploadObjectKey}）。编号与下载次数不变。</p>
+     *
+     * <p><b>只认系统渲染件</b>：后台上传件是协会给的原件，不能拿样本顶掉。还没渲染过的什么也不做，
+     * 首次查看时自然按新渲染器出。</p>
+     */
+    public void reRender(Long certId) {
+        withRenderLock(certId, () -> {
+            HonorCertificate cert = certificateMapper.selectById(certId);
+            if (cert == null) {
+                throw new BusinessException("证书不存在");
             }
-        }
+            if (!Integer.valueOf(CertificateSource.SYSTEM).equals(cert.getSource())) {
+                throw new BusinessException("后台上传的证书不能重新生成，如需更换请重新上传");
+            }
+            if (cert.getFileKey() == null) {
+                return null;
+            }
+            byte[] pdf = renderPdf(cert);
+            String objectKey = reRenderObjectKey(cert.getCertNo());
+            fileStorageService.uploadPrivate(pdf, objectKey, "application/pdf");
+            if (certificateMapper.replaceSystemFile(certId, cert.getFileKey(), objectKey, CertificateSource.SYSTEM) != 1) {
+                throw new BusinessException("证书在生成期间有变动，请刷新后重试");
+            }
+            return null;
+        });
+    }
+
+    private byte[] renderPdf(HonorCertificate cert) {
+        return Integer.valueOf(CertificateType.DONATION).equals(cert.getType())
+                ? pdfRenderer.render(buildDonationContent(cert))
+                : pdfRenderer.render(buildContent(cert));
+    }
+
+    private <T> T withRenderLock(Long certId, Supplier<T> action) {
+        return DistributedLockSupport.runLocked(redissonClient, RENDER_LOCK_PREFIX + certId,
+                honorProperties.getCertificate().getRenderLockWaitSeconds(), "证书正在生成中，请稍后重试", action);
     }
 
     /**
@@ -656,6 +682,12 @@ public class CertificateService {
      */
     private String systemObjectKey(String certNo) {
         return honorProperties.getCertificate().getObjectDir() + "/system/" + certNo + ".pdf";
+    }
+
+    /** 重新渲染件的对象 key：与首次渲染同前缀，带随机后缀，不覆盖旧文件（见 {@link #reRender}）。 */
+    private String reRenderObjectKey(String certNo) {
+        return honorProperties.getCertificate().getObjectDir() + "/system/" + certNo
+                + "-" + java.util.UUID.randomUUID().toString().substring(0, 8) + ".pdf";
     }
 
     /**

@@ -37,9 +37,15 @@ public final class DistributedLockSupport {
      * 在单把锁（{@code key}）内执行动作；锁未拿到抛业务异常，结束时只释放本线程持有的锁。
      */
     public static <T> T runLocked(RedissonClient client, String key, Supplier<T> action) {
+        return runLocked(client, key, WAIT_SEC, "操作太频繁，请稍后再试", action);
+    }
+
+    /** 同上，等待时长与拿不到锁时的提示由调用方定（如证书渲染：等待可配，要告诉人是在生成中）。 */
+    public static <T> T runLocked(RedissonClient client, String key, long waitSeconds, String busyMessage,
+                                  Supplier<T> action) {
         RLock lock = client.getLock(key);
-        if (!tryLock(lock)) {
-            throw new BusinessException("操作太频繁，请稍后再试");
+        if (!tryLock(lock, waitSeconds)) {
+            throw new BusinessException(busyMessage);
         }
         try {
             return action.get();
@@ -61,7 +67,7 @@ public final class DistributedLockSupport {
         try {
             for (Long id : ordered) {
                 RLock lock = client.getLock(keyPrefix + id);
-                if (!tryLock(lock)) {
+                if (!tryLock(lock, WAIT_SEC)) {
                     throw new BusinessException("操作太频繁，请稍后再试");
                 }
                 acquired.add(lock);
@@ -81,9 +87,9 @@ public final class DistributedLockSupport {
      * 不指定 leaseTime：走 Redisson watchdog 自动续期，避免固定租期在慢 SQL/GC/DB 抖动下
      * 「事务未提交、锁已到期释放」从而被另一请求抢锁读到未提交数据。
      */
-    private static boolean tryLock(RLock lock) {
+    private static boolean tryLock(RLock lock, long waitSeconds) {
         try {
-            return lock.tryLock(WAIT_SEC, TimeUnit.SECONDS);
+            return lock.tryLock(waitSeconds, TimeUnit.SECONDS);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
             throw new BusinessException("操作被中断，请重试");

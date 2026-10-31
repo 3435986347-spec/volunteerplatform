@@ -1,6 +1,8 @@
 package com.hengde.honor.service;
 
 import com.hengde.common.exception.BusinessException;
+import com.itextpdf.io.font.FontProgram;
+import com.itextpdf.io.font.FontProgramFactory;
 import com.itextpdf.io.font.PdfEncodings;
 import com.itextpdf.kernel.font.PdfFont;
 import com.itextpdf.kernel.font.PdfFontFactory;
@@ -8,19 +10,23 @@ import com.itextpdf.kernel.pdf.PdfDocument;
 import com.itextpdf.kernel.pdf.PdfWriter;
 import com.itextpdf.layout.Document;
 import com.itextpdf.layout.element.Paragraph;
+import com.itextpdf.layout.element.Text;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.time.format.DateTimeFormatter;
 
 /**
  * 电子证书 PDF 渲染（iText）。
  *
- * <p><b>中文字体</b>：iText 默认不含中文字体，直接写中文会得到空白或乱码。这里用
- * {@code font-asian} 提供的 Adobe CJK 字体包 {@code STSong-Light + UniGB-UCS2-H}，
- * 好处是<b>无需随包分发字体文件、也不涉及字体授权</b>；代价是字形单一（宋体）。
- * 若日后协会要求特定字体，改为嵌入字体文件即可，届时须一并处理授权与体积。</p>
+ * <p><b>中文字体</b>：思源宋体（{@code fonts/NotoSerifSC-Regular.otf}，SIL OFL 1.1，许可证在同目录
+ * {@code NotoSerifSC-OFL.txt}）<b>子集嵌入</b>到每张证书——证书是盖章文件，长什么样不能取决于阅读器手上有什么字体。
+ * 此前用 STSong-Light 且不嵌入：Identity-H 下阅读器无从把编码对到汉字，套印内容全是乱码；
+ * 换成 UniGB 预定义编码也只是交给阅读器替代字体，数字字宽不对、挤在一起，
+ * 基本多文种平面以外的字还会在关闭文档时抛空指针（2026-10-30 前端反馈后实测）。
+ * 字库里没有的字（如 {@code 𠮷}、emoji）显示成方框，不会让出证失败。</p>
  *
  * <p><b>本类不决定「该不该渲染」</b>——是否有可用样本、并发下谁来写，都由
  * {@link CertificateService} 把关。本类只负责「给定内容，产出 PDF 字节」。</p>
@@ -31,6 +37,20 @@ import java.time.format.DateTimeFormatter;
 public class CertificatePdfRenderer {
 
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy年M月d日");
+
+    private static final String FONT_RESOURCE = "fonts/NotoSerifSC-Regular.otf";
+
+    /** 称呼那一行：四号。主标题在协会样本上（本类只补可变字段），字号随样本。 */
+    private static final float SUBTITLE_SIZE = 14f;
+
+    /** 正文与编号：小四。 */
+    private static final float BODY_SIZE = 12f;
+
+    /** 字间距：字与字之间多留四分之一个字（按各行字号算）。字号与字距都是需方 2026-10-30 看样后定的。 */
+    private static final float LETTER_SPACING_EM = 0.25f;
+
+    /** 字体只解析一次；缺文件或文件坏了就让应用启动失败，好过等志愿者点开证书才发现 */
+    private final FontProgram fontProgram = loadFont();
 
     /**
      * 渲染所需的内容，全部由调用方查好后传入，避免本类反向依赖各领域服务。
@@ -81,19 +101,17 @@ public class CertificatePdfRenderer {
              PdfDocument pdf = openOnTemplate(c.templatePdf(), out);
              Document doc = new Document(pdf)) {
 
-            PdfFont font = PdfFontFactory.createFont("STSong-Light", PdfEncodings.IDENTITY_H);
+            PdfFont font = certificateFont();
             doc.setFont(font);
-            doc.add(new Paragraph(nullSafe(c.volunteerName()) + "　爱心人士：")
-                    .setFontSize(15).setMarginTop(120));
+            doc.add(line(nullSafe(c.volunteerName()) + "　爱心人士：", SUBTITLE_SIZE).setMarginTop(120));
 
             StringBuilder body = new StringBuilder("　　您");
             if (c.time() != null) {
                 body.append("于 ").append(c.time().format(DATE)).append(" ");
             }
             body.append(nullSafe(c.statement())).append("。特发此证，以资鼓励。");
-            doc.add(new Paragraph(body.toString()).setFontSize(14).setMarginTop(20).setMultipliedLeading(1.8f));
-            doc.add(new Paragraph("证书编号：" + nullSafe(c.certNo()))
-                    .setFontSize(11).setMarginTop(40));
+            doc.add(line(body.toString(), BODY_SIZE).setMarginTop(20).setMultipliedLeading(1.8f));
+            doc.add(certNoLine(nullSafe(c.certNo()), font).setMarginTop(40));
 
             doc.close();
             return out.toByteArray();
@@ -122,13 +140,12 @@ public class CertificatePdfRenderer {
              PdfDocument pdf = openOnTemplate(c.templatePdf(), out);
              Document doc = new Document(pdf)) {
 
-            PdfFont font = PdfFontFactory.createFont("STSong-Light", PdfEncodings.IDENTITY_H);
+            PdfFont font = certificateFont();
             doc.setFont(font);
 
             // 底图（样本）通常已经画好标题与版式，这里只补【可变字段】，不再自绘标题，
             // 免得把协会样本上的标题盖住或与之重复。
-            doc.add(new Paragraph(nullSafe(c.volunteerName()) + "　志愿者：")
-                    .setFontSize(15).setMarginTop(120));
+            doc.add(line(nullSafe(c.volunteerName()) + "　志愿者：", SUBTITLE_SIZE).setMarginTop(120));
 
             StringBuilder body = new StringBuilder("　　您于 ");
             if (c.slotStartTime() != null) {
@@ -143,11 +160,10 @@ public class CertificatePdfRenderer {
                 body.append("，服务时长 ").append(formatHours(c.serviceMinutes())).append(" 小时");
             }
             body.append("。特发此证，以资鼓励。");
-            doc.add(new Paragraph(body.toString()).setFontSize(14).setMarginTop(20).setMultipliedLeading(1.8f));
+            doc.add(line(body.toString(), BODY_SIZE).setMarginTop(20).setMultipliedLeading(1.8f));
 
             // 编号必须印：原型 P83 卡片上就有「证书编号」
-            doc.add(new Paragraph("证书编号：" + nullSafe(c.certNo()))
-                    .setFontSize(11).setMarginTop(40));
+            doc.add(certNoLine(nullSafe(c.certNo()), font).setMarginTop(40));
 
             doc.close();
             return out.toByteArray();
@@ -173,6 +189,40 @@ public class CertificatePdfRenderer {
         } catch (Exception e) {
             throw new BusinessException("证书电子样本不是有效的 PDF，无法套印：" + e.getMessage());
         }
+    }
+
+    private static Paragraph line(String text, float fontSize) {
+        return new Paragraph(text).setFontSize(fontSize).setCharacterSpacing(fontSize * LETTER_SPACING_EM);
+    }
+
+    /**
+     * 证书编号那行，数字逐位等距。这款字体的数字是比例宽度（{@code 1} 比其它窄一成多），直接排出来一眼能看出不齐；
+     * iText 的版面用不上字体的等宽数字特性，所以给每一位单独配字距，补到同一个步长。
+     */
+    private static Paragraph certNoLine(String certNo, PdfFont font) {
+        float step = font.getWidth('0', BODY_SIZE) + BODY_SIZE * LETTER_SPACING_EM;
+        Paragraph p = line("证书编号：", BODY_SIZE);
+        for (char digit : certNo.toCharArray()) {
+            p.add(new Text(String.valueOf(digit)).setCharacterSpacing(step - font.getWidth(digit, BODY_SIZE)));
+        }
+        return p;
+    }
+
+    private static FontProgram loadFont() {
+        try (InputStream in = CertificatePdfRenderer.class.getClassLoader().getResourceAsStream(FONT_RESOURCE)) {
+            if (in == null) {
+                throw new IllegalStateException("缺少证书字体 " + FONT_RESOURCE);
+            }
+            return FontProgramFactory.createFont(in.readAllBytes(), false);
+        } catch (IOException e) {
+            throw new IllegalStateException("读取证书字体失败：" + FONT_RESOURCE, e);
+        }
+    }
+
+    /** PdfFont 绑定文档，每张证书现建。 */
+    private PdfFont certificateFont() {
+        return PdfFontFactory.createFont(fontProgram, PdfEncodings.IDENTITY_H,
+                PdfFontFactory.EmbeddingStrategy.FORCE_EMBEDDED);
     }
 
     /** 分钟转小时，保留一位小数，去掉多余的 .0。 */

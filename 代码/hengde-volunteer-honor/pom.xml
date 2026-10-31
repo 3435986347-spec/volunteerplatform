@@ -66,15 +66,6 @@
             <artifactId>itext-core</artifactId>
             <type>pom</type>
         </dependency>
-        <!-- 中文字体：iText 默认不含中文，不加这个会渲染成空白/乱码。
-             font-asian 提供 Adobe CJK 字体包（STSong-Light + UniGB-UCS2-H），
-             无需随包分发字体文件、也不涉及字体授权问题——比嵌入思源黑体轻得多。
-             它不在 itext-core 这个聚合 pom 里，必须单独声明。 -->
-        <dependency>
-            <groupId>com.itextpdf</groupId>
-            <artifactId>font-asian</artifactId>
-            <version>${itext.version}</version>
-        </dependency>
 
         <!-- Lombok（common 里是 provided 不传递，本模块需单独声明） -->
         <dependency>

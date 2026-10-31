@@ -67,7 +67,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 只测证书服务证明不了「donate 真的在那一刻发了事件、honor 真的接上了」。
  * 证书正文那半句话断言在 {@code DonateCertificateQueryService.find} 的出参上（渲染器原样套印它）：结对写「结对成功」、
  * 不写金额（乙-1），只有到账的众筹捐款才写金额；每张都真的走一遍渲染，证明套印用的是捐赠样本。
- * （不从 PDF 里抽字：内置宋体 STSong-Light 没有嵌入 ToUnicode，抽出来的中文缺字。）</p>
+ * 字体与版面的断言在 {@code CertificatePdfRenderTest}。</p>
  *
  * <p>注解与 {@code CertificateServiceTest} 一致，好复用同一个测试上下文。<b>需本机 Docker</b>（MySQL + Redis）。</p>
  *

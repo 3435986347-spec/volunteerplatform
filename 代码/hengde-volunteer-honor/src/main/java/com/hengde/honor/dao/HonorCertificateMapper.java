@@ -141,6 +141,17 @@ public interface HonorCertificateMapper extends BaseMapper<HonorCertificate> {
     int fillFileKeyIfAbsent(@Param("id") Long id, @Param("fileKey") String fileKey);
 
     /**
+     * 把系统渲染件换成重新渲染的文件。只认当初读到的那个 key 且仍是系统件：
+     * 期间被后台上传件顶掉、被软删、被别人换过都是 0 行，不会盖掉。
+     *
+     * @return 影响行数：1=已替换，0=期间有变动
+     */
+    @Update("UPDATE honor_certificate SET file_key = #{newKey}, generate_time = NOW(), update_time = NOW() "
+            + "WHERE id = #{id} AND file_key = #{oldKey} AND source = #{source} AND is_deleted = 0")
+    int replaceSystemFile(@Param("id") Long id, @Param("oldKey") String oldKey, @Param("newKey") String newKey,
+                          @Param("source") int source);
+
+    /**
      * 下载次数 +1。
      *
      * <p>用 SQL 原地自增而非「读出来 +1 再写回」：后者在并发下会丢计数。</p>

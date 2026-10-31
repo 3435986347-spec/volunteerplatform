@@ -155,6 +155,14 @@ public class AdminCertificateController {
         return Result.ok();
     }
 
+    @Operation(summary = "重新生成系统渲染的证书文件（编号、下载次数不变，旧文件保留；后台上传件不可用；尚未生成的不用管，首次查看时自然生成）")
+    @SaCheckPermission(value = PermissionCode.HONOR_CERTIFICATE, type = "admin")
+    @PostMapping("/certificates/{id}/re-render")
+    public Result<Void> reRender(@PathVariable Long id) {
+        certificateService.reRender(id);
+        return Result.ok();
+    }
+
     @Operation(summary = "撤销软删")
     @SaCheckPermission(value = PermissionCode.HONOR_CERTIFICATE_DELETE, type = "admin")
     @PostMapping("/certificates/{id}/restore")
