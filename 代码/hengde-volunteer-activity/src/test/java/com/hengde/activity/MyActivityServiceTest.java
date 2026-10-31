@@ -74,6 +74,9 @@ class MyActivityServiceTest {
         // 列表卡片「活动地址」（2026-10-23 端到端点出来：此前只有详情带地点，列表那一行是空的）
         assertEquals("雷州市西湖公园南门", list.stream().filter(v -> v.getActivityId().equals(approved))
                 .findFirst().orElseThrow().getLocation());
+        // 小程序「报名时间」（2026-11-01 真机点出来：此前不下发，一直是空的）
+        assertNotNull(list.stream().filter(v -> v.getActivityId().equals(approved))
+                .findFirst().orElseThrow().getEnrollTime());
     }
 
     @Test
@@ -87,6 +90,7 @@ class MyActivityServiceTest {
         MyActivityDetailVO vo = myActivityService.myActivityDetail(vid, aid, slotOf(aid, vid));
         assertEquals(aid, vo.getActivityId());
         assertNotNull(vo.getCheckInTime(), "应带出签到时间");
+        assertNotNull(vo.getEnrollTime(), "详情也带报名时间");
         assertEquals("hengde-activity-checkin:" + aid, vo.getCheckInQrContent());
         assertNotNull(vo.getLeaders());
         assertTrue(vo.getLeaders().stream().anyMatch(l -> vid.equals(l.getVolunteerId())));

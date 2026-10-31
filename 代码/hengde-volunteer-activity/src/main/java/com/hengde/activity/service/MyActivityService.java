@@ -124,6 +124,7 @@ public class MyActivityService {
                     fillBase(vo, activityById.get(aid), attBySlot.get(attKey(aid, e.getSlotId())),
                             violationCnt.getOrDefault(attKey(aid, e.getSlotId()), 0), leaderNames(aid));
                     vo.setSlotId(e.getSlotId());
+                    vo.setEnrollTime(e.getEnrollTime());
                     ActivitySlot s = slotById.get(e.getSlotId());
                     if (s != null) {
                         vo.setSlotProjectName(s.getProjectName());
@@ -137,7 +138,7 @@ public class MyActivityService {
     /** 我的活动详情：校验本人确属该活动已通过报名后，返回摘要 + 坐标/二维码 + 负责人 + 确认到家 + 评价回显。 */
     public MyActivityDetailVO myActivityDetail(Long volunteerId, Long activityId, Long slotId) {
         // 校验落到【这一场】：只报了上午场的人不该看到下午场的详情（含二维码与负责人联系方式）。
-        requireApprovedEnrollmentOfSlot(volunteerId, activityId, slotId);
+        ActivityEnrollment enrollment = requireApprovedEnrollmentOfSlot(volunteerId, activityId, slotId);
         Activity a = activityMapper.selectById(activityId);
         if (a == null) {
             throw new BusinessException("活动不存在");
@@ -162,6 +163,7 @@ public class MyActivityService {
         vo.setEmergencyPhone(activityProperties.getEmergencyPhone());
         // 场次回填：列表行有这几项，详情不能反而没有（否则前端从列表点进详情会丢失「这是哪一场」）。
         vo.setSlotId(slotId);
+        vo.setEnrollTime(enrollment.getEnrollTime());
         vo.setSlotProjectName(slot.getProjectName());
         vo.setSlotStartTime(slot.getStartTime());
         vo.setSlotEndTime(slot.getEndTime());
@@ -206,15 +208,17 @@ public class MyActivityService {
      * <p>旧版只校验「报过这个活动」，于是报了上午场的人可以传下午场的 {@code slotId} 拿到详情——
      * 而详情里含签到二维码内容、负责人姓名与紧急联系电话。</p>
      */
-    private void requireApprovedEnrollmentOfSlot(Long volunteerId, Long activityId, Long slotId) {
-        Long c = enrollmentMapper.selectCount(Wrappers.<ActivityEnrollment>lambdaQuery()
+    private ActivityEnrollment requireApprovedEnrollmentOfSlot(Long volunteerId, Long activityId, Long slotId) {
+        ActivityEnrollment enrollment = enrollmentMapper.selectOne(Wrappers.<ActivityEnrollment>lambdaQuery()
                 .eq(ActivityEnrollment::getActivityId, activityId)
                 .eq(ActivityEnrollment::getSlotId, slotId)
                 .eq(ActivityEnrollment::getVolunteerId, volunteerId)
-                .eq(ActivityEnrollment::getStatus, ENROLL_APPROVED));
-        if (c == null || c == 0) {
+                .eq(ActivityEnrollment::getStatus, ENROLL_APPROVED)
+                .last("LIMIT 1"));
+        if (enrollment == null) {
             throw new BusinessException("活动不存在或您未参加该时间段");
         }
+        return enrollment;
     }
 
     private static String attKey(Long activityId, Long slotId) {

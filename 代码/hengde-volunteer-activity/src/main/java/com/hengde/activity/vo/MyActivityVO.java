@@ -31,6 +31,10 @@ public class MyActivityVO {
     private java.time.LocalDateTime slotStartTime;
 
     private java.time.LocalDateTime slotEndTime;
+
+    /** 报名时间 */
+    private LocalDateTime enrollTime;
+
     private Long serialNo;
     private String title;
     /** 活动地点（列表卡片「活动地址」；此前只在详情里有，列表那一行一直是空的） */
