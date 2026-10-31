@@ -52,4 +52,5 @@
 猜「我」是不是成员、什么角色——没绑手机号的组长（开发登录、或只用微信登录的人）在自己的小组里看到的是「申请加入」。
 `GET /v/organization/groups/{id}` 改走 `GroupService.detailForVolunteer`，按 `volunteer_id` 查一次成员行（PENDING / ACTIVE）填两项；
 `JacksonConfig` 不输出 null，所以「不在组里」和「旧后端不下发」在小程序那头分不清——小程序的取舍是：下发了就信，没下发才退回旧的比对。
+**这不会让同名的外人被当成成员**：`GET /v/organization/groups/{id}/members` 对非在册成员回 400「不是该小组成员」，小程序走进 catch，到不了比对那一步（10-30 评审曾误报过这条，真机上才查实，改动已撤回）。
 用例 `OrganizationBizTest.volunteerGroupListMarksTheViewersMembership` 补了详情断言（组长 1/1、待审 0/null、外人 null/null）。

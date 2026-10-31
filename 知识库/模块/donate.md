@@ -14,12 +14,16 @@
 - 库存 CAS 折成一条 `UPDATE … JOIN`；**CAS 失败之后的复核读必须是当前读**。
 - 物资流转：运单 / 物资 / 箱 / 轨迹都带 `biz_type + biz_id`；碰箱子的动作一律先箱后物。
 - 微心愿：受助人姓名学校密文，只有当前认领人看全文；看详情要已验手机号，并记录查看人与手机号。
+- 微心愿实现 / 撤销 / 取消认领前数运单和物资：先锁认领行，再取 id，再按主键当前读，不走 `idx_biz_status` 加锁（理由见下方 10-31 那条）。
 - 结对：认捐额 ≠ 到账额；上限写在累加语句里；不对不存在的行加锁（直接插，撞键再当前读赢家）。受助人信息密文，只有已成立结对的人看全文。
 - 众筹每个项目只收一种（捐款或捐物）。
 - 捐赠证书：来源键在 `DonateCertRefs`，够格口径在 `DonateCertificateQueryService`，经事件交给 honor。
 - 捐款：两本账（认捐 / 到账）；退款先改账、提交后再原路退；发票文件放私有存储。
 
 ## 按批次的记录
+
+**微心愿死锁（2026-10-31，全量回归撞出）**：`WishService.realize` 在 `countUnsettledForShare` 里按 `(biz_type, biz_id)` 走 `idx_biz_status` 加共享锁，是先二级索引后主键；`DonateShipmentService.cancel`、到货、核对按主键 UPDATE、改 status 时才锁这条二级索引，是先主键后二级索引，赛跑时互等，取消方报 1213。`countLiveGoodsForShare` 同一形状。
+改成先普通读取 id（`selectIdsByBiz`），再 `FORCE INDEX (PRIMARY)` 按主键当前读，二级索引上不再有共享锁。间隙锁原本挡的「并发插入新运单 / 物资」改由认领行的排他锁挡：`realize`、`revokeClaim`、`cancelClaim`、`registerShipment`、`addItem` 都先锁它，所以这几个方法**开事务后第一条读必须是锁认领行**，否则读视图早于别人的提交，取 id 会漏。用例 `WishConcurrencyTest.unsettledChecks_lockPrimaryKeysOnly` 直接查 `performance_schema.data_locks`，走回二级索引必红。
 
 **V3 全部批次已完成**（商城批 + 卷批 + 捐书批 + 微心愿批 + 结对批 + 物流推送批 + 商城快递批 + 捐款批 + 收尾批；trade 批见上一行）（收付能力在 `trade` 模块，见上一行）。
 

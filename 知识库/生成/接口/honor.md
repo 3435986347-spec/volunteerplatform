@@ -2,7 +2,7 @@
 
 # honor 模块的接口
 
-53 个端点。模块说明见 [`知识库/模块/honor.md`](../../模块/honor.md)。
+54 个端点。模块说明见 [`知识库/模块/honor.md`](../../模块/honor.md)。
 
 ## 志愿者端 `/v`
 
@@ -35,6 +35,7 @@
 | POST | `/a/honor/certificates/reconcile` | `honor:certificate` | 补发缺失的证书（按确认时间起点/活动指定范围，至少给一个；单次封顶，看 hasMore 决定是否再点） | `AdminCertificateController` |
 | DELETE | `/a/honor/certificates/{id}` | `honor:certificate-delete` | 软删指定某人证书（记删除人/时间/原因） | `AdminCertificateController` |
 | GET | `/a/honor/certificates/{id}/file` | `honor:certificate` | 后台查看（同样只返回短期签名 URL；不计下载次数） | `AdminCertificateController` |
+| POST | `/a/honor/certificates/{id}/re-render` | `honor:certificate` | 重新生成系统渲染的证书文件（编号、下载次数不变，旧文件保留；后台上传件不可用；尚未生成的不用管，首次查看时自然生成） | `AdminCertificateController` |
 | POST | `/a/honor/certificates/{id}/restore` | `honor:certificate-delete` | 撤销软删 | `AdminCertificateController` |
 | GET | `/a/honor/medal-grants` | `honor:medal-grant` 或 `honor:medal-grant-audit` | 发放记录列表（status 0待审核/1已生效/2已驳回；可按志愿者筛选） | `AdminMedalController` |
 | POST | `/a/honor/medal-grants` | `honor:medal-grant` | 发起勋章发放（落待审核，须过发放审核才对志愿者生效） | `AdminMedalController` |
