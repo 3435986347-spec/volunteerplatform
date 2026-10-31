@@ -54,15 +54,20 @@ public interface DonateItemMapper extends BaseMapper<DonateItem> {
     @Select("SELECT * FROM donate_item WHERE id = #{id} AND is_deleted = 0 FOR SHARE")
     DonateItem selectByIdForShare(@Param("id") Long id);
 
+    /** 某条业务记录下全部物资的 id（普通读），给 {@link #countLiveGoodsForShare} 按主键加锁用；调用方要求同 {@code DonateShipmentMapper.selectIdsByBiz}。 */
+    @Select("SELECT id FROM donate_item WHERE biz_type = #{bizType} AND biz_id = #{bizId} AND is_deleted = 0")
+    List<Long> selectIdsByBiz(@Param("bizType") int bizType, @Param("bizId") Long bizId);
+
     /**
-     * 某条业务记录下「还活着」的物资数：没被判不合格、没退回、没取消的（在途 / 待核对 / 合格 / 装箱 / 送达）。
-     * <b>当前读 + 共享锁</b>，范围落在 {@code idx_biz_status} 上、连间隙一起锁，挡住并发插入的新物资。
+     * 这些物资里「还活着」的数量：没被判不合格、没退回、没取消的（在途 / 待核对 / 合格 / 已发放）。
+     * <b>当前读 + 共享锁，只锁主键</b>，理由同 {@code DonateShipmentMapper.countUnsettledForShare}：
+     * 走 {@code idx_biz_status} 加锁会和按主键改状态的取消、核对反向死锁。并发插入的新物资靠调用方先锁业务记录挡住。
      */
-    @Select("SELECT COUNT(*) FROM donate_item WHERE biz_type = #{bizType} AND biz_id = #{bizId} AND is_deleted = 0 "
-            + "AND status NOT IN (#{rejected}, #{returned}, #{cancelled}) FOR SHARE")
-    long countLiveGoodsForShare(@Param("bizType") int bizType, @Param("bizId") Long bizId,
-                                @Param("rejected") int rejected, @Param("returned") int returned,
-                                @Param("cancelled") int cancelled);
+    @Select("<script>SELECT COUNT(*) FROM donate_item FORCE INDEX (PRIMARY) WHERE id IN "
+            + "<foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach> "
+            + "AND is_deleted = 0 AND status NOT IN (#{rejected}, #{returned}, #{cancelled}) FOR SHARE</script>")
+    long countLiveGoodsForShare(@Param("ids") List<Long> ids, @Param("rejected") int rejected,
+                                @Param("returned") int returned, @Param("cancelled") int cancelled);
 
     /**
      * Row 17 F 的 10 维搜索（箱子码、专属条形码、物品条形码、捐赠人名字、捐赠人电话、捐赠人单位、

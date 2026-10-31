@@ -22,9 +22,17 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.testcontainers.containers.MySQLContainer;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
@@ -77,6 +85,9 @@ class WishConcurrencyTest {
     private CryptoUtil cryptoUtil;
     @Autowired
     private JdbcTemplate jdbc;
+    /** 观测 performance_schema 用，见 lockedIndexes */
+    @Autowired
+    private MySQLContainer<?> mysqlContainer;
     @Autowired
     private PlatformTransactionManager txManager;
 
@@ -261,6 +272,46 @@ class WishConcurrencyTest {
     private Long liveClaimId(Long wishId) {
         return jdbc.queryForObject("SELECT id FROM donate_wish_claim WHERE wish_id = ? AND status IN (?, ?)",
                 Long.class, wishId, WishFlow.CLAIM_ACTIVE, WishFlow.CLAIM_REALIZED);
+    }
+
+    /**
+     * 实现 / 取消认领前数「还没处理完」的那两条当前读只能锁主键：走 {@code idx_biz_status} 是先二级索引后主键，
+     * 而取消 / 到货 / 核对按主键改 status 是先主键后二级索引，两边互等就死锁（2026-10-31 回归撞出，取消方报 1213）。
+     * 赛跑用例要碰运气才撞得上，这里直接看 InnoDB 实际加在哪个索引上。
+     */
+    @Test
+    void unsettledChecks_lockPrimaryKeysOnly() {
+        Long wishId = wishService.create(WishTestSupport.wish("只锁主键-" + next(), "秦小雨", null), ADMIN);
+        Long donor = volunteer("只锁主键");
+        wishService.claim(wishId, donor);
+        wishService.registerShipment(wishId, donor, shipment(expressNo(), item("书包", DonateFlow.TYPE_STATIONERY, 1, null)));
+        Long claimId = liveClaimId(wishId);
+
+        new TransactionTemplate(txManager).executeWithoutResult(s -> {
+            assertEquals(1, shipmentService.countUnsettledShipments(DonateFlow.BIZ_WISH, claimId));
+            assertEquals(1, shipmentService.countLiveGoods(DonateFlow.BIZ_WISH, claimId));
+            assertEquals(Set.of("PRIMARY"), lockedIndexes("donate_shipment"));
+            assertEquals(Set.of("PRIMARY"), lockedIndexes("donate_item"));
+        });
+    }
+
+    /** 业务账号读不到 performance_schema，另开 root 连接。 */
+    private Set<String> lockedIndexes(String table) {
+        Set<String> indexes = new HashSet<>();
+        try (Connection conn = DriverManager.getConnection(mysqlContainer.getJdbcUrl(), "root", mysqlContainer.getPassword());
+             PreparedStatement ps = conn.prepareStatement("SELECT DISTINCT INDEX_NAME FROM performance_schema.data_locks "
+                     + "WHERE OBJECT_SCHEMA = ? AND OBJECT_NAME = ? AND LOCK_TYPE = 'RECORD'")) {
+            ps.setString(1, mysqlContainer.getDatabaseName());
+            ps.setString(2, table);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    indexes.add(rs.getString(1));
+                }
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        }
+        return indexes;
     }
 
     private static List<String> runAll(List<Callable<String>> tasks) throws Exception {

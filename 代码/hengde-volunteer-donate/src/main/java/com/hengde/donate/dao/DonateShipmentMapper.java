@@ -136,15 +136,27 @@ public interface DonateShipmentMapper extends BaseMapper<DonateShipment> {
                     @Param("queryTime") LocalDateTime queryTime, @Param("done") int done);
 
     /**
-     * 某条业务记录下「还没处理完」的运单数（已寄出 / 已到货待核对），<b>当前读 + 共享锁</b>。
+     * 某条业务记录下全部运单的 id（普通读），给 {@link #countUnsettledForShare} 按主键加锁用。
+     * 调用方须已锁住那条业务记录、且本事务在此之前没有普通读：登记寄出也先锁它，读视图才看得到全部运单。
+     */
+    @Select("SELECT id FROM donate_shipment WHERE biz_type = #{bizType} AND biz_id = #{bizId} AND is_deleted = 0")
+    List<Long> selectIdsByBiz(@Param("bizType") int bizType, @Param("bizId") Long bizId);
+
+    /**
+     * 这些运单里「还没处理完」的数量（已寄出 / 已到货待核对），<b>当前读 + 共享锁，只锁主键</b>。
      *
      * <p>微心愿「实现」前用它：锁住这些运单行，与并发的扫码到货 / 核对串行化——否则刚判完「都核对完了」，
      * 另一台电脑就把一个包裹核对成合格，那几件物资会停在一个已实现的心愿下，永远没有下一步。</p>
+     *
+     * <p><b>不能按 {@code (biz_type, biz_id)} 走 {@code idx_biz_status} 加锁</b>：那是先锁二级索引再锁主键，
+     * 而取消 / 到货 / 核对按主键 UPDATE、改 status 时再锁这条二级索引，顺序正好相反，会死锁
+     * （2026-10-31 全量回归撞出：{@code WishConcurrencyTest} 里取消方报 1213）。</p>
      */
-    @Select("SELECT COUNT(*) FROM donate_shipment WHERE biz_type = #{bizType} AND biz_id = #{bizId} "
-            + "AND status IN (#{shipped}, #{arrived}) AND is_deleted = 0 FOR SHARE")
-    long countUnsettledForShare(@Param("bizType") int bizType, @Param("bizId") Long bizId,
-                                @Param("shipped") int shipped, @Param("arrived") int arrived);
+    @Select("<script>SELECT COUNT(*) FROM donate_shipment FORCE INDEX (PRIMARY) WHERE id IN "
+            + "<foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach> "
+            + "AND status IN (#{shipped}, #{arrived}) AND is_deleted = 0 FOR SHARE</script>")
+    long countUnsettledForShare(@Param("ids") List<Long> ids, @Param("shipped") int shipped,
+                                @Param("arrived") int arrived);
 
     /** 补录物资用：运单头的当前读（调用方已持有该行 X 锁，见 {@code DonateShipmentService.addItem}）。 */
     @Select("SELECT id, biz_type, biz_id, donor_volunteer_id, status FROM donate_shipment "

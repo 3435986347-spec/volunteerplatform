@@ -219,13 +219,15 @@ public class DonateShipmentService {
      * 且已先锁住那条业务记录（登记寄出也先锁它），否则「刚判完没有、对方就登记了一单」的窗口还在。</p>
      */
     public long countLiveGoods(int bizType, Long bizId) {
-        return itemMapper.countLiveGoodsForShare(bizType, bizId, DonateFlow.ITEM_REJECTED, DonateFlow.ITEM_RETURNED,
-                DonateFlow.ITEM_CANCELLED);
+        List<Long> ids = itemMapper.selectIdsByBiz(bizType, bizId);
+        return ids.isEmpty() ? 0 : itemMapper.countLiveGoodsForShare(ids, DonateFlow.ITEM_REJECTED,
+                DonateFlow.ITEM_RETURNED, DonateFlow.ITEM_CANCELLED);
     }
 
     /** 某条业务记录下还没到货或还没核对的运单数（当前读 + 共享锁，理由见 mapper 注释）。 */
     public long countUnsettledShipments(int bizType, Long bizId) {
-        return shipmentMapper.countUnsettledForShare(bizType, bizId, DonateFlow.SHIPMENT_SHIPPED,
+        List<Long> ids = shipmentMapper.selectIdsByBiz(bizType, bizId);
+        return ids.isEmpty() ? 0 : shipmentMapper.countUnsettledForShare(ids, DonateFlow.SHIPMENT_SHIPPED,
                 DonateFlow.SHIPMENT_ARRIVED);
     }
 
