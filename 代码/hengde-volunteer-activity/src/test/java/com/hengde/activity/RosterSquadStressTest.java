@@ -166,7 +166,13 @@ class RosterSquadStressTest {
                             p.setSlotIds(List.of(pickedSlot));
                             enrollmentService.proxyEnroll(aid, p, grp.get(0));
                         }
-                        case "取消" -> enrollmentService.cancel(aid, who);
+                        case "取消" -> {
+                            if (withdraw) {
+                                enrollmentService.cancel(aid, who);
+                            } else {
+                                enrollmentService.cancel(aid, List.of(pickedSlot), who);
+                            }
+                        }
                         case "通过", "驳回" -> {
                             Long id = jdbc.query("SELECT id FROM activity_enrollment WHERE activity_id = ? AND status = 0 "
                                     + "AND is_deleted = 0 ORDER BY RAND() LIMIT 1", rs -> rs.next() ? rs.getLong(1) : null, aid);
@@ -224,9 +230,9 @@ class RosterSquadStressTest {
                 .in(ActivityEnrollment::getStatus, 0, 1));
         Set<Long> outsiderSet = new HashSet<>(outsiders);
         assertTrue(active.stream().noneMatch(e -> outsiderSet.contains(e.getVolunteerId())), "外人不该有活跃报名");
-        Map<Long, Long> perPerson = new TreeMap<>();
-        active.forEach(e -> perPerson.merge(e.getVolunteerId(), 1L, Long::sum));
-        assertTrue(perPerson.values().stream().allMatch(n -> n == 1), "每人至多一条活跃报名（每次只报一个场次）：" + perPerson);
+        Map<String, Long> perPersonSlot = new TreeMap<>();
+        active.forEach(e -> perPersonSlot.merge(e.getVolunteerId() + ":" + e.getSlotId(), 1L, Long::sum));
+        assertTrue(perPersonSlot.values().stream().allMatch(n -> n == 1), "一人一个场次至多一条活跃报名：" + perPersonSlot);
 
         RosterVO preview = rosterService.previewForAdmin(aid);
         for (RosterVO.Slot sl : preview.getSlots()) {

@@ -114,6 +114,9 @@ class VolunteerActivityQueryTest {
         assertTrue(names.contains("周怡汐") && names.contains("李明"), "报名详情显示完整姓名");
         // 当前查看者报没报过：报了的按钮显示「已报名」（2026-10-23 端到端点出来：此前不下发，按钮恒为「我要报名」）
         assertEquals(Boolean.TRUE, activityService.detailForVolunteer(id, zhou).getEnrolled());
+        // 报名按场次（XH55）：报了哪几场也要下发，没报的场次还能补报
+        assertEquals(List.of(slot1), activityService.detailForVolunteer(id, zhou).getEnrolledSlotIds());
+        assertEquals(List.of(), activityService.detailForVolunteer(id, insertVolunteer("没报名的人2")).getEnrolledSlotIds());
         assertEquals(Boolean.FALSE, activityService.detailForVolunteer(id, insertVolunteer("没报名的人")).getEnrolled());
     }
 

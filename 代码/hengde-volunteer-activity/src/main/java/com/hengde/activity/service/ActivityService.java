@@ -652,15 +652,20 @@ public class ActivityService {
     }
 
     /**
-     * 志愿者端活动详情（带查看者）：在 {@link #detailForVolunteer(Long)} 之上填 {@code enrolled}——
-     * 这位志愿者在本活动有没有待审核或已通过的报名。
+     * 志愿者端活动详情（带查看者）：在 {@link #detailForVolunteer(Long)} 之上填 {@code enrolled} 与
+     * {@code enrolledSlotIds}——这位志愿者在本活动报了哪些场次（待审核或已通过）。
      */
     public ActivityVolunteerDetailVO detailForVolunteer(Long id, Long viewerId) {
         ActivityVolunteerDetailVO vo = detailForVolunteer(id);
-        vo.setEnrolled(viewerId != null && activityEnrollmentMapper.selectCount(Wrappers.<ActivityEnrollment>lambdaQuery()
-                .eq(ActivityEnrollment::getActivityId, id)
-                .eq(ActivityEnrollment::getVolunteerId, viewerId)
-                .in(ActivityEnrollment::getStatus, EnrollmentStatus.PENDING, EnrollmentStatus.APPROVED)) > 0);
+        List<Long> enrolledSlotIds = viewerId == null ? List.of()
+                : activityEnrollmentMapper.selectList(Wrappers.<ActivityEnrollment>lambdaQuery()
+                        .select(ActivityEnrollment::getSlotId)
+                        .eq(ActivityEnrollment::getActivityId, id)
+                        .eq(ActivityEnrollment::getVolunteerId, viewerId)
+                        .in(ActivityEnrollment::getStatus, EnrollmentStatus.PENDING, EnrollmentStatus.APPROVED))
+                .stream().map(ActivityEnrollment::getSlotId).toList();
+        vo.setEnrolled(!enrolledSlotIds.isEmpty());
+        vo.setEnrolledSlotIds(enrolledSlotIds);
         return vo;
     }
 

@@ -146,7 +146,7 @@
 | POST | /v/activity/activities | 提交活动（「管理团队」志愿者；不带 `type=admin` 走默认 login 域鉴权，吃 V18 志愿者权限；**V19 起：落「待审核发布」status=4、不直接上线，须后台 `activity:publish-audit` 审核通过才可见**；操作人记志愿者） | 需登录（activity:publish） |
 | GET | /v/activity/activities/{id} | 活动详情（含子时间段/子项目/报名须知；内部展示全字段：定位+经纬度、三类报名开放时间、报名限制等） | 需登录 |
 | POST | /v/activity/activities/{id}/enroll | 报名（body 指定时间段） | 需登录 |
-| DELETE | /v/activity/activities/{id}/enroll | 取消报名 | 需登录 |
+| DELETE | /v/activity/activities/{id}/enroll | 取消报名（查询参数 `slotIds` 指定场次，逗号分隔；不传＝本活动全部场次） | 需登录 |
 | POST | /v/activity/activities/{id}/proxy-enrollments | 同小组成员代报名 | 需登录 |
 | GET | /v/activity/my-enrollments | 我的报名列表 | 需登录 |
 | GET | /v/activity/my-activities | 我的活动——**V30 起按场次列出**（一人报同一活动两场就返回两条，各带 `slotId`/`slotProjectName`/场次起止）。旧版按活动聚合，多场次时后一条会静默覆盖前一条 | 需登录 |

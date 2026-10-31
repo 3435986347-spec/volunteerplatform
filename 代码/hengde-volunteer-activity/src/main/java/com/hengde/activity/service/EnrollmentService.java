@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hengde.activity.constant.ActivityStatus;
 import com.hengde.activity.constant.EnrollmentStatus;
 import com.hengde.activity.dao.ActivityAttendanceMapper;
+import com.hengde.activity.entity.ActivityAttendance;
 import com.hengde.activity.dao.ActivityEnrollmentMapper;
 import com.hengde.activity.dao.ActivityMapper;
 import com.hengde.activity.dao.ActivitySlotMapper;
@@ -227,16 +228,9 @@ public class EnrollmentService {
             throw new BusinessException("存在无效的时间段");
         }
 
-        // 项目数量上下限
-        int n = slotIds.size();
-        Integer min = activity.getMinProjects();
-        Integer max = activity.getMaxProjects();
-        if (min != null && min > 0 && n < min) {
-            throw new BusinessException("至少需报名 " + min + " 个项目");
-        }
-        if (max != null && n > max) {
-            throw new BusinessException("最多可报名 " + max + " 个项目");
-        }
+        // 项目数量上下限：报名按场次，已经报着的也算在内
+        List<Long> enrolledSlotIds = activeSlotIds(activityId, volunteerId);
+        checkProjectLimits(activity, enrolledSlotIds, slotIds);
 
         // 资格校验
         VolunteerProfileView profile = volunteerQueryService.getProfileForEligibilityForShare(volunteerId);
@@ -252,13 +246,9 @@ public class EnrollmentService {
         }
         checkEligibility(activity, profile, volunteerId);
 
-        // 防重：该活动已有活跃报名（待审核/已通过）即拒绝；取消(3)/拒绝(2)后可再报
-        Long active = enrollmentMapper.selectCount(Wrappers.<ActivityEnrollment>lambdaQuery()
-                .eq(ActivityEnrollment::getActivityId, activityId)
-                .eq(ActivityEnrollment::getVolunteerId, volunteerId)
-                .in(ActivityEnrollment::getStatus, ENROLL_PENDING, ENROLL_APPROVED));
-        if (active != null && active > 0) {
-            throw new BusinessException("您已报名该活动");
+        // 防重按场次：已有活跃报名（待审核/已通过）的场次不能再报，同一活动的其它场次可以补报；取消(3)/拒绝(2)后可再报
+        if (slotIds.stream().anyMatch(enrolledSlotIds::contains)) {
+            throw new BusinessException("您已报名该场次");
         }
 
         // 全平台同时间段防重：选定 slot 不得与「我在任何活动的活跃报名」slot 时间重叠，且选定 slot 彼此不重叠
@@ -354,12 +344,8 @@ public class EnrollmentService {
             throw new BusinessException("存在无效的时间段");
         }
 
-        Long active = enrollmentMapper.selectCount(Wrappers.<ActivityEnrollment>lambdaQuery()
-                .eq(ActivityEnrollment::getActivityId, activityId)
-                .eq(ActivityEnrollment::getVolunteerId, volunteerId)
-                .in(ActivityEnrollment::getStatus, ENROLL_PENDING, ENROLL_APPROVED));
-        if (active != null && active > 0) {
-            throw new BusinessException("该志愿者已报名该活动");
+        if (slotIds.stream().anyMatch(activeSlotIds(activityId, volunteerId)::contains)) {
+            throw new BusinessException("该志愿者已报名该场次");
         }
 
         checkTimeConflicts(volunteerId, slots);
@@ -447,21 +433,12 @@ public class EnrollmentService {
             throw new BusinessException("报名已截止");
         }
 
-        // slot 一致性 + 项目数量范围（与自助一致）
+        // slot 一致性（项目数量范围按被代的每个人各自已报的场次算，在下面逐人判）
         List<ActivitySlot> slots = activitySlotMapper.selectList(Wrappers.<ActivitySlot>lambdaQuery()
                 .eq(ActivitySlot::getActivityId, activityId)
                 .in(ActivitySlot::getId, slotIds));
         if (slots.size() != slotIds.size()) {
             throw new BusinessException("存在无效的时间段");
-        }
-        int n = slotIds.size();
-        Integer min = activity.getMinProjects();
-        Integer max = activity.getMaxProjects();
-        if (min != null && min > 0 && n < min) {
-            throw new BusinessException("至少需报名 " + min + " 个项目");
-        }
-        if (max != null && n > max) {
-            throw new BusinessException("最多可报名 " + max + " 个项目");
         }
 
         int initStatus = Integer.valueOf(1).equals(activity.getNeedAudit()) ? ENROLL_PENDING : ENROLL_APPROVED;
@@ -481,13 +458,11 @@ public class EnrollmentService {
             }
             checkEligibility(activity, profile, targetId);
 
-            Long active = enrollmentMapper.selectCount(Wrappers.<ActivityEnrollment>lambdaQuery()
-                    .eq(ActivityEnrollment::getActivityId, activityId)
-                    .eq(ActivityEnrollment::getVolunteerId, targetId)
-                    .in(ActivityEnrollment::getStatus, ENROLL_PENDING, ENROLL_APPROVED));
-            if (active != null && active > 0) {
-                throw new BusinessException("同学(id=" + targetId + ")已报名该活动");
+            List<Long> enrolledSlotIds = activeSlotIds(activityId, targetId);
+            if (slotIds.stream().anyMatch(enrolledSlotIds::contains)) {
+                throw new BusinessException("同学(id=" + targetId + ")已报名该场次");
             }
+            checkProjectLimits(activity, enrolledSlotIds, slotIds);
 
             checkTimeConflicts(targetId, slots);
 
@@ -539,17 +514,27 @@ public class EnrollmentService {
         }
     }
 
-    /**
-     * 取消报名：整活动取消，把我对该活动的活跃报名（待审核/已通过）全部置为已取消。
-     *
-     * @return 取消的报名记录条数
-     */
+    /** 取消我在本活动报的全部场次，见 {@link #cancel(Long, List, Long)}。 */
     public int cancel(Long activityId, Long volunteerId) {
-        return DistributedLockSupport.runLocked(redissonClient, LOCK_KEY_PREFIX + volunteerId,
-                () -> transactionTemplate.execute(s -> doCancel(activityId, volunteerId)));
+        return cancel(activityId, List.of(), volunteerId);
     }
 
-    private int doCancel(Long activityId, Long volunteerId) {
+    /**
+     * 取消报名：和报名一样按场次（XH55），把选中场次的活跃报名（待审核/已通过）置为已取消。
+     *
+     * <p>签到过的场次不能取消——那一场的考勤、时长和证书都挂在这条报名上。取消后还留着的场次
+     * 不能低于活动的项目数下限，要么一起取消。</p>
+     *
+     * @param slotIds 要取消的场次；空＝本活动我报的全部场次
+     * @return 取消的报名记录条数
+     */
+    public int cancel(Long activityId, List<Long> slotIds, Long volunteerId) {
+        List<Long> distinctSlotIds = slotIds == null ? List.of() : new ArrayList<>(new LinkedHashSet<>(slotIds));
+        return DistributedLockSupport.runLocked(redissonClient, LOCK_KEY_PREFIX + volunteerId,
+                () -> transactionTemplate.execute(s -> doCancel(activityId, distinctSlotIds, volunteerId)));
+    }
+
+    private int doCancel(Long activityId, List<Long> slotIds, Long volunteerId) {
         Activity activity = activityMapper.selectById(activityId);
         if (activity == null) {
             throw new BusinessException("活动不存在");
@@ -563,18 +548,59 @@ public class EnrollmentService {
         if (cancelDl != null && LocalDateTime.now().isAfter(cancelDl)) {
             throw new BusinessException("已过取消报名截止时间");
         }
-        List<ActivityEnrollment> active = enrollmentMapper.selectList(Wrappers.<ActivityEnrollment>lambdaQuery()
-                .eq(ActivityEnrollment::getActivityId, activityId)
-                .eq(ActivityEnrollment::getVolunteerId, volunteerId)
-                .in(ActivityEnrollment::getStatus, ENROLL_PENDING, ENROLL_APPROVED));
+        List<ActivityEnrollment> active = activeEnrollments(activityId, volunteerId);
         if (active.isEmpty()) {
             throw new BusinessException("您未报名该活动");
         }
-        for (ActivityEnrollment e : active) {
+        List<ActivityEnrollment> targets = slotIds.isEmpty() ? active
+                : active.stream().filter(e -> slotIds.contains(e.getSlotId())).toList();
+        if (!slotIds.isEmpty() && targets.size() != slotIds.size()) {
+            throw new BusinessException("您未报名所选场次");
+        }
+        Long checkedIn = attendanceMapper.selectCount(Wrappers.<ActivityAttendance>lambdaQuery()
+                .eq(ActivityAttendance::getActivityId, activityId)
+                .eq(ActivityAttendance::getVolunteerId, volunteerId)
+                .in(ActivityAttendance::getSlotId, targets.stream().map(ActivityEnrollment::getSlotId).toList())
+                .isNotNull(ActivityAttendance::getCheckInTime));
+        if (checkedIn != null && checkedIn > 0) {
+            throw new BusinessException("已签到的场次不能取消");
+        }
+        int remaining = active.size() - targets.size();
+        Integer min = activity.getMinProjects();
+        if (remaining > 0 && min != null && remaining < min) {
+            throw new BusinessException("本活动至少需报名 " + min + " 个项目，请把余下场次一起取消");
+        }
+        for (ActivityEnrollment e : targets) {
             e.setStatus(ENROLL_CANCELLED);
             enrollmentMapper.updateById(e);
         }
-        return active.size();
+        return targets.size();
+    }
+
+    /** 这个人在本活动的活跃报名（待审核/已通过），一个场次一行。 */
+    private List<ActivityEnrollment> activeEnrollments(Long activityId, Long volunteerId) {
+        return enrollmentMapper.selectList(Wrappers.<ActivityEnrollment>lambdaQuery()
+                .eq(ActivityEnrollment::getActivityId, activityId)
+                .eq(ActivityEnrollment::getVolunteerId, volunteerId)
+                .in(ActivityEnrollment::getStatus, ENROLL_PENDING, ENROLL_APPROVED));
+    }
+
+    private List<Long> activeSlotIds(Long activityId, Long volunteerId) {
+        return activeEnrollments(activityId, volunteerId).stream().map(ActivityEnrollment::getSlotId).toList();
+    }
+
+    /** 项目数量上下限：按这次报完之后一共报了几场算，重复选的场次由调用方的防重拦。 */
+    private void checkProjectLimits(Activity activity, List<Long> enrolledSlotIds, List<Long> slotIds) {
+        Set<Long> all = new HashSet<>(enrolledSlotIds);
+        all.addAll(slotIds);
+        Integer min = activity.getMinProjects();
+        Integer max = activity.getMaxProjects();
+        if (min != null && min > 0 && all.size() < min) {
+            throw new BusinessException("至少需报名 " + min + " 个项目");
+        }
+        if (max != null && all.size() > max) {
+            throw new BusinessException("最多可报名 " + max + " 个项目");
+        }
     }
 
     /**

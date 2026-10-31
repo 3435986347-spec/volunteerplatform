@@ -132,6 +132,45 @@ class ActivityRosterApiFlowTest {
         assertEquals(0, c.totalFailed(), "正向流程里不应有任何失败：" + c.failureSamples());
     }
 
+    /** 报名和取消都按场次（XH55）：补报另一场、slotIds 走查询串只取消一场、不传取消全部，详情下发已报的场次。 */
+    @Test
+    void enrollAndCancelBySlot() {
+        ApiStressClient c = new ApiStressClient(port);
+        String admin = c.adminLogin(adminUser, adminPass);
+        String tag = Long.toString(System.nanoTime(), 36);
+        LocalDateTime start = LocalDateTime.now().plusDays(4).withHour(9).withMinute(0).withSecond(0).withNano(0);
+        long aid = ok(c.post("/a/activity/activities", admin, Map.of(
+                "title", "按场次活动-" + tag, "location", "雷州市西湖公园",
+                "startTime", FMT.format(start), "endTime", FMT.format(start.plusHours(6)),
+                "needAudit", 0, "enrollScope", 0,
+                "slots", List.of(
+                        Map.of("projectName", "上午场", "startTime", FMT.format(start),
+                                "endTime", FMT.format(start.plusHours(2)), "needCount", 10),
+                        Map.of("projectName", "下午场", "startTime", FMT.format(start.plusHours(3)),
+                                "endTime", FMT.format(start.plusHours(5)), "needCount", 10))), "发布两场的活动")).dataAsLong();
+        String tok = c.devLogin("slot-" + tag);
+        String detailUrl = "/v/activity/activities/" + aid;
+        JsonNode slots = ok(c.get(detailUrl, tok, "活动详情")).data().get("slots");
+        long morning = slots.get(0).get("id").asLong();
+        long afternoon = slots.get(1).get("id").asLong();
+
+        ok(c.post(detailUrl + "/enroll", tok, Map.of("slotIds", List.of(morning)), "报上午场"));
+        ok(c.post(detailUrl + "/enroll", tok, Map.of("slotIds", List.of(afternoon)), "补报下午场"));
+        assertEquals(2, ok(c.get(detailUrl, tok, "详情")).data().get("enrolledSlotIds").size());
+
+        assertEquals(1, ok(c.delete(detailUrl + "/enroll?slotIds=" + afternoon, tok, "只取消下午场")).dataAsLong());
+        JsonNode left = ok(c.get(detailUrl, tok, "详情")).data();
+        assertEquals(1, left.get("enrolledSlotIds").size());
+        assertEquals(morning, left.get("enrolledSlotIds").get(0).asLong());
+        assertTrue(left.get("enrolled").asBoolean());
+
+        ok(c.post(detailUrl + "/enroll", tok, Map.of("slotIds", List.of(afternoon)), "报回下午场"));
+        assertEquals(2, ok(c.delete(detailUrl + "/enroll?slotIds=" + morning + "," + afternoon, tok, "逗号传两场")).dataAsLong());
+        ok(c.post(detailUrl + "/enroll", tok, Map.of("slotIds", List.of(morning, afternoon)), "两场一起报"));
+        assertEquals(2, ok(c.delete(detailUrl + "/enroll", tok, "不传 slotIds 取消全部")).dataAsLong());
+        assertEquals(0, ok(c.get(detailUrl, tok, "详情")).data().get("enrolledSlotIds").size());
+    }
+
     private static long idOf(ApiStressClient c, String token) {
         return ok(c.get("/v/user/profile", token, "资料")).data().get("no").asLong();
     }

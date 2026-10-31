@@ -15,7 +15,7 @@
 | POST | `/v/activity/activities/{id}/check-in` |  | 自助签到（GPS 距活动 ≤ 半径 + 时间窗口） | `AttendanceController` |
 | POST | `/v/activity/activities/{id}/check-out` |  | 自助签退（扫签退码 + GPS 距活动 ≤ 半径 + 结束后2h内；算服务时长） | `AttendanceController` |
 | POST | `/v/activity/activities/{id}/confirm-home` |  | 确认到家（活动结束后；超时仅记录） | `AttendanceController` |
-| DELETE | `/v/activity/activities/{id}/enroll` |  | 取消报名（整活动取消） | `EnrollmentController` |
+| DELETE | `/v/activity/activities/{id}/enroll` |  | 取消报名（slotIds 指定场次，不传＝本活动全部场次） | `EnrollmentController` |
 | POST | `/v/activity/activities/{id}/enroll` |  | 报名（body 指定时间段） | `EnrollmentController` |
 | GET | `/v/activity/activities/{id}/messages` |  | 活动留言列表 | `ActivityMessageController` |
 | POST | `/v/activity/activities/{id}/messages` |  | 发表活动留言 | `ActivityMessageController` |

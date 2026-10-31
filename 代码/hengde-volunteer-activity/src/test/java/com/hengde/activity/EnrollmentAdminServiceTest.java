@@ -87,7 +87,18 @@ class EnrollmentAdminServiceTest {
 
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> adminService.manualEnroll(aid, vid, List.of(slot), ADMIN_ID));
-        assertEquals("该志愿者已报名该活动", ex.getMessage());
+        assertEquals("该志愿者已报名该场次", ex.getMessage());
+    }
+
+    @Test
+    void manualEnroll_otherSlotOfSameActivity_allowed() {
+        Long vid = insertVolunteer("补另一场", null, Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long s1 = insertSlot(aid, A_START, A_START.plusHours(2));
+        Long s2 = insertSlot(aid, A_START.plusHours(3), A_START.plusHours(5));
+        adminService.manualEnroll(aid, vid, List.of(s1), ADMIN_ID);
+
+        assertEquals(1, adminService.manualEnroll(aid, vid, List.of(s2), ADMIN_ID));
     }
 
     @Test

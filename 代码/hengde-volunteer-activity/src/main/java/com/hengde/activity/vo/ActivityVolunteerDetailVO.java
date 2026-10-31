@@ -146,6 +146,9 @@ public class ActivityVolunteerDetailVO {
     /** 当前查看的志愿者在本活动是否有活跃报名（待审核或已通过）；详情页据此把按钮显示成「已报名」 */
     private Boolean enrolled;
 
+    /** 当前查看的志愿者在本活动已报的场次（待审核或已通过）；报名按场次，没报的场次还能补报 */
+    private List<Long> enrolledSlotIds;
+
     /** 报名详情预览：活跃报名者（按报名时间正序、去重志愿者），露完整姓名+报名时间 */
     private List<ActivityRegistrantVO> registrants;
 

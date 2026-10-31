@@ -33,10 +33,20 @@ import org.springframework.context.annotation.Import;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -104,7 +114,7 @@ class EnrollmentServiceTest {
 
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> enrollmentService.enroll(aid, List.of(slot), vid));
-        assertEquals("您已报名该活动", ex.getMessage());
+        assertEquals("您已报名该场次", ex.getMessage());
     }
 
     @Test
@@ -119,6 +129,235 @@ class EnrollmentServiceTest {
 
         int n = enrollmentService.enroll(aid, List.of(slot), vid);
         assertEquals(1, n, "取消后应可再次报名");
+    }
+
+    // ---------- 报名和取消都按场次（XH55）----------
+
+    @Test
+    void enroll_otherSlotOfSameActivity_allowed() {
+        Long vid = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long s1 = insertSlot(aid, A_START, A_START.plusHours(2));
+        Long s2 = insertSlot(aid, A_START.plusHours(3), A_START.plusHours(5));
+        enrollmentService.enroll(aid, List.of(s1), vid);
+
+        assertEquals(1, enrollmentService.enroll(aid, List.of(s2), vid), "同一活动的另一场可以补报");
+        assertEquals(Set.of(s1, s2), activeSlots(aid, vid));
+    }
+
+    /** 表上没有唯一键，「一人一场至多一条」全靠人维度的锁。 */
+    @Test
+    void enroll_sameSlotAtOnce_onlyOneRow() throws Exception {
+        Long vid = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long slot = insertSlot(aid, A_START, A_START.plusHours(2));
+        int threads = 8;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<Integer>> results = new ArrayList<>();
+        for (int i = 0; i < threads; i++) {
+            results.add(pool.submit(() -> {
+                start.await();
+                return enrollmentService.enroll(aid, List.of(slot), vid);
+            }));
+        }
+        start.countDown();
+        int succeeded = 0;
+        int rejected = 0;
+        for (Future<Integer> f : results) {
+            try {
+                succeeded += f.get(60, TimeUnit.SECONDS);
+            } catch (ExecutionException e) {
+                assertInstanceOf(BusinessException.class, e.getCause());
+                rejected++;
+            }
+        }
+        pool.shutdown();
+        assertEquals(1, succeeded);
+        assertEquals(threads - 1, rejected);
+        assertEquals(1, enrollmentCount(aid, vid), "库里只有一条");
+    }
+
+    @Test
+    void enroll_mixedWithAnEnrolledSlot_rejectedWhole() {
+        Long vid = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long s1 = insertSlot(aid, A_START, A_START.plusHours(2));
+        Long s2 = insertSlot(aid, A_START.plusHours(3), A_START.plusHours(5));
+        enrollmentService.enroll(aid, List.of(s1), vid);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> enrollmentService.enroll(aid, List.of(s1, s2), vid));
+        assertEquals("您已报名该场次", ex.getMessage());
+        assertEquals(Set.of(s1), activeSlots(aid, vid), "一批里有重复就整批不报");
+    }
+
+    @Test
+    void enroll_otherSlotOverlappingMine_rejected() {
+        Long vid = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long s1 = insertSlot(aid, A_START, A_START.plusHours(2));
+        Long s2 = insertSlot(aid, A_START.plusHours(1), A_START.plusHours(3));
+        enrollmentService.enroll(aid, List.of(s1), vid);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> enrollmentService.enroll(aid, List.of(s2), vid));
+        assertTrue(ex.getMessage().contains("时间"), ex.getMessage());
+    }
+
+    @Test
+    void enroll_maxProjects_countsSlotsAlreadyEnrolled() {
+        Long vid = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
+        Long aid = insertActivity(a -> {
+            a.setNeedAudit(0);
+            a.setMaxProjects(1);
+        });
+        Long s1 = insertSlot(aid, A_START, A_START.plusHours(2));
+        Long s2 = insertSlot(aid, A_START.plusHours(3), A_START.plusHours(5));
+        enrollmentService.enroll(aid, List.of(s1), vid);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> enrollmentService.enroll(aid, List.of(s2), vid));
+        assertTrue(ex.getMessage().contains("最多可报名"), "分两次报也不能越过上限");
+    }
+
+    @Test
+    void enroll_minProjects_countsSlotsAlreadyEnrolled() {
+        Long vid = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
+        Long aid = insertActivity(a -> {
+            a.setNeedAudit(0);
+            a.setMinProjects(2);
+        });
+        Long s1 = insertSlot(aid, A_START, A_START.plusHours(2));
+        Long s2 = insertSlot(aid, A_START.plusHours(3), A_START.plusHours(5));
+        Long s3 = insertSlot(aid, A_START.plusHours(6), A_START.plusHours(7));
+        enrollmentService.enroll(aid, List.of(s1, s2), vid);
+
+        assertEquals(1, enrollmentService.enroll(aid, List.of(s3), vid), "已经报够下限，再补一场不用凑够两场");
+    }
+
+    @Test
+    void cancel_selectedSlotOnly_othersStay_andCanEnrollBack() {
+        Long vid = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long s1 = insertSlot(aid, A_START, A_START.plusHours(2));
+        Long s2 = insertSlot(aid, A_START.plusHours(3), A_START.plusHours(5));
+        Long s3 = insertSlot(aid, A_START.plusHours(6), A_START.plusHours(7));
+        enrollmentService.enroll(aid, List.of(s1, s2, s3), vid);
+
+        assertEquals(2, enrollmentService.cancel(aid, List.of(s2, s3, s2), vid), "重复传的场次只算一次");
+        assertEquals(Set.of(s1), activeSlots(aid, vid), "没选的场次不动");
+
+        assertEquals(1, enrollmentService.enroll(aid, List.of(s2), vid), "取消的那一场可以报回来");
+        assertEquals(Set.of(s1, s2), activeSlots(aid, vid));
+    }
+
+    @Test
+    void cancel_slotIdsEmptyOrNull_meansAllMySlots() {
+        Long vid = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long s1 = insertSlot(aid, A_START, A_START.plusHours(2));
+        Long s2 = insertSlot(aid, A_START.plusHours(3), A_START.plusHours(5));
+        enrollmentService.enroll(aid, List.of(s1, s2), vid);
+
+        assertEquals(2, enrollmentService.cancel(aid, null, vid));
+        assertEquals(Set.of(), activeSlots(aid, vid));
+    }
+
+    @Test
+    void cancel_slotNotEnrolled_rejectedWhole() {
+        Long vid = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long s1 = insertSlot(aid, A_START, A_START.plusHours(2));
+        Long s2 = insertSlot(aid, A_START.plusHours(3), A_START.plusHours(5));
+        enrollmentService.enroll(aid, List.of(s1), vid);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> enrollmentService.cancel(aid, List.of(s1, s2), vid));
+        assertEquals("您未报名所选场次", ex.getMessage());
+        assertEquals(Set.of(s1), activeSlots(aid, vid), "一批里有没报过的场次就整批不取消");
+    }
+
+    /** 第一场签到了、第二场不去了：只能取消第二场，整活动取消也不能把第一场的报名作废。 */
+    @Test
+    void cancel_checkedInSlot_rejected_otherSlotStillCancellable() {
+        Long vid = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long s1 = insertSlot(aid, A_START, A_START.plusHours(2));
+        Long s2 = insertSlot(aid, A_START.plusHours(3), A_START.plusHours(5));
+        enrollmentService.enroll(aid, List.of(s1, s2), vid);
+        insertCheckIn(aid, s1, vid);
+
+        assertEquals("已签到的场次不能取消", assertThrows(BusinessException.class,
+                () -> enrollmentService.cancel(aid, List.of(s1), vid)).getMessage());
+        assertEquals("已签到的场次不能取消", assertThrows(BusinessException.class,
+                () -> enrollmentService.cancel(aid, vid)).getMessage());
+        assertEquals(Set.of(s1, s2), activeSlots(aid, vid));
+
+        assertEquals(1, enrollmentService.cancel(aid, List.of(s2), vid));
+        assertEquals(Set.of(s1), activeSlots(aid, vid));
+    }
+
+    /** 负责人标了缺席的考勤行没有签到时间，不算签到过。 */
+    @Test
+    void cancel_attendanceRowWithoutCheckIn_stillCancellable() {
+        Long vid = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long s1 = insertSlot(aid, A_START, A_START.plusHours(2));
+        enrollmentService.enroll(aid, List.of(s1), vid);
+        insertAttendance(aid, s1, vid, null);
+
+        assertEquals(1, enrollmentService.cancel(aid, List.of(s1), vid));
+    }
+
+    @Test
+    void cancel_belowMinProjects_rejected_butAllTogetherAllowed() {
+        Long vid = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
+        Long aid = insertActivity(a -> {
+            a.setNeedAudit(0);
+            a.setMinProjects(2);
+        });
+        Long s1 = insertSlot(aid, A_START, A_START.plusHours(2));
+        Long s2 = insertSlot(aid, A_START.plusHours(3), A_START.plusHours(5));
+        Long s3 = insertSlot(aid, A_START.plusHours(6), A_START.plusHours(7));
+        enrollmentService.enroll(aid, List.of(s1, s2, s3), vid);
+
+        assertEquals(1, enrollmentService.cancel(aid, List.of(s3), vid), "剩两场还够下限");
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> enrollmentService.cancel(aid, List.of(s2), vid));
+        assertTrue(ex.getMessage().contains("至少需报名 2 个项目"), ex.getMessage());
+        assertEquals(Set.of(s1, s2), activeSlots(aid, vid));
+
+        assertEquals(2, enrollmentService.cancel(aid, List.of(s1, s2), vid), "一起取消没有下限的问题");
+    }
+
+    @Test
+    void proxyEnroll_addsOtherSlot_butNotOneAlreadyEnrolled() {
+        Long actor = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(22), Grade.COLLEGE_1);
+        Long target = insertVolunteer(Gender.MALE, LocalDate.now().minusYears(22), Grade.COLLEGE_1);
+        insertGroupWithMembers(actor, List.of(target));
+        Long aid = insertActivity(a -> {
+            a.setNeedAudit(0);
+            a.setMaxProjects(2);
+        });
+        Long s1 = insertSlot(aid, A_START, A_START.plusHours(2));
+        Long s2 = insertSlot(aid, A_START.plusHours(3), A_START.plusHours(5));
+        Long s3 = insertSlot(aid, A_START.plusHours(6), A_START.plusHours(7));
+        enrollmentService.enroll(aid, List.of(s1), target);
+        ProxyEnrollDTO dto = new ProxyEnrollDTO();
+        dto.setVolunteerIds(List.of(target));
+
+        dto.setSlotIds(List.of(s1));
+        assertTrue(assertThrows(BusinessException.class, () -> enrollmentService.proxyEnroll(aid, dto, actor))
+                .getMessage().contains("已报名该场次"));
+
+        dto.setSlotIds(List.of(s2));
+        assertEquals(1, enrollmentService.proxyEnroll(aid, dto, actor));
+        assertEquals(Set.of(s1, s2), activeSlots(aid, target));
+
+        dto.setSlotIds(List.of(s3));
+        assertTrue(assertThrows(BusinessException.class, () -> enrollmentService.proxyEnroll(aid, dto, actor))
+                .getMessage().contains("最多可报名"), "上限按被代的人自己已报的场次算");
     }
 
     @Test
@@ -676,6 +915,32 @@ class EnrollmentServiceTest {
         att.setPointsStatus(0);
         att.setPointsFactor(0);
         attendanceMapper.insert(att);
+    }
+
+    private void insertCheckIn(Long activityId, Long slotId, Long volunteerId) {
+        insertAttendance(activityId, slotId, volunteerId, LocalDateTime.now());
+    }
+
+    private void insertAttendance(Long activityId, Long slotId, Long volunteerId, LocalDateTime checkInTime) {
+        ActivityAttendance att = new ActivityAttendance();
+        att.setActivityId(activityId);
+        att.setSlotId(slotId);
+        att.setVolunteerId(volunteerId);
+        att.setCheckInTime(checkInTime);
+        att.setServiceMinutes(0);
+        att.setSecretaryStatus(0);
+        att.setPointsStatus(0);
+        att.setPointsFactor(0);
+        attendanceMapper.insert(att);
+    }
+
+    /** 这个人在本活动还在册（待审核/已通过）的场次。 */
+    private Set<Long> activeSlots(Long activityId, Long volunteerId) {
+        return enrollmentMapper.selectList(Wrappers.<ActivityEnrollment>lambdaQuery()
+                        .eq(ActivityEnrollment::getActivityId, activityId)
+                        .eq(ActivityEnrollment::getVolunteerId, volunteerId)
+                        .in(ActivityEnrollment::getStatus, 0, 1))
+                .stream().map(ActivityEnrollment::getSlotId).collect(Collectors.toSet());
     }
 
     private void insertApprovedEnrollment(Long activityId, Long slotId, Long volunteerId) {

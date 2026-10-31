@@ -21,6 +21,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 /**
  * 志愿者端-活动报名/取消/我的报名。登录态由 {@code /v/**} 路由统一校验，loginId 即 volunteer.id。
  *
@@ -44,10 +46,10 @@ public class EnrollmentController {
         return Result.ok(enrollmentService.enroll(id, dto.getSlotIds(), StpUtil.getLoginIdAsLong()));
     }
 
-    @Operation(summary = "取消报名（整活动取消）")
+    @Operation(summary = "取消报名（slotIds 指定场次，不传＝本活动全部场次）")
     @DeleteMapping("/activities/{id}/enroll")
-    public Result<Integer> cancel(@PathVariable Long id) {
-        return Result.ok(enrollmentService.cancel(id, StpUtil.getLoginIdAsLong()));
+    public Result<Integer> cancel(@PathVariable Long id, @RequestParam(required = false) List<Long> slotIds) {
+        return Result.ok(enrollmentService.cancel(id, slotIds, StpUtil.getLoginIdAsLong()));
     }
 
     @Operation(summary = "代报名：同小组成员之间互相帮报名")
