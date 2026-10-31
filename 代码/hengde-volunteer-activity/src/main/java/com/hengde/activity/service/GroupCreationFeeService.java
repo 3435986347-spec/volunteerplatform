@@ -1,7 +1,6 @@
 package com.hengde.activity.service;
 
 import com.hengde.activity.constant.PointSourceType;
-import com.hengde.common.exception.BusinessException;
 import com.hengde.organization.biz.constant.GroupFee;
 import com.hengde.organization.biz.service.GroupCreationFee;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,11 +28,9 @@ public class GroupCreationFeeService implements GroupCreationFee {
 
     @Override
     public void charge(Long volunteerId, Long groupId, String groupName) {
-        // 积分锁在开事务之前就取到了，事务的读视图晚于其它扣减的提交，这里读到的就是最新余额（与 PointService.assertDeductible 同一口径）
-        int balance = pointService.balanceOf(volunteerId);
-        if (balance < GroupFee.CREATE_COST) {
-            throw new BusinessException("积分不足：发起小组需要 " + GroupFee.CREATE_COST + " 积分，当前 " + balance);
-        }
+        // 积分锁在开事务之前就取到了，事务的读视图晚于其它扣减的提交，这里读到的就是最新余额
+        pointService.assertDeductible(volunteerId, -GroupFee.CREATE_COST,
+                "积分不足：发起小组需要 " + GroupFee.CREATE_COST + " 积分");
         pointService.record(volunteerId, -GroupFee.CREATE_COST, PointSourceType.GROUP_CREATE, groupId,
                 "发起小组「" + groupName + "」", PointSourceType.OPERATOR_SYSTEM, null);
     }

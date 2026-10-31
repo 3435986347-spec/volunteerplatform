@@ -360,9 +360,9 @@ public class PointService {
      * {@link #LOCK_KEY_PREFIX} + volunteerId 这把锁</b>，否则两个并发扣减会同时通过检查。
      *
      * <p><b>「余额不得为负」是有意的不对称</b>：只约束<b>主观决策</b>的扣减
-     * （管理员手工扣分、V3 兑换消费）——余额不够就该让人重新判断；
+     * （管理员手工扣分、兑换消费、发起小组）——余额不够就该让人重新判断；
      * <b>不约束积分修正</b>（那是在更正既成事实，拒绝会让账本长期停在错误值上）。
-     * 所以本方法只在手工扣分与兑换两条路径上调用，{@code record} 本身不查余额。</p>
+     * 所以本方法只在手工扣分、兑换、发起小组三条路径上调用，{@code record} 本身不查余额。</p>
      *
      * <p>正数（入账）直接放行——入账不会把余额变负。</p>
      *
@@ -370,12 +370,23 @@ public class PointService {
      * @param changeAmount 变动值，负=扣减
      */
     public void assertDeductible(Long volunteerId, int changeAmount) {
+        assertDeductible(volunteerId, changeAmount, null);
+    }
+
+    /**
+     * 同 {@link #assertDeductible(Long, int)}，余额不够时报调用方给的说法（后面接「，当前 N」），
+     * 让志愿者看到的是「积分不足：发起小组需要 50 积分，当前 30」而不是账本口吻。
+     *
+     * @param shortfallMessage 余额不够时的提示；null 用通用说法
+     */
+    public void assertDeductible(Long volunteerId, int changeAmount, String shortfallMessage) {
         if (changeAmount >= 0) {
             return;
         }
         int balance = pointRecordMapper.sumBalance(volunteerId);
         if (balance + changeAmount < 0) {
-            throw new BusinessException("扣减后余额将为负数，当前余额 " + balance);
+            throw new BusinessException(shortfallMessage == null
+                    ? "扣减后余额将为负数，当前余额 " + balance : shortfallMessage + "，当前 " + balance);
         }
     }
 

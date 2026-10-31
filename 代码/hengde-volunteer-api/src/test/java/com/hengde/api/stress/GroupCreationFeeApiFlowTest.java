@@ -64,6 +64,7 @@ class GroupCreationFeeApiFlowTest {
                 Map.of("name", "没钱小组" + tag, "description", "用例"), "积分不够发起");
         assertNotEquals(200, refused.code());
         assertTrue(refused.message().contains("积分不足"), refused.message());
+        assertTrue(refused.message().contains("当前 0"), "提示带上当前余额：" + refused.message());
 
         ok(c.post("/a/organization/groups/applications/" + groupId + "/reject", admin, Map.of("reason", "用例驳回"), "驳回建组"));
         assertEquals(60, balance(c, rich), "驳回如数退回");
