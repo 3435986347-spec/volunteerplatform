@@ -26,4 +26,7 @@ public class ActivitySlotVO {
 
     /** 需求人数（0=不限） */
     private Integer needCount;
+
+    /** 已占名额（待审核 + 已通过，现场负责人不占）；只有志愿者端详情下发 */
+    private Long enrolledCount;
 }

@@ -5,6 +5,10 @@ import com.hengde.activity.entity.ActivityEnrollment;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 /**
  * 活动报名记录 Mapper。
  *
@@ -23,4 +27,29 @@ public interface ActivityEnrollmentMapper extends BaseMapper<ActivityEnrollment>
     @Select("SELECT COUNT(DISTINCT activity_id) FROM activity_enrollment "
             + "WHERE volunteer_id = #{volunteerId} AND status = #{status} AND is_deleted = 0")
     long countDistinctJoinedActivities(@Param("volunteerId") Long volunteerId, @Param("status") int status);
+
+    /**
+     * 各场次已占的名额：待审核和已通过都占，现场负责人不占（{@code activity_leader}）。
+     * 与 {@link ActivityMapper} 里 has_quota 同一口径。
+     *
+     * @param activityId 活动 id
+     * @return 每场一行 {slot_id, taken}；没人报的场次不出现
+     */
+    @Select("""
+            SELECT e.slot_id, COUNT(*) AS taken
+            FROM activity_enrollment e
+            WHERE e.activity_id = #{activityId} AND e.status IN (0, 1) AND e.is_deleted = 0
+              AND NOT EXISTS (SELECT 1 FROM activity_leader l
+                              WHERE l.activity_id = e.activity_id AND l.volunteer_id = e.volunteer_id
+                                AND l.is_deleted = 0)
+            GROUP BY e.slot_id
+            """)
+    List<Map<String, Object>> selectTakenBySlot(@Param("activityId") Long activityId);
+
+    /** {@link #selectTakenBySlot} 转成「场次 id → 已占名额」，没人报的场次取不到。 */
+    default Map<Long, Long> takenBySlot(Long activityId) {
+        return selectTakenBySlot(activityId).stream().collect(Collectors.toMap(
+                row -> ((Number) row.get("slot_id")).longValue(),
+                row -> ((Number) row.get("taken")).longValue()));
+    }
 }

@@ -19,8 +19,10 @@ public interface ActivityMapper extends BaseMapper<Activity> {
      * 排序＝<b>有名额优先，其次按活动开始时间倒序（最新在前）</b>（需求：优先展示有名额的活动，
      * 都没名额则按最新活动时间）。
      *
-     * <p>名额口径：任一时间段 {@code need_count=0}（不限）或 该段活跃报名(0/1)数 &lt; need_count，
-     * 即视为该活动「有名额」。报名人数＝活跃报名去重志愿者数。排序在 DB 层做，保证跨分页正确。</p>
+     * <p>名额口径：任一时间段 {@code need_count=0}（不限）或 该段已占名额 &lt; need_count，
+     * 即视为该活动「有名额」；已占名额＝活跃报名(0/1)数、现场负责人不占，与
+     * {@link ActivityEnrollmentMapper#selectTakenBySlot} 一致。
+     * 报名人数＝活跃报名去重志愿者数。排序在 DB 层做，保证跨分页正确。</p>
      *
      * @param page    分页对象（api 运行期由分页拦截器加 LIMIT；领域测试上下文无拦截器返回全部）
      * @param keyword 标题模糊匹配；null 表示不限
@@ -36,7 +38,11 @@ public interface ActivityMapper extends BaseMapper<Activity> {
                        WHERE s.activity_id = a.id AND s.is_deleted = 0
                          AND (s.need_count = 0
                               OR s.need_count > (SELECT COUNT(*) FROM activity_enrollment e
-                                                 WHERE e.slot_id = s.id AND e.status IN (0, 1) AND e.is_deleted = 0))
+                                                 WHERE e.slot_id = s.id AND e.status IN (0, 1) AND e.is_deleted = 0
+                                                   AND NOT EXISTS (SELECT 1 FROM activity_leader l
+                                                                   WHERE l.activity_id = e.activity_id
+                                                                     AND l.volunteer_id = e.volunteer_id
+                                                                     AND l.is_deleted = 0)))
                    ) THEN 1 ELSE 0 END AS has_quota,
                    (SELECT CASE WHEN MIN(s2.need_count) = 0 THEN 0 ELSE COALESCE(SUM(s2.need_count), 0) END
                       FROM activity_slot s2 WHERE s2.activity_id = a.id AND s2.is_deleted = 0) AS need_count

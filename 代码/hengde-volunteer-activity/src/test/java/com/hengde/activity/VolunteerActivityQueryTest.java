@@ -1,13 +1,16 @@
 package com.hengde.activity;
 
 import com.hengde.activity.dao.ActivityEnrollmentMapper;
+import com.hengde.activity.dao.ActivityLeaderMapper;
 import com.hengde.activity.dao.ActivityMapper;
 import com.hengde.activity.dao.ActivitySlotMapper;
 import com.hengde.activity.entity.Activity;
 import com.hengde.activity.entity.ActivityEnrollment;
+import com.hengde.activity.entity.ActivityLeader;
 import com.hengde.activity.entity.ActivitySlot;
 import com.hengde.activity.service.ActivityService;
 import com.hengde.activity.vo.ActivityRegistrantVO;
+import com.hengde.activity.vo.ActivitySlotVO;
 import com.hengde.activity.vo.ActivityVolunteerDetailVO;
 import com.hengde.activity.vo.RecommendActivityVO;
 import com.hengde.auth.dao.VolunteerMapper;
@@ -57,6 +60,8 @@ class VolunteerActivityQueryTest {
     private ActivityEnrollmentMapper enrollmentMapper;
     @Autowired
     private VolunteerMapper volunteerMapper;
+    @Autowired
+    private ActivityLeaderMapper leaderMapper;
 
     @Test
     void listForVolunteer_onlyReturnsPublished() {
@@ -107,6 +112,8 @@ class VolunteerActivityQueryTest {
         ActivityVolunteerDetailVO vo = activityService.detailForVolunteer(id);
 
         assertEquals(25, vo.getNeedCount().intValue(), "招募名额=各时间段 need_count 之和");
+        // 报名页每场显示「已报名 x/y」、满了不让选：场次上也要带人数
+        assertEquals(List.of(1L, 1L), vo.getSlots().stream().map(ActivitySlotVO::getEnrolledCount).toList());
         assertEquals(2L, vo.getEnrolledCount().longValue(), "已报名=活跃报名去重志愿者数");
         // 报名详情：去掉预置假人后回真实报名者，显示完整姓名（2026-06-27 用户改：原仅姓氏）
         assertEquals(2, vo.getRegistrants().size(), "报名详情应含两名报名人");
@@ -189,6 +196,14 @@ class VolunteerActivityQueryTest {
         assertEquals(quota, records.get(0).getId(), "有名额的活动应排在满员活动之前");
         assertEquals(1, records.get(0).getHasQuota().intValue());
         assertEquals(0, records.get(1).getHasQuota().intValue());
+        // 现场负责人不占名额：满员场次里的报名者当了负责人，这一场又有名额了
+        ActivityLeader leader = new ActivityLeader();
+        leader.setActivityId(full);
+        leader.setLeaderType(1);
+        leader.setVolunteerId(9001L);
+        leaderMapper.insert(leader);
+        assertEquals(1, activityService.listForVolunteer(query, kw).getRecords().stream()
+                .filter(r -> r.getId().equals(full)).findFirst().orElseThrow().getHasQuota().intValue());
         // 报名人数带出
         assertEquals(1L, records.get(0).getEnrolledCount().longValue());
         assertEquals(1L, records.get(1).getEnrolledCount().longValue());

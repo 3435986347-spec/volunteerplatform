@@ -4,12 +4,14 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.hengde.activity.constant.ActivityStatus;
 import com.hengde.activity.dao.ActivityAttendanceMapper;
 import com.hengde.activity.dao.ActivityEnrollmentMapper;
+import com.hengde.activity.dao.ActivityLeaderMapper;
 import com.hengde.activity.dao.ActivityMapper;
 import com.hengde.activity.dao.ActivitySlotMapper;
 import com.hengde.activity.dto.ProxyEnrollDTO;
 import com.hengde.activity.entity.Activity;
 import com.hengde.activity.entity.ActivityAttendance;
 import com.hengde.activity.entity.ActivityEnrollment;
+import com.hengde.activity.entity.ActivityLeader;
 import com.hengde.activity.entity.ActivitySlot;
 import com.hengde.activity.service.EnrollmentService;
 import com.hengde.auth.constant.SanctionScope;
@@ -27,6 +29,8 @@ import com.hengde.organization.biz.dao.VolunteerGroupMemberMapper;
 import com.hengde.organization.biz.entity.VolunteerGroup;
 import com.hengde.organization.biz.entity.VolunteerGroupMember;
 import org.junit.jupiter.api.Test;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
@@ -36,6 +40,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -81,6 +86,10 @@ class EnrollmentServiceTest {
     private VolunteerGroupMapper groupMapper;
     @Autowired
     private VolunteerGroupMemberMapper groupMemberMapper;
+    @Autowired
+    private ActivityLeaderMapper leaderMapper;
+    @Autowired
+    private RedissonClient redissonClient;
 
     @Test
     void enroll_noAudit_becomesApproved() {
@@ -176,6 +185,298 @@ class EnrollmentServiceTest {
         assertEquals(1, succeeded);
         assertEquals(threads - 1, rejected);
         assertEquals(1, enrollmentCount(aid, vid), "库里只有一条");
+    }
+
+    /** 名额：发布时填的需求人数就是上限，取消后放出来的名额别人能报。 */
+    @Test
+    void enroll_slotFull_rejected_andCancelFreesTheSeat() {
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long slot = insertSlot(aid, A_START, A_START.plusHours(2));
+        setNeedCount(slot, 2);
+        Long first = newVolunteer();
+        Long second = newVolunteer();
+        Long third = newVolunteer();
+        enrollmentService.enroll(aid, List.of(slot), first);
+        enrollmentService.enroll(aid, List.of(slot), second);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> enrollmentService.enroll(aid, List.of(slot), third));
+        assertTrue(ex.getMessage().startsWith("已满员："), ex.getMessage());
+
+        enrollmentService.cancel(aid, first);
+        assertEquals(1, enrollmentService.enroll(aid, List.of(slot), third));
+        assertEquals(Long.valueOf(2), enrollmentMapper.takenBySlot(aid).get(slot));
+    }
+
+    @Test
+    void enroll_pendingTakesTheSeat_rejectedFreesIt() {
+        Long aid = insertActivity(a -> a.setNeedAudit(1));
+        Long slot = insertSlot(aid, A_START, A_START.plusHours(2));
+        setNeedCount(slot, 1);
+        Long pending = newVolunteer();
+        enrollmentService.enroll(aid, List.of(slot), pending);
+
+        Long next = newVolunteer();
+        assertThrows(BusinessException.class, () -> enrollmentService.enroll(aid, List.of(slot), next));
+
+        ActivityEnrollment row = latestEnrollment(aid, pending);
+        row.setStatus(2);
+        enrollmentMapper.updateById(row);
+        assertEquals(1, enrollmentService.enroll(aid, List.of(slot), next));
+    }
+
+    @Test
+    void enroll_unlimitedSlot_isNeverFull() {
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long slot = insertSlot(aid, A_START, A_START.plusHours(2));
+        setNeedCount(slot, 0);
+        for (int i = 0; i < 3; i++) {
+            assertEquals(1, enrollmentService.enroll(aid, List.of(slot), newVolunteer()));
+        }
+    }
+
+    @Test
+    void enroll_oneOfTheSlotsFull_rejectedWhole() {
+        Long aid = insertActivity(a -> {
+            a.setNeedAudit(0);
+            a.setMaxProjects(2);
+        });
+        Long free = insertSlot(aid, A_START, A_START.plusHours(2));
+        Long full = insertSlot(aid, A_START.plusHours(3), A_START.plusHours(5));
+        setNeedCount(full, 1);
+        enrollmentService.enroll(aid, List.of(full), newVolunteer());
+
+        Long vid = newVolunteer();
+        assertThrows(BusinessException.class, () -> enrollmentService.enroll(aid, List.of(free, full), vid));
+        assertEquals(Set.of(), activeSlots(aid, vid), "有一场满了就整批不报");
+    }
+
+    /** 需求和 V10：现场负责人不占活动人数。 */
+    @Test
+    void enroll_siteLeaderDoesNotTakeASeat() {
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long slot = insertSlot(aid, A_START, A_START.plusHours(2));
+        setNeedCount(slot, 1);
+        Long leader = newVolunteer();
+        enrollmentService.enroll(aid, List.of(slot), leader);
+        ActivityLeader row = new ActivityLeader();
+        row.setActivityId(aid);
+        row.setLeaderType(1);
+        row.setVolunteerId(leader);
+        leaderMapper.insert(row);
+
+        assertEquals(1, enrollmentService.enroll(aid, List.of(slot), newVolunteer()));
+        assertEquals(Long.valueOf(1), enrollmentMapper.takenBySlot(aid).get(slot), "负责人不算，只算另一个人");
+    }
+
+    /** 负责人本来就不占名额，这一场满了他也能报。 */
+    @Test
+    void enroll_siteLeaderCanEnrollIntoAFullSlot() {
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long slot = insertSlot(aid, A_START, A_START.plusHours(2));
+        setNeedCount(slot, 1);
+        enrollmentService.enroll(aid, List.of(slot), newVolunteer());
+        Long leader = newVolunteer();
+        ActivityLeader row = new ActivityLeader();
+        row.setActivityId(aid);
+        row.setLeaderType(1);
+        row.setVolunteerId(leader);
+        leaderMapper.insert(row);
+
+        assertEquals(1, enrollmentService.enroll(aid, List.of(slot), leader));
+    }
+
+    @Test
+    void proxyEnroll_siteLeaderInTheBatchTakesNoSeat() {
+        Long actor = newVolunteer();
+        Long leader = newVolunteer();
+        Long other = newVolunteer();
+        insertGroupWithMembers(actor, List.of(leader, other));
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long slot = insertSlot(aid, A_START, A_START.plusHours(2));
+        setNeedCount(slot, 1);
+        ActivityLeader row = new ActivityLeader();
+        row.setActivityId(aid);
+        row.setLeaderType(1);
+        row.setVolunteerId(leader);
+        leaderMapper.insert(row);
+        ProxyEnrollDTO dto = new ProxyEnrollDTO();
+        dto.setVolunteerIds(List.of(leader, other));
+        dto.setSlotIds(List.of(slot));
+
+        assertEquals(2, enrollmentService.proxyEnroll(aid, dto, actor), "两个人只占一个名额");
+    }
+
+    /** 不限人数的活动不排活动锁：别人占着这把锁时照样能报。 */
+    @Test
+    void enroll_unlimitedSlot_doesNotQueueOnTheActivityLock() throws Exception {
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long unlimited = insertSlot(aid, A_START, A_START.plusHours(2));
+        setNeedCount(unlimited, 0);
+        Long vid = newVolunteer();
+        RLock lock = redissonClient.getLock("lock:enroll:activity:" + aid);
+        ExecutorService holder = Executors.newSingleThreadExecutor();
+        CountDownLatch held = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        holder.submit(() -> {
+            lock.lock();
+            held.countDown();
+            release.await();
+            lock.unlock();
+            return null;
+        });
+        assertTrue(held.await(10, TimeUnit.SECONDS));
+        try {
+            assertEquals(1, enrollmentService.enroll(aid, List.of(unlimited), vid), "不等锁");
+        } finally {
+            release.countDown();
+            holder.shutdown();
+        }
+    }
+
+    @Test
+    void proxyEnroll_notEnoughSeatsForTheBatch_rejectedWhole() {
+        Long actor = newVolunteer();
+        Long t1 = newVolunteer();
+        Long t2 = newVolunteer();
+        insertGroupWithMembers(actor, List.of(t1, t2));
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long slot = insertSlot(aid, A_START, A_START.plusHours(2));
+        setNeedCount(slot, 2);
+        enrollmentService.enroll(aid, List.of(slot), newVolunteer());
+        ProxyEnrollDTO dto = new ProxyEnrollDTO();
+        dto.setVolunteerIds(List.of(t1, t2));
+        dto.setSlotIds(List.of(slot));
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> enrollmentService.proxyEnroll(aid, dto, actor));
+        assertTrue(ex.getMessage().startsWith("只剩 1 个名额："), ex.getMessage());
+        assertEquals(Set.of(), activeSlots(aid, t1), "放不下这一批就都不报");
+        assertEquals(Set.of(), activeSlots(aid, t2));
+
+        dto.setVolunteerIds(List.of(t1));
+        assertEquals(1, enrollmentService.proxyEnroll(aid, dto, actor));
+    }
+
+    /** 代报名里有人本身不能报时，告诉报名的人是谁不能报，而不是笼统说名额不够。 */
+    @Test
+    void proxyEnroll_alreadyEnrolledTarget_reportedBeforeQuota() {
+        Long actor = newVolunteer();
+        Long target = newVolunteer();
+        insertGroupWithMembers(actor, List.of(target));
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long slot = insertSlot(aid, A_START, A_START.plusHours(2));
+        setNeedCount(slot, 1);
+        enrollmentService.enroll(aid, List.of(slot), target);
+        ProxyEnrollDTO dto = new ProxyEnrollDTO();
+        dto.setVolunteerIds(List.of(target));
+        dto.setSlotIds(List.of(slot));
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> enrollmentService.proxyEnroll(aid, dto, actor));
+        assertTrue(ex.getMessage().endsWith("已报名该场次"), ex.getMessage());
+    }
+
+    @Test
+    void manualEnroll_canGoOverTheQuota() {
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long slot = insertSlot(aid, A_START, A_START.plusHours(2));
+        setNeedCount(slot, 1);
+        enrollmentService.enroll(aid, List.of(slot), newVolunteer());
+
+        assertEquals(1, enrollmentService.manualEnroll(aid, newVolunteer(), List.of(slot), 1L));
+        assertEquals(Long.valueOf(2), enrollmentMapper.takenBySlot(aid).get(slot));
+    }
+
+    /** 不同的人抢最后几个名额：志愿者锁挡不住，靠活动维度的锁。去掉它这条会超员。 */
+    @Test
+    void enroll_differentVolunteersRaceForLastSeats_neverOverbooked() throws Exception {
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long slot = insertSlot(aid, A_START, A_START.plusHours(2));
+        int seats = 3;
+        setNeedCount(slot, seats);
+        int threads = 12;
+        List<Long> volunteers = new ArrayList<>();
+        for (int i = 0; i < threads; i++) {
+            volunteers.add(newVolunteer());
+        }
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<Integer>> results = new ArrayList<>();
+        for (Long vid : volunteers) {
+            results.add(pool.submit(() -> {
+                start.await();
+                return enrollmentService.enroll(aid, List.of(slot), vid);
+            }));
+        }
+        start.countDown();
+        int succeeded = 0;
+        int full = 0;
+        for (Future<Integer> f : results) {
+            try {
+                succeeded += f.get(60, TimeUnit.SECONDS);
+            } catch (ExecutionException e) {
+                assertInstanceOf(BusinessException.class, e.getCause());
+                assertTrue(e.getCause().getMessage().startsWith("已满员："), e.getCause().getMessage());
+                full++;
+            }
+        }
+        pool.shutdown();
+        assertEquals(seats, succeeded);
+        assertEquals(threads - seats, full);
+        assertEquals(Long.valueOf(seats), enrollmentMapper.takenBySlot(aid).get(slot), "库里没有超员");
+    }
+
+    /** 报名、代报名、取消交替：取消放出来的名额可以被抢，最后不超员。 */
+    @Test
+    void enroll_proxyAndCancelInterleaved_neverOverbooked() throws Exception {
+        Long aid = insertActivity(a -> a.setNeedAudit(0));
+        Long slot = insertSlot(aid, A_START, A_START.plusHours(2));
+        int seats = 3;
+        setNeedCount(slot, seats);
+        List<Long> enrolled = new ArrayList<>();
+        for (int i = 0; i < seats; i++) {
+            enrolled.add(newVolunteer());
+            enrollmentService.enroll(aid, List.of(slot), enrolled.get(i));
+        }
+        Long actor = newVolunteer();
+        Long t1 = newVolunteer();
+        Long t2 = newVolunteer();
+        insertGroupWithMembers(actor, List.of(t1, t2));
+        ProxyEnrollDTO dto = new ProxyEnrollDTO();
+        dto.setVolunteerIds(List.of(t1, t2));
+        dto.setSlotIds(List.of(slot));
+
+        List<Callable<Integer>> jobs = new ArrayList<>();
+        enrolled.forEach(vid -> jobs.add(() -> enrollmentService.cancel(aid, vid)));
+        jobs.add(() -> enrollmentService.proxyEnroll(aid, dto, actor));
+        for (int i = 0; i < 8; i++) {
+            Long vid = newVolunteer();
+            jobs.add(() -> enrollmentService.enroll(aid, List.of(slot), vid));
+        }
+        ExecutorService pool = Executors.newFixedThreadPool(jobs.size());
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<Integer>> results = new ArrayList<>();
+        for (Callable<Integer> job : jobs) {
+            results.add(pool.submit(() -> {
+                start.await();
+                return job.call();
+            }));
+        }
+        start.countDown();
+        int succeeded = 0;
+        int rejected = 0;
+        for (Future<Integer> f : results) {
+            try {
+                f.get(60, TimeUnit.SECONDS);
+                succeeded++;
+            } catch (ExecutionException e) {
+                assertInstanceOf(BusinessException.class, e.getCause());
+                rejected++;
+            }
+        }
+        pool.shutdown();
+        assertTrue(succeeded >= seats, "取消都要成功");
+        assertTrue(rejected > 0, "人比名额多，总有人报不上");
+        assertTrue(enrollmentMapper.takenBySlot(aid).getOrDefault(slot, 0L) <= seats, "不超员");
     }
 
     @Test
@@ -888,6 +1189,16 @@ class EnrollmentServiceTest {
         slot.setNeedCount(5);
         activitySlotMapper.insert(slot);
         return slot.getId();
+    }
+
+    private void setNeedCount(Long slotId, int needCount) {
+        ActivitySlot slot = activitySlotMapper.selectById(slotId);
+        slot.setNeedCount(needCount);
+        activitySlotMapper.updateById(slot);
+    }
+
+    private Long newVolunteer() {
+        return insertVolunteer(Gender.MALE, LocalDate.now().minusYears(25), Grade.COLLEGE_1);
     }
 
     private Long insertVolunteer(Gender gender, LocalDate birthday, Grade grade) {

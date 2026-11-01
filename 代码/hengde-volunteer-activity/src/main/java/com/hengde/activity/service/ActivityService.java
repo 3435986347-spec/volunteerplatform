@@ -682,6 +682,8 @@ public class ActivityService {
         vo.setServiceGuarantees(ServiceGuarantee.fromCsv(activity.getServiceGuarantees()));
         vo.setTargetSquadName(squadName(activity.getTargetSquadId()));
         List<ActivitySlotVO> slots = loadSlotVOs(id);
+        Map<Long, Long> takenBySlot = activityEnrollmentMapper.takenBySlot(id);
+        slots.forEach(s -> s.setEnrolledCount(takenBySlot.getOrDefault(s.getId(), 0L)));
         vo.setSlots(slots);
         // 招募名额：任一时间段不限(need_count=0/空)则整场视为不限、返回 0（前端显示「不限」），与列表 has_quota 口径一致；
         // 否则取各段之和——直接 sum 会把「不限」段当 0 吞掉，[0,5] 误显示为「X/5」。已报名=活跃报名去重人数。

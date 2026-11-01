@@ -7,11 +7,13 @@ import com.hengde.activity.constant.EnrollmentStatus;
 import com.hengde.activity.dao.ActivityAttendanceMapper;
 import com.hengde.activity.entity.ActivityAttendance;
 import com.hengde.activity.dao.ActivityEnrollmentMapper;
+import com.hengde.activity.dao.ActivityLeaderMapper;
 import com.hengde.activity.dao.ActivityMapper;
 import com.hengde.activity.dao.ActivitySlotMapper;
 import com.hengde.activity.dto.ProxyEnrollDTO;
 import com.hengde.activity.entity.Activity;
 import com.hengde.activity.entity.ActivityEnrollment;
+import com.hengde.activity.entity.ActivityLeader;
 import com.hengde.activity.entity.ActivitySlot;
 import com.hengde.activity.vo.MyEnrollmentVO;
 import com.hengde.auth.service.SmsNotifyService;
@@ -47,14 +49,20 @@ import java.util.HashSet;
 import java.util.Objects;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
  * 志愿者端报名/取消/我的报名。
  *
  * <p>并发策略：以「志愿者维度」一把 Redisson 锁（{@code lock:enroll:volunteer:{id}}）串行化同一志愿者的
- * 报名/取消——防重复报名与「全平台同时间段冲突」都是志愿者维度的检查，一把锁即可覆盖。
- * slot 需求人数（need_count）V1 不做硬限（仅展示/目标值，超员由后台审核兜底），故无需 slot 维度锁。</p>
+ * 报名/取消——防重复报名与「全平台同时间段冲突」都是志愿者维度的检查，一把锁即可覆盖。</p>
+ *
+ * <p>名额：发布时填的需求人数（need_count）就是这一场的上限，0＝不限。不同志愿者抢同一个名额，志愿者锁挡不住，
+ * 所以报名和代报名再排一把「活动维度」的锁（{@code lock:enroll:activity:{id}}），次序固定为先志愿者后活动。
+ * 这把锁也在事务外取：事务开始时前一个人已经提交，数名额用普通读就够，不必对报名表做范围当前读（间隙锁会死锁）。
+ * 选的场次都不限人数时不排这把锁，开放报名时不必串行。
+ * 取消不用这把锁，放出名额时别人晚一步看到只是多等一次。后台补录越过名额，理由见 {@link #manualEnroll}。</p>
  *
  * <p>锁与事务的次序：锁在事务之外获取，临界区内用 {@link TransactionTemplate} 显式提交，
  * 提交完成后才在 finally 释放锁——避免「先放锁、后提交」窗口里另一请求读到未提交数据导致重复插入。</p>
@@ -82,6 +90,10 @@ public class EnrollmentService {
 
     /** 「志愿者维度」锁 key 前缀（与 organization 的 lock:group:volunteer: 隔离，互不抢占） */
     private static final String LOCK_KEY_PREFIX = "lock:enroll:volunteer:";
+    /** 名额锁 key 前缀（活动维度） */
+    private static final String QUOTA_LOCK_KEY_PREFIX = "lock:enroll:activity:";
+    /** 抢名额时要排队，等得比防重锁久 */
+    private static final long QUOTA_LOCK_WAIT_SECONDS = 10;
 
     /** 代报名一次最多 batch 上限（含自己）：避免恶意大批量占锁/打表 */
     private static final int PROXY_BATCH_MAX = 20;
@@ -89,6 +101,7 @@ public class EnrollmentService {
     private ActivityMapper activityMapper;
     private ActivitySlotMapper activitySlotMapper;
     private ActivityEnrollmentMapper enrollmentMapper;
+    private ActivityLeaderMapper leaderMapper;
     private ActivityAttendanceMapper attendanceMapper;
     private VolunteerQueryService volunteerQueryService;
     private SmsNotifyService smsNotifyService;
@@ -144,6 +157,11 @@ public class EnrollmentService {
     }
 
     @Autowired
+    public void setLeaderMapper(ActivityLeaderMapper leaderMapper) {
+        this.leaderMapper = leaderMapper;
+    }
+
+    @Autowired
     public void setRedissonClient(RedissonClient redissonClient) {
         this.redissonClient = redissonClient;
     }
@@ -169,7 +187,58 @@ public class EnrollmentService {
         // 去重，保留选择顺序。（处置闸门在 doEnroll 里、锁与事务之内——理由见那里）
         List<Long> distinctSlotIds = new ArrayList<>(new LinkedHashSet<>(slotIds));
         return DistributedLockSupport.runLocked(redissonClient, LOCK_KEY_PREFIX + volunteerId,
-                () -> transactionTemplate.execute(s -> doEnroll(activityId, distinctSlotIds, volunteerId)));
+                () -> runQuotaLocked(activityId, distinctSlotIds,
+                        () -> doEnroll(activityId, distinctSlotIds, volunteerId)));
+    }
+
+    /** 同一活动的报名排队占名额，锁内开事务，见类注释。选的场次都不限人数时不用排队。 */
+    private int runQuotaLocked(Long activityId, List<Long> slotIds, Supplier<Integer> enroll) {
+        Supplier<Integer> inTransaction = () -> transactionTemplate.execute(s -> enroll.get());
+        if (slotIds.isEmpty() || activitySlotMapper.selectCount(Wrappers.<ActivitySlot>lambdaQuery()
+                .in(ActivitySlot::getId, slotIds)
+                .gt(ActivitySlot::getNeedCount, 0)) == 0) {
+            return inTransaction.get();
+        }
+        return DistributedLockSupport.runLocked(redissonClient, QUOTA_LOCK_KEY_PREFIX + activityId,
+                QUOTA_LOCK_WAIT_SECONDS, "报名人数较多，请稍后再试", inTransaction);
+    }
+
+    /**
+     * 这批人要占几个名额：现场负责人不占。
+     */
+    private int seatsNeeded(Long activityId, List<Long> volunteerIds) {
+        if (volunteerIds.isEmpty()) {
+            return 0;
+        }
+        Long leaders = leaderMapper.selectCount(Wrappers.<ActivityLeader>lambdaQuery()
+                .eq(ActivityLeader::getActivityId, activityId)
+                .in(ActivityLeader::getVolunteerId, volunteerIds));
+        return volunteerIds.size() - leaders.intValue();
+    }
+
+    /**
+     * 名额：这几场还放得下这批人吗。放不下就整批不报，不会只报上一部分。
+     *
+     * @param volunteerIds 这次要进每一场的人
+     */
+    private void checkSlotQuota(Long activityId, List<ActivitySlot> slots, List<Long> volunteerIds) {
+        List<ActivitySlot> limited = slots.stream()
+                .filter(slot -> slot.getNeedCount() != null && slot.getNeedCount() > 0)
+                .toList();
+        int seats = limited.isEmpty() ? 0 : seatsNeeded(activityId, volunteerIds);
+        if (seats == 0) {
+            return;
+        }
+        Map<Long, Long> takenBySlot = enrollmentMapper.takenBySlot(activityId);
+        for (ActivitySlot slot : limited) {
+            long left = slot.getNeedCount() - takenBySlot.getOrDefault(slot.getId(), 0L);
+            if (left < seats) {
+                // 结果写在前面：场次名默认是活动名，可能很长，小程序提示放不下时截掉的是后面
+                throw new BusinessException(left > 0
+                        ? "只剩 " + left + " 个名额：" + slot.getProjectName()
+                        : "已满员：" + slot.getProjectName());
+            }
+        }
     }
 
     /**
@@ -253,6 +322,7 @@ public class EnrollmentService {
 
         // 全平台同时间段防重：选定 slot 不得与「我在任何活动的活跃报名」slot 时间重叠，且选定 slot 彼此不重叠
         checkTimeConflicts(volunteerId, slots);
+        checkSlotQuota(activityId, slots, List.of(volunteerId));
 
         int initStatus = Integer.valueOf(1).equals(activity.getNeedAudit()) ? ENROLL_PENDING : ENROLL_APPROVED;
         for (ActivitySlot slot : slots) {
@@ -299,7 +369,8 @@ public class EnrollmentService {
      * 管理端手动新增报名（管理员代加志愿者，越权补录）。
      *
      * <p>与志愿者自助报名的差异：跳过资格校验（年龄/年级/性别/次数）与报名截止——补录场景常发生在截止后或
-     * 不满足资格时；状态直接置为「已通过」并记审核人。但仍保留两条不可越的红线：
+     * 不满足资格时；状态直接置为「已通过」并记审核人。名额也能越过：满员后还要加人只有这一个入口。
+     * 但仍保留两条不可越的红线：
      * 同活动防重 + 全平台同时间段冲突（双重占用无意义）。复用同一把「志愿者维度」锁，与该志愿者的自助报名互斥。</p>
      *
      * @return 新增的报名记录条数
@@ -394,7 +465,8 @@ public class EnrollmentService {
         // 2. 同小组校验由 doProxyEnroll 在事务内再做一次：避免「校验通过 → 加锁 → 被移出组」TOCTOU 窗口
         //    DistributedLockSupport.runLockedMany 内部对 targets 升序去重后按序加锁（死锁安全）
         return DistributedLockSupport.runLockedMany(redissonClient, LOCK_KEY_PREFIX, targets,
-                () -> transactionTemplate.execute(s -> doProxyEnroll(activityId, distinctSlotIds, targets, actorId)));
+                () -> runQuotaLocked(activityId, distinctSlotIds,
+                        () -> doProxyEnroll(activityId, distinctSlotIds, targets, actorId)));
     }
 
     private int doProxyEnroll(Long activityId, List<Long> slotIds, List<Long> targets, Long actorId) {
@@ -465,7 +537,12 @@ public class EnrollmentService {
             checkProjectLimits(activity, enrolledSlotIds, slotIds);
 
             checkTimeConflicts(targetId, slots);
+        }
 
+        // 人都校验过了才数名额：先告诉报名的人是谁不能报，名额是这一批一起占的
+        checkSlotQuota(activityId, slots, targets);
+
+        for (Long targetId : targets) {
             for (ActivitySlot slot : slots) {
                 ActivityEnrollment e = new ActivityEnrollment();
                 e.setActivityId(activityId);
