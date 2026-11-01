@@ -114,7 +114,7 @@ class VolunteerActivityQueryTest {
         assertEquals(25, vo.getNeedCount().intValue(), "招募名额=各时间段 need_count 之和");
         // 报名页每场显示「已报名 x/y」、满了不让选：场次上也要带人数
         assertEquals(List.of(1L, 1L), vo.getSlots().stream().map(ActivitySlotVO::getEnrolledCount).toList());
-        assertEquals(2L, vo.getEnrolledCount().longValue(), "已报名=活跃报名去重志愿者数");
+        assertEquals(2L, vo.getEnrolledCount().longValue(), "已报名=各场已占名额加总");
         // 报名详情：去掉预置假人后回真实报名者，显示完整姓名（2026-06-27 用户改：原仅姓氏）
         assertEquals(2, vo.getRegistrants().size(), "报名详情应含两名报名人");
         List<String> names = vo.getRegistrants().stream().map(ActivityRegistrantVO::getName).toList();
@@ -125,6 +125,34 @@ class VolunteerActivityQueryTest {
         assertEquals(List.of(slot1), activityService.detailForVolunteer(id, zhou).getEnrolledSlotIds());
         assertEquals(List.of(), activityService.detailForVolunteer(id, insertVolunteer("没报名的人2")).getEnrolledSlotIds());
         assertEquals(Boolean.FALSE, activityService.detailForVolunteer(id, insertVolunteer("没报名的人")).getEnrolled());
+    }
+
+    /** XH56：总人数按场次加总，一人报两场算两次，负责人不算；详情和列表同一个数。 */
+    @Test
+    void enrolledCount_addsUpEachSlot_samePersonCountsTwice() {
+        String kw = "SEATS_" + System.nanoTime();
+        Long id = insertActivity(kw, STATUS_PUBLISHED);
+        Long s1 = insertSlotReturning(id, 2);
+        Long s2 = insertSlotReturning(id, 2);
+        Long zhou = insertVolunteer("两场都报");
+        insertActiveEnrollment(id, s1, zhou);
+        insertActiveEnrollment(id, s2, zhou);
+        insertActiveEnrollment(id, s1, insertVolunteer("只报一场"));
+        Long leaderId = insertVolunteer("负责人");
+        insertActiveEnrollment(id, s1, leaderId);
+        ActivityLeader leader = new ActivityLeader();
+        leader.setActivityId(id);
+        leader.setLeaderType(1);
+        leader.setVolunteerId(leaderId);
+        leaderMapper.insert(leader);
+
+        ActivityVolunteerDetailVO vo = activityService.detailForVolunteer(id);
+        assertEquals(3L, vo.getEnrolledCount().longValue());
+        assertEquals(4, vo.getNeedCount().intValue());
+        PageQuery query = new PageQuery();
+        query.setPage(1);
+        query.setSize(10);
+        assertEquals(3L, activityService.listForVolunteer(query, kw).getRecords().get(0).getEnrolledCount().longValue());
     }
 
     @Test

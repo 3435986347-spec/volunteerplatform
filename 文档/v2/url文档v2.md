@@ -142,7 +142,7 @@
 
 | Method | URL | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | /v/activity/activities | 活动列表/推荐（排序：有名额优先→最新活动时间；返回含 `enrolledCount` 报名人数、`hasQuota` 是否有名额、`displayStatus` 实时展示状态[0未开放/1报名中/2报名截止/3活动中/4已结束，按开放/截止/run_status 派生，非持久化 status]） | 需登录 |
+| GET | /v/activity/activities | 活动列表/推荐（排序：有名额优先→最新活动时间；返回含 `enrolledCount` 报名人数（各场已占名额加总，一人报两场算两次）、`hasQuota` 是否有名额、`displayStatus` 实时展示状态[0未开放/1报名中/2报名截止/3活动中/4已结束，按开放/截止/run_status 派生，非持久化 status]） | 需登录 |
 | POST | /v/activity/activities | 提交活动（「管理团队」志愿者；不带 `type=admin` 走默认 login 域鉴权，吃 V18 志愿者权限；**V19 起：落「待审核发布」status=4、不直接上线，须后台 `activity:publish-audit` 审核通过才可见**；操作人记志愿者） | 需登录（activity:publish） |
 | GET | /v/activity/activities/{id} | 活动详情（含子时间段/子项目/报名须知；内部展示全字段：定位+经纬度、三类报名开放时间、报名限制等；`slots[].needCount` 需求人数，0＝不限，`slots[].enrolledCount` 已占名额） | 需登录 |
 | POST | /v/activity/activities/{id}/enroll | 报名（body 指定时间段；场次满员时返回业务错误，整批不报，代报名同样） | 需登录 |

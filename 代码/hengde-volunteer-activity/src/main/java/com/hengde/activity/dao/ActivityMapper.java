@@ -22,7 +22,7 @@ public interface ActivityMapper extends BaseMapper<Activity> {
      * <p>名额口径：任一时间段 {@code need_count=0}（不限）或 该段已占名额 &lt; need_count，
      * 即视为该活动「有名额」；已占名额＝活跃报名(0/1)数、现场负责人不占，与
      * {@link ActivityEnrollmentMapper#selectTakenBySlot} 一致。
-     * 报名人数＝活跃报名去重志愿者数。排序在 DB 层做，保证跨分页正确。</p>
+     * 报名人数＝各场已占名额加总（一人报两场算两次，XH56）。排序在 DB 层做，保证跨分页正确。</p>
      *
      * @param page    分页对象（api 运行期由分页拦截器加 LIMIT；领域测试上下文无拦截器返回全部）
      * @param keyword 标题模糊匹配；null 表示不限
@@ -31,8 +31,12 @@ public interface ActivityMapper extends BaseMapper<Activity> {
             SELECT a.id, a.serial_no, a.title, a.cover_image_url, a.location,
                    a.start_time, a.end_time, a.enroll_deadline, a.need_audit, a.status,
                    a.enroll_open_volunteer, a.run_status,
-                   (SELECT COUNT(DISTINCT e2.volunteer_id) FROM activity_enrollment e2
-                      WHERE e2.activity_id = a.id AND e2.status IN (0, 1) AND e2.is_deleted = 0) AS enrolled_count,
+                   (SELECT COUNT(*) FROM activity_enrollment e2
+                      WHERE e2.activity_id = a.id AND e2.status IN (0, 1) AND e2.is_deleted = 0
+                        AND NOT EXISTS (SELECT 1 FROM activity_leader l2
+                                        WHERE l2.activity_id = e2.activity_id
+                                          AND l2.volunteer_id = e2.volunteer_id
+                                          AND l2.is_deleted = 0)) AS enrolled_count,
                    CASE WHEN EXISTS (
                        SELECT 1 FROM activity_slot s
                        WHERE s.activity_id = a.id AND s.is_deleted = 0
@@ -52,14 +56,4 @@ public interface ActivityMapper extends BaseMapper<Activity> {
             ORDER BY has_quota DESC, a.start_time DESC, a.id DESC
             """)
     IPage<RecommendActivityVO> selectRecommendPage(IPage<RecommendActivityVO> page, @Param("keyword") String keyword);
-
-    /**
-     * 某活动的活跃报名人数（去重志愿者：待审核 0 + 已通过 1，排除逻辑删除）。
-     * 与 {@link #selectRecommendPage} 的 enrolled_count 口径一致，供志愿者端详情「已报名 X/Y」用。
-     */
-    @Select("""
-            SELECT COUNT(DISTINCT volunteer_id) FROM activity_enrollment
-            WHERE activity_id = #{activityId} AND status IN (0, 1) AND is_deleted = 0
-            """)
-    long countActiveEnrollVolunteers(@Param("activityId") Long activityId);
 }

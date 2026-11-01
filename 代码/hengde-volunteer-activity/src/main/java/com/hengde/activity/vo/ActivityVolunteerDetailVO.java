@@ -140,7 +140,7 @@ public class ActivityVolunteerDetailVO {
     /** 招募名额总数（各时间段 need_count 之和；0=不限） */
     private Integer needCount;
 
-    /** 已报名人数（活跃报名去重志愿者数：待审核 0 + 已通过 1） */
+    /** 已报名人数：各场已占名额加总，一人报两场算两次，现场负责人不算（XH56），与 needCount 同口径 */
     private Long enrolledCount;
 
     /** 当前查看的志愿者在本活动是否有活跃报名（待审核或已通过）；详情页据此把按钮显示成「已报名」 */

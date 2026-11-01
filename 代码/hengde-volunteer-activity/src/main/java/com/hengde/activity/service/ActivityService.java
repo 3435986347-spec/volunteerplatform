@@ -686,11 +686,12 @@ public class ActivityService {
         slots.forEach(s -> s.setEnrolledCount(takenBySlot.getOrDefault(s.getId(), 0L)));
         vo.setSlots(slots);
         // 招募名额：任一时间段不限(need_count=0/空)则整场视为不限、返回 0（前端显示「不限」），与列表 has_quota 口径一致；
-        // 否则取各段之和——直接 sum 会把「不限」段当 0 吞掉，[0,5] 误显示为「X/5」。已报名=活跃报名去重人数。
+        // 否则取各段之和——直接 sum 会把「不限」段当 0 吞掉，[0,5] 误显示为「X/5」。
+        // 已报名=各场已占名额加总（XH56），一人报两场算两次，否则会出现「5/10」却已满员。
         // 之前 VO 未暴露这两项致前端只能读到顶层 quota=0、显示「X/0」。
         boolean unlimited = slots.stream().anyMatch(s -> s.getNeedCount() == null || s.getNeedCount() == 0);
         vo.setNeedCount(unlimited ? 0 : slots.stream().mapToInt(ActivitySlotVO::getNeedCount).sum());
-        vo.setEnrolledCount(activityMapper.countActiveEnrollVolunteers(id));
+        vo.setEnrolledCount(takenBySlot.values().stream().mapToLong(Long::longValue).sum());
         vo.setRegistrants(loadRegistrants(id));
         return vo;
     }
