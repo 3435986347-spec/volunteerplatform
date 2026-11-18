@@ -1,22 +1,21 @@
 # Hengde Volunteer Management Platform
 
-> A multi-client volunteer service system for non-profit organizations: WeChat Mini Program (volunteer client) + Web admin console + a Spring Boot 4 modular backend.
+> A volunteer service system for non-profit organizations: a WeChat Mini Program for volunteers, a web-based management console, and a Spring Boot 4 modular-monolith backend.
 >
-> Designed and built for the Leizhou Hengde Charity Association. Covers the full business loop — real-name registration, activity publishing and enrollment, GPS check-in, service-hour and points accounting, organizational structure with role-based sub-accounts, and public information / global search.
+> Designed and built for the Leizhou Hengde Charity Association. It covers real-name registration, organizational membership, activity publishing and per-slot enrollment, QR-code and GPS attendance, service hours and points, certificates and sanctions, charitable donations, community features, and public information.
 
 <p>
   <img alt="Java" src="https://img.shields.io/badge/Java-17-orange?logo=openjdk&logoColor=white">
-  <img alt="Spring Boot" src="https://img.shields.io/badge/Spring%20Boot-4.0.6-6DB33F?logo=springboot&logoColor=white">
-  <img alt="Spring Cloud" src="https://img.shields.io/badge/Spring%20Cloud-2025.0.0-6DB33F?logo=spring&logoColor=white">
+  <img alt="Spring Boot" src="https://img.shields.io/badge/Spring%20Boot-4-6DB33F?logo=springboot&logoColor=white">
   <img alt="MyBatis-Plus" src="https://img.shields.io/badge/MyBatis--Plus-3.5.16-red">
-  <img alt="Sa-Token" src="https://img.shields.io/badge/Sa--Token-1.43-blue">
+  <img alt="Sa-Token" src="https://img.shields.io/badge/Sa--Token-Three%20Session%20Realms-blue">
   <img alt="MySQL" src="https://img.shields.io/badge/MySQL-8.0.17%2B-4479A1?logo=mysql&logoColor=white">
-  <img alt="Redis" src="https://img.shields.io/badge/Redis-7.4-DC382D?logo=redis&logoColor=white">
-  <img alt="Flyway" src="https://img.shields.io/badge/Flyway-V1→V38-CC0200?logo=flyway&logoColor=white">
+  <img alt="Redis" src="https://img.shields.io/badge/Redis-Redisson-DC382D?logo=redis&logoColor=white">
+  <img alt="Flyway" src="https://img.shields.io/badge/Flyway-V101-CC0200?logo=flyway&logoColor=white">
   <img alt="WeChat MiniProgram" src="https://img.shields.io/badge/WeChat%20Mini%20Program-Native-07C160?logo=wechat&logoColor=white">
 </p>
 
-📖 **[中文版 README](README.md)** · English
+**[中文版 README](README.md)** · English
 
 ---
 
@@ -26,74 +25,66 @@
 - [Preview](#preview)
 - [Tech Stack](#tech-stack)
 - [Architecture](#architecture)
-- [Core Features](#core-features)
-- [Engineering Highlights](#engineering-highlights)
+- [Feature Coverage](#feature-coverage)
+- [Engineering Practices](#engineering-practices)
 - [Modules](#modules)
 - [Getting Started](#getting-started)
-- [Project Layout](#project-layout)
-- [API Documentation](#api-documentation)
+- [Workspace Layout](#workspace-layout)
+- [API and Project Documentation](#api-and-project-documentation)
 - [Project Status](#project-status)
 
 ---
 
 ## Overview
 
-A **white-label, reusable** digitalization solution for charity organizations, spanning three clients:
+The platform currently consists of three deliverable components:
 
-| Client | Form | Users |
+| Component | Form | Users / Notes |
 |---|---|---|
-| Volunteer client | WeChat Mini Program (native) | Volunteers / Guests |
-| Admin console | Web console (React) | Association management teams |
-| Backend | Spring Boot 4 modular monolith | — |
+| Volunteer client | Native WeChat Mini Program | Guests, volunteers, temporary activity leaders, and management-team volunteers |
+| Management console | Statically served React pages with no frontend build pipeline | Association departments, the board, and administrative sub-accounts |
+| Business backend | Java 17 + Spring Boot 4 with 14 Maven modules | `hengde-volunteer-api` is the sole business deployable unit |
 
-It fully implements the volunteer-service loop — **"real-name registration → join a group/squad → enroll in activities → GPS check-in → unified check-out & hour calculation → secretary confirmation → points award"** — together with organizational management, fine-grained role-based sub-account permissions (RBAC), public information & global search, and analytics dashboards.
+The main service flow is: **real-name registration → join a group or squad → per-slot enrollment → QR-code and GPS attendance → check-out and hour calculation → secretary confirmation → points ledger entry and certificate generation**.
 
-> Architecturally it follows a **domain-vertical modular monolith**: every business domain is an independent jar with its own three-layer structure, leaving clean boundaries for a smooth evolution toward microservices. It also supports **white-label multi-tenancy** — each organization runs an isolated database and configuration against the same artifact.
+The backend is a domain-oriented modular monolith. Multi-organization reuse follows a **white-label, multi-instance model**: each organization has its own business database and configuration while running the same api artifact. Existing business tables are not converted into shared-database multi-tenancy.
 
 ---
 
 ## Preview
 
-> 📸 Screenshot placeholders — drop the images at the paths below and they render automatically.
-
 ### WeChat Mini Program (Volunteer Client)
 
-| Home | Activity & Enroll | GPS Check-in | My Service Records |
+| Home | Activity Details and Enrollment | GPS Check-in |
+|:---:|:---:|:---:|
+| ![Mini Program home](docs/screenshots/mp-home.png) | ![Mini Program activity](docs/screenshots/mp-activity.png) | ![Mini Program check-in](docs/screenshots/mp-checkin.png) |
+
+### Web Management Console
+
+| Dashboard | Activity Management | Enrollment / Review | Sub-accounts and RBAC |
 |:---:|:---:|:---:|:---:|
-| ![mp-home](docs/screenshots/mp-home.png) | ![mp-activity](docs/screenshots/mp-activity.png) | ![mp-checkin](docs/screenshots/mp-checkin.png) | ![mp-records](docs/screenshots/mp-records.png) |
-
-### Web Admin Console
-
-| Dashboard | Activity Mgmt | Enroll / Review | Sub-accounts & RBAC |
-|:---:|:---:|:---:|:---:|
-| ![admin-dashboard](docs/screenshots/admin-dashboard.png) | ![admin-activity](docs/screenshots/admin-activity.png) | ![admin-enroll](docs/screenshots/admin-enroll.png) | ![admin-rbac](docs/screenshots/admin-rbac.png) |
-
-<!--
-Screenshot setup:
-1. Create a docs/screenshots/ folder at the repo root;
-2. Add images with the file names above (PNG/JPG, names must match);
-3. Mini-program shots: phone portrait; admin shots: ~1280px wide;
-4. Delete any cell you don't need.
--->
+| ![Admin dashboard](docs/screenshots/admin-dashboard.png) | ![Admin activities](docs/screenshots/admin-activity.png) | ![Admin enrollment](docs/screenshots/admin-enroll.png) | ![Admin RBAC](docs/screenshots/admin-rbac.png) |
 
 ---
 
 ## Tech Stack
 
-| Category | Technologies |
+| Category | Technologies in Actual Use |
 |---|---|
-| Core framework | Spring Boot 4.0.6 · Spring Cloud 2025 · Spring Cloud Alibaba · Java 17 |
-| Auth | Sa-Token 1.43 (dual `StpLogic` isolating volunteer/admin sessions) · JWT (jjwt) |
-| Persistence | MyBatis-Plus 3.5.16 · MySQL 8.0.17+ · HikariCP · Flyway (DB migrations) |
-| Cache / concurrency | Redis 7.4 · Redisson 4.4 (distributed locks, watchdog auto-renewal) |
-| Object storage | Aliyun OSS / Volcengine TOS / MinIO (pluggable) |
-| Messaging / 3rd-party | Volcengine SMS · WeChat Mini Program login · WeCom group membership check |
-| Documents | EasyExcel + Apache POI (bulk import/export) · iText (certificates) · ZXing (QR codes) |
-| API docs | springdoc-openapi + Knife4j (groups: volunteer / admin / enterprise) |
-| Engineering | MapStruct (DTO mapping) · Lombok · Hutool · Sentinel (rate limiting) · XXL-Job (scheduling) |
-| Testing | JUnit 5 + Testcontainers (real MySQL / Redis containers, not H2) |
-| Frontend | WeChat Mini Program (native) · React (admin console, build-less / static-served) |
-| Deployment | Nginx (static hosting + `/api` reverse proxy) · systemd · env-var startup guard |
+| Core framework | Java 17 · Spring Boot 4 · Maven Wrapper |
+| Authentication and authorization | Sa-Token with separate volunteer `/v`, admin `/a`, and enterprise `/e` session realms |
+| Persistence | MyBatis-Plus 3.5.16 · MySQL 8.0.17+ · HikariCP · Flyway |
+| Cache and concurrency | Redis · Redisson · `DistributedLockSupport` |
+| Object storage | Aliyun OSS / Volcengine TOS |
+| Third-party capabilities | Volcengine SMS · Tencent Cloud identity verification · WeChat Mini Program and WeChat Pay · Kuaidi100 |
+| Document processing | EasyExcel + Apache POI · iText · ZXing |
+| API documentation | springdoc-openapi + Knife4j; disabled in production |
+| Engineering | Lombok · Hutool · Spring `@Scheduled` · hand-written DTO / VO mapping |
+| Testing | JUnit 5 · `@SpringBootTest` · Testcontainers MySQL / Redis; no H2 |
+| Frontend | Native WeChat Mini Program · build-less React `createElement` admin console |
+| Deployment | Nginx · systemd · environment-based configuration and production startup guards |
+
+> Spring Cloud / Alibaba, Sentinel, MapStruct, XXL-Job, and MinIO may appear in historical plans or dependency management, but they are not used by the current code and are not part of the actual runtime stack.
 
 ---
 
@@ -101,120 +92,89 @@ Screenshot setup:
 
 ```mermaid
 graph TD
-    NGINX["Nginx static hosting + /api reverse proxy"]
-    CFG["hengde-volunteer-api<br/>bootstrap + global config"]
-    COMMON["common shared infrastructure<br/>crypto / locks / storage / Flyway migrations"]
+    MP["WeChat Mini Program<br/>Volunteer /v"]
+    ADMIN["Web Management Console<br/>Admin /a"]
+    ENT["Enterprise API<br/>Enterprise /e"]
+    NGINX["Nginx<br/>Static hosting and /api reverse proxy"]
+    API["hengde-volunteer-api<br/>Sole business deployable unit"]
 
-    subgraph Clients
-      MP["WeChat Mini Program<br/>volunteer /v"]
-      ADMIN["Web Admin Console<br/>React /a"]
+    subgraph DOMAIN["Domain layer within the 14 Maven modules"]
+      CORE["auth · organization · user<br/>Accounts, identity, organization, profiles"]
+      BIZ["activity · donate · trade<br/>Activities, points, donations, payments"]
+      GOV["honor · social · enterprise<br/>Honors, community, enterprises"]
+      OPS["publicity · data · system<br/>Publicity, dashboards, complaints, governance"]
     end
 
-    subgraph Domains
-      AUTH["auth real-name"]
-      ORG["organization RBAC"]
-      ACT["activity check-in/points"]
-      PUB["publicity search"]
-      USER["user volunteer admin"]
-      DATA["data dashboard"]
-    end
-
-    subgraph Storage
-      MYSQL["MySQL"]
-      REDIS["Redis"]
-      OSS["Object storage OSS / TOS"]
-    end
+    COMMON["common<br/>Shared infrastructure and Flyway migrations"]
+    MYSQL["Independent MySQL business DB per organization"]
+    REDIS["Redis"]
+    OSS["OSS / TOS"]
 
     MP --> NGINX
     ADMIN --> NGINX
-    NGINX --> CFG
-    CFG --> AUTH
-    CFG --> ORG
-    CFG --> ACT
-    CFG --> PUB
-    CFG --> USER
-    CFG --> DATA
-    AUTH --> COMMON
-    ORG --> COMMON
-    ACT --> COMMON
-    PUB --> COMMON
-    USER --> COMMON
-    DATA --> COMMON
+    ENT --> NGINX
+    NGINX --> API
+    API --> CORE
+    API --> BIZ
+    API --> GOV
+    API --> OPS
+    CORE --> COMMON
+    BIZ --> COMMON
+    GOV --> COMMON
+    OPS --> COMMON
     COMMON --> MYSQL
     COMMON --> REDIS
     COMMON --> OSS
 ```
 
-**Design principles:**
+**Architectural conventions:**
 
-- **Domain vertical slicing**: the parent project only manages dependencies; each domain module bundles its own `controller / service / dao / entity` layers. `hengde-volunteer-api` depends on all domain modules, holds the single bootstrap class, and is the only deployable unit.
-- **Shared capabilities pushed down**: result/exception types, crypto, distributed locks, object storage, SMS, pagination, and the test harness all live in `common`, avoiding circular dependencies.
-- **Centralized DB migrations**: Flyway scripts live in `common` (a single global version sequence, currently V1→V38); both the api runtime and every module's tests obtain the scripts via dependency and auto-provision the schema.
-
----
-
-## Core Features
-
-<table>
-<tr><td valign="top" width="50%">
-
-**🙋 Volunteer Client (Mini Program `/v`)**
-
-- Phone-number SMS/password login (WeChat login coexists) → real-name registration → agreement reading + handwritten signature
-- Create/join/leave volunteer groups, squad membership
-- Browse activities, per-slot enrollment / cancel, **proxy-enroll for same-group members**
-- Eligibility checks (age / grade / gender / past sessions / service-hour threshold)
-- **QR-code + GPS check-in/check-out**, arrived-home confirmation, two-way reviews, activity messages
-- My activities, my service records & points, my profile (ID no. / phone rebinding / avatar)
-- "Management-team" volunteers can publish **multi-slot** activities in-app (subject to review)
-- **Management-team application** (questionnaire + admin review), public info, global search
-
-</td><td valign="top" width="50%">
-
-**🛠️ Admin Console (`/a`)**
-
-- Account login (anti-brute-force), permission-code-driven dynamic menus/buttons
-- Activity publish/edit/copy (**multi-slot + service guarantees**), **recurring publishing**, historical activities, **publish review**
-- Enrollment management (review / manual add / Excel export)
-- On-site leader assignment (pick from enrollees or management-team volunteers), attendance/points confirmation, attendance-change re-review, activity backfill
-- Volunteer management (multi-filter list / detail / disable-restore / export / clear-style password reset)
-- Organizational structure, group/squad management & approval, **management-team application review**
-- Sub-accounts & fine-grained permission assignment, "management-team" flagging & granting
-- Banners/announcements/files publicity, dashboard & to-dos
-
-</td></tr>
-</table>
+- The parent project manages dependencies; each domain module contains its own `controller / service / dao / entity / dto / vo` code.
+- Domains collaborate through service interfaces rather than using another domain's Mapper directly.
+- `common` owns shared infrastructure and business-database Flyway migrations; `api` owns bootstrap, route authentication, global configuration, and cross-domain aggregation.
+- The supervision console is a separate application. Its V5 plan is complete but unimplemented, and it is not part of the current business Reactor.
 
 ---
 
-## Engineering Highlights
+## Feature Coverage
 
-> The most representative engineering work — good talking points for interviews.
+> A completed backend capability does not imply that its Mini Program pages are complete. The table separates those delivery boundaries; the knowledge-base domain pages remain the detailed source of truth.
 
-### 🔐 Security & Authentication
+| Domain | Main Capabilities | Current Coverage |
+|---|---|---|
+| Accounts and organization | Phone / password / WeChat login, identity verification and signed agreements, deactivation and restoration, groups, squads, org structure, forms, exams, RBAC | Backend and console implemented; major Mini Program flows use real APIs |
+| Volunteer activities | Multi-slot publishing, recurring / historical activities, per-slot enrollment and cancellation, quotas, proxy enrollment, attendance, rosters, albums | Main flows implemented; complex activity editing and other remaining items are tracked in the domain backlog |
+| Points and mall | Points ledger, points center, products and specifications, coupons, redemption, pickup / delivery, verification, enterprise points | Backend and console implemented; Mini Program mall pages remain incomplete |
+| Donations and payments | Book donation, wishes, pairing, crowdfunding, donation invoices, logistics, WeChat Pay, refunds and reconciliation | Business backend implemented; Mini Program donation pages remain incomplete; real payment and logistics depend on external readiness |
+| Community and enterprises | Posts, comments, follows, private messages, review and risk control, reports and bans, enterprise onboarding, sponsored products and reviews | Backend implemented; Mini Program community and enterprise pages are not fully connected |
+| Honors and personal center | Rankings, medals, role models, electronic certificates, rewards / sanctions and appeals, volunteer cards, addresses, security and notification preferences | Backend and console implemented; multiple Mini Program pages already exist |
+| Information and system governance | Banners, announcements, file vault, dashboards and summaries, complaints, global search, logs, watermarks and serial numbers | Backend and console implemented |
+| Supervision console | Multi-organization onboarding, account management, usage quotas, cross-organization monitoring, and entry into organization consoles | **V5 planned, not implemented** |
 
-- **Dual-domain RBAC**: two mutually isolated Sa-Token `StpLogic` instances — the volunteer client (`/v`) and admin console (`/a`) have independent sessions and cannot cross permissions. The admin side uses fine-grained "permission points" (super-admins get the `*` wildcard). Since V18, a subset of activity-domain permissions is extended to the volunteer side, wiring up the chain "grant → permission codes in the volunteer token → `@SaCheckPermission` enforced on the mini-program side", so "management-team" volunteers can manage/publish activities in-app.
-- **PII field encryption**: ID numbers and phone numbers are stored as **AES-GCM ciphertext + an HMAC searchable hash** in dual columns — encrypted at rest yet still exact-searchable by phone/ID (e.g., locating a volunteer during activity backfill) without decryption.
-- **Multi-dimensional abuse prevention**: SMS codes are rate-limited atomically by "per-number daily quota across scenarios + source-IP hourly/daily quota", with codes invalidated after too many wrong attempts; admin login is protected against brute force by both "account-level lockout" and "IP-level spray cap" (Redis INCR counters).
-- **Config safety & startup guard**: all keys/switches use the `${ENV_VAR:dev-default}` form, with production config excluded by `.gitignore`; `ProductionConfigGuard` **fail-fast rejects startup** under the prod profile if weak default keys, the dev-login switch, etc. are detected — preventing silent go-live with dev config.
+---
 
-### ⚡ Concurrency & Consistency
+## Engineering Practices
 
-- **Centralized lock discipline**: contention scenarios (enrollment, group create/join) all delegate to `common`'s `DistributedLockSupport` (Redisson), which centralizes the deadlock-safe discipline — "acquire in sorted/deduped order → release in reverse → only unlock if `isHeldByCurrentThread` → watchdog renewal". Each use case reuses it with a distinct key prefix (`lock:enroll:volunteer:` / `lock:group:volunteer:`).
-- **Atomic batch operations**: same-group proxy enrollment uses `runLockedMany` (multi-lock, sorted & deduped by id) within a single transaction, so a batch enroll either fully succeeds or fully fails.
-- **CAS conditional updates**: enrollment review, attendance-change review, and activity-publish review all use optimistic conditional updates (`WHERE status = old`) to prevent concurrent overwrites, backed by DB unique constraints enforcing "one person per group" and "one attendance row per activity".
+### Security and Authentication
 
-### 📋 Domain Modeling
+- The three business session realms are mutually isolated. Volunteer requests recheck account status; banned accounts retain only narrowly defined access such as sanctions and appeals.
+- PII such as phone and ID numbers uses AES-GCM ciphertext plus an HMAC searchable hash. Logs and public responses apply context-specific masking.
+- SMS verification and admin login use Redis-based atomic rate limiting and brute-force protection. Weak production configuration is rejected at startup.
+- Uploads are checked by directory, permission, and file type; file signatures and MIME types are verified server-side, and private files use short-lived signed URLs.
 
-- **Service-hour & points engine**: GPS check-in (Haversine distance to the activity coordinates + a time window) → unified check-out & hour calculation → secretary confirmation → points award, forming a CAS state machine; points = base × role multiplier (leader 1.4 / management-team 1.2 / regular 1.0) × violation factor, with leave/absence scoring 0.
-- **Activity publish-review loop**: activities submitted from the mini program land in a "pending review" state invisible to volunteers and must be approved in the console before going live; all id-based regular write actions reject activities under review to prevent bypassing approval (the permission boundary is centralized in `ActivityStatus.isUnderReview`).
-- **Cross-module read-only aggregation**: each domain exposes only read-only services (e.g., `VolunteerQueryService` / `GroupQueryService` / `ActivityStatsService`); consumers call interfaces rather than reaching into foreign tables, and batch queries eliminate N+1.
+### Consistency and Domain Modeling
 
-### 🧪 Engineering Practices
+- `point_record` is the sole points ledger, and all reads and writes go through `PointService`; attendance snapshots are not summed as a substitute ledger.
+- Enrollment, quotas, groups, inventory, and verification use distributed locks, unique keys, and CAS conditional updates where required.
+- Payment settlement, refunds, certificate generation, and notifications use idempotent events and compensation jobs. Third-party callbacks are public by route but authenticated by signatures.
+- Dashboards and summaries call owner-domain read-only services instead of redefining statistics in consumer modules.
 
-- **Real-container integration tests**: a uniform `@SpringBootTest` + Testcontainers spins up **real MySQL / Redis** (no H2, avoiding dialect & migration incompatibilities); Flyway runs real migrations in the container DB, keeping tests close to production behavior.
-- **Versioned database**: Flyway with a single global version sequence (V1→V38) centrally manages schema and permission-point seeds, keeping evolution traceable.
-- **Production-ready deployment**: Nginx split deployment (static hosting + same-origin `/api` reverse proxy, no runtime CORS), systemd unit, env-var template, three-tier upload size alignment (nginx 16M > Spring 12M > business validation 10M), plus a complete deployment guide and go-live checklist.
+### Testing and Release
+
+- Tests run against real MySQL / Redis containers with real Flyway migrations and HTTP routes.
+- Critical concurrency and failure behavior requires mutation checks; the full api suite must pass as a whole.
+- `/actuator/info` exposes build version, build time, source revision, and migration version to identify the deployed artifact.
+- The knowledge base provides generated interface, permission, table, and migration inventories, plus consistency checks and pre-publication sensitive-data scanning.
 
 ---
 
@@ -222,16 +182,20 @@ graph TD
 
 | Module | Responsibility |
 |---|---|
-| `hengde-volunteer-common` | Shared infrastructure: result/exception/error codes, crypto (AES-GCM + HMAC), Redis, distributed-lock helper, SMS, object storage, Excel, pagination, global-search aggregation, Flyway migrations, Testcontainers test harness |
-| `hengde-volunteer-auth` | Auth: phone-number SMS/password login system (V20), WeChat login, real-name registration / agreement signature, admin account login / password recovery (anti-brute-force), volunteer PII crypto, cross-module read-only queries |
-| `hengde-volunteer-organization` | Organization: sub-accounts / RBAC, volunteer groups (create/approve/transfer/dissolve/import), squad membership, org structure, "management-team" flagging & granting |
-| `hengde-volunteer-activity` | Activity: publish/edit/copy/recurring/historical, enroll/proxy-enroll, check-in/hours/points loop, on-site leaders, attendance-change review, activity backfill, publish review, activity messages |
-| `hengde-volunteer-publicity` | Publicity: banners / announcements / file downloads, volunteers see only published items |
-| `hengde-volunteer-user` | User domain: admin-side volunteer management (multi-filter list/detail/edit/disable-restore/export/password reset) + volunteer-side "My Profile" (ID no. / editable fields / phone rebinding) |
-| `hengde-volunteer-data` | Dashboard: cross-domain read-only aggregation (registrations / activity sessions / service hours / participations / management-team / squads) |
-| `hengde-volunteer-api` | Bootstrap + global config (Sa-Token / CORS / Jackson / pagination interceptor / global exceptions / API docs / generic upload), the single deployable unit |
-
-> See [`文档/功能清单.md`](文档/功能清单.md) for the full feature × status matrix.
+| `hengde-volunteer-common` | Shared infrastructure, crypto, object storage, SMS templates, lock helper, Excel, and Flyway migrations |
+| `hengde-volunteer-auth` | Session support, identity verification, PII, sanction gates, notification entry point, and deactivation cooling-off |
+| `hengde-volunteer-organization` | Sub-accounts and permissions, groups, squads, org structure, management team, forms, and temporary-leader exams |
+| `hengde-volunteer-publicity` | Banners, announcements, and public files |
+| `hengde-volunteer-activity` | Activities, enrollment, attendance, hours, albums, rosters, and the points ledger |
+| `hengde-volunteer-trade` | WeChat Pay, refunds, and reconciliation; the real channel has not yet passed end-to-end acceptance |
+| `hengde-volunteer-donate` | Points mall, book donation, wishes, pairing, crowdfunding, donation invoices, and logistics |
+| `hengde-volunteer-user` | Volunteer administration, profiles, addresses, grades, volunteer cards, and personal center |
+| `hengde-volunteer-honor` | Rankings, medals, role models, electronic certificates, rewards / sanctions, and appeals |
+| `hengde-volunteer-social` | Community posts, interactions, review and risk control, reports / bans, and private messages |
+| `hengde-volunteer-enterprise` | Enterprise registration and login, sponsored products, enterprise points, posts, and reviews |
+| `hengde-volunteer-data` | Dashboards, summaries, and complaints |
+| `hengde-volunteer-system` | Operation logs, watermarks, serial numbers, and file vault |
+| `hengde-volunteer-api` | Bootstrap, global configuration, route authentication, cross-domain aggregation, uploads, and webhooks |
 
 ---
 
@@ -240,79 +204,77 @@ graph TD
 ### Prerequisites
 
 - JDK 17
-- **MySQL 8.0.17+** (before 8.0.16 `CHECK` constraints are parsed but not enforced, silently disabling the V32/V33 guards; `utf8mb4_0900_bin` only exists from 8.0.17, so V34 fails outright below it. `DatabaseVersionGuard` enforces this *before* Flyway runs), Redis 7+
-- Docker (only for integration tests via Testcontainers)
-- Maven 3.9+ (a Maven Wrapper is bundled — use `./mvnw`)
+- MySQL 8.0.17+
+- Redis
+- Docker for Testcontainers-based integration tests
+- No separate Maven installation is required; use the bundled Wrapper
 
-### Build & Run
-
-> Run all Maven commands from the parent project dir `代码/hengde-volunteer-parent/`. Modules resolve each other via the local repository, so re-`install` a dependency module after changing it.
+### Build and Run
 
 ```bash
 cd 代码/hengde-volunteer-parent
 
-# 1) Full build (the parent POM aggregates all 9 modules in dependency order;
-#    verify the Reactor Summary lists parent + all 9 modules = 10 rows)
+# Full build: the Reactor Summary should contain parent + 14 modules = 15 rows
 ./mvnw clean install -DskipTests
 
-# 2) Run the app (requires MySQL / Redis; use the dev profile locally)
-./mvnw spring-boot:run -f ../hengde-volunteer-api/pom.xml -Dspring-boot.run.profiles=dev
+# Run with the dev profile; local MySQL and Redis must be available
+./mvnw spring-boot:run -f ../hengde-volunteer-api/pom.xml "-Dspring-boot.run.profiles=dev"
 ```
 
-The app listens on `http://localhost:8080` by default, with context-path `/api`.
+The application listens on `http://localhost:8080` by default, with `/api` as its context path.
 
-### Run Tests
+### Tests and Project Checks
 
 ```bash
-# Run a module's full test suite (requires local Docker)
+# Run all tests for one domain module
 ./mvnw test -f ../hengde-volunteer-activity/pom.xml
+
+# From the documentation repository root: generated knowledge and reference checks
+python3 tools/gen_knowledge_base.py --check
+python3 tools/verify_knowledge_base.py
 ```
 
-> For local development you can enable "dev login" (`POST /v/auth/login/dev`, skipping the WeChat code-to-openid exchange); it is force-disabled in production by the startup guard. For production deployment, see [`文档/v1/部署说明.md`](文档/v1/部署说明.md).
+> **Local integration warning**: the Mini Program `app.js` and admin console may point to the online environment by default, so UI actions can write real online data. Point them to the local backend before performing write tests; use `tools/serve_admin_local.py` for the admin console. See `文档/v1/部署说明.md` and `部署/` for production deployment.
 
 ---
 
-## Project Layout
+## Workspace Layout
 
+```text
+<workspace>/
+├── volunteerplatform/                 # This documentation repository
+│   ├── 代码/                          # Backend Git repository with 14 Maven modules
+│   ├── 知识库/                        # Business rules, decisions, module guidance, regression evidence
+│   ├── 文档/                          # V1–V5 plans, requirements, API contracts, integration records
+│   ├── 部署/                          # Nginx / systemd / environment templates
+│   └── tools/                         # Contract, generation, verification, and publication scripts
+├── volunteerplatform-miniprogram/     # Independent WeChat Mini Program repository
+└── volunteerplatform-back/            # Independent management-console repository
 ```
-.
-├── 代码/                          # Backend Maven multi-module project
-│   ├── hengde-volunteer-parent/   # Parent (dependency management)
-│   ├── hengde-volunteer-common/   # Shared infrastructure + Flyway migrations
-│   ├── hengde-volunteer-auth/     # Auth
-│   ├── hengde-volunteer-organization/ # Organization / RBAC
-│   ├── hengde-volunteer-activity/ # Activity / check-in / points
-│   ├── hengde-volunteer-publicity/# Publicity / search
-│   ├── hengde-volunteer-user/     # Volunteer management
-│   ├── hengde-volunteer-data/     # Dashboard
-│   └── hengde-volunteer-api/      # Bootstrap + global config (deployable unit)
-├── 部署/                          # nginx.conf / systemd unit / env-var template
-└── 文档/                          # Requirements, API, deployment, self-test docs
-```
-
-> **Frontend code lives in separate repositories**: the WeChat Mini Program and the Web admin console are each their own repo; this one holds the backend, docs, and deployment config.
 
 ---
 
-## API Documentation
+## API and Project Documentation
 
-The backend integrates springdoc-openapi + Knife4j. After startup:
-
-- Knife4j docs: `http://localhost:8080/api/doc.html`
-- Groups: `volunteer` (`/v/**`), `admin` (`/a/**`), `enterprise` (`/e/**`, reserved)
-
-API paths follow the `/{role}/{domain}/{resource}/{action?}` convention; the full endpoint table is in [`文档/v1/url文档v1.md`](文档/v1/url文档v1.md).
+- Local Knife4j: `http://localhost:8080/api/doc.html`; this endpoint is unavailable in production.
+- API groups: `volunteer` (`/v/**`), `admin` (`/a/**`), and `enterprise` (`/e/**`).
+- Historical API contracts: `文档/v1/` through `文档/v4/`; the generated current index is `知识库/生成/接口索引.md`.
+- Project entry points: `AGENTS.md` and `知识库/README.md`.
+- V5 supervision-console plan: `文档/v5/V5规划.md`.
+- Regression method, latest recorded results, and known gaps: `知识库/回归验证.md`.
 
 ---
 
 ## Project Status
 
-- ✅ **V1 core complete**: auth (incl. the phone-number login system), organization/RBAC (incl. management-team application review), the full activity loop (multi-slot publishing, service guarantees, check-in/hours/points, publish review), publicity/search, volunteer management & my-profile, and the dashboard — all backed by Testcontainers integration tests (migrations up to V33); the admin console frontend is fully wired to real APIs and production-hardened.
-- ✅ **Third-party integrations live and verified**: SMS delivery (Volcengine, per-scenario templates), object storage (Volcengine TOS), ID two-factor real-name verification (Tencent Cloud), and map point-picking (AMap JSAPI) have all been exercised end-to-end with real credentials.
-- ✅ **Deployed and verified**: the backend and Web admin console are running on a server and have been tested end-to-end.
-- 🚧 **Mini Program side remaining**: needs an ICP-filed HTTPS domain (a hard WeChat requirement), the Mini Program AppSecret, and a real-device run-through once the client's default mock mode is turned off. WeCom group membership checks remain optional and unimplemented.
-- 🗺️ **Roadmap (future versions)**: corporate sponsors, a points mall / donations, community interaction, an honors/role-model system, and a SaaS supervision console for one-click multi-organization onboarding.
+- **The main V1–V4 functionality has been implemented**: accounts and organization, activities and points, mall and donations, community and enterprises, personal center, and system governance have backend implementations and corresponding console coverage.
+- **Latest complete record (2026-11-01)**: all 15 Reactor projects succeeded, with 1,176 backend tests passing. For the Mini Program, 829 of 836 tests passed, 7 were skipped, and 0 failed. The admin console had 119 passing Node tests; 58 Playwright tests could not run on the recorded machine because of its local environment.
+- **V5 supervision console is planned but not started**: the plan uses an independent control plane and controlled organization-side connectors without changing the multi-instance isolation of existing business databases.
+- **External acceptance boundaries remain**: WeChat Pay, Kuaidi100, service-account template messages, Mini Program codes, and direct object-storage video upload must not be described as production-verified solely on the basis of local tests.
+- **Frozen or deferred items**: paper certificates, iVolunteer certificates, warehouse management, and recognition workflows are governed by their domain pages and association question lists.
+
+For current status, use `知识库/领域/`, `知识库/变更日志.md`, and `知识库/回归验证.md`. This README is a project entry point, not a replacement for the continuously updated knowledge base.
 
 ---
 
-<sub>An independently developed management platform for charity organizations, with a fully designed and implemented tech stack and architecture. For implementation details, see [`文档/`](文档/).</sub>
+<sub>An independently developed management platform for charity organizations. See `知识库/` and `文档/` for requirements, decisions, implementation details, and verification records.</sub>

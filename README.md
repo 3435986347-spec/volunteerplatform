@@ -1,18 +1,17 @@
 # 恒德志愿者管理平台
 
-> 面向社会公益组织的多端志愿者服务系统：微信小程序（志愿者端）+ Web 管理后台 + Spring Boot 4 微服务化后端。
+> 面向社会公益组织的志愿者服务系统：微信小程序（志愿者端）+ Web 管理控制台 + Spring Boot 4 模块化单体后端。
 >
-> 为雷州市恒德爱心公益协会设计开发，覆盖志愿者实名注册、活动发布与报名、GPS 签到、服务时长与积分核算、组织架构与子账号权限、信息公示等完整业务闭环。
+> 为雷州市恒德爱心公益协会设计开发，覆盖实名注册、组织归属、活动发布与按场次报名、扫码与 GPS 签到、服务时长和积分、证书与奖惩、公益捐赠、社区及信息公示等业务。
 
 <p>
   <img alt="Java" src="https://img.shields.io/badge/Java-17-orange?logo=openjdk&logoColor=white">
-  <img alt="Spring Boot" src="https://img.shields.io/badge/Spring%20Boot-4.0.6-6DB33F?logo=springboot&logoColor=white">
-  <img alt="Spring Cloud" src="https://img.shields.io/badge/Spring%20Cloud-2025.0.0-6DB33F?logo=spring&logoColor=white">
+  <img alt="Spring Boot" src="https://img.shields.io/badge/Spring%20Boot-4-6DB33F?logo=springboot&logoColor=white">
   <img alt="MyBatis-Plus" src="https://img.shields.io/badge/MyBatis--Plus-3.5.16-red">
-  <img alt="Sa-Token" src="https://img.shields.io/badge/Sa--Token-1.43-blue">
+  <img alt="Sa-Token" src="https://img.shields.io/badge/Sa--Token-三套登录态-blue">
   <img alt="MySQL" src="https://img.shields.io/badge/MySQL-8.0.17%2B-4479A1?logo=mysql&logoColor=white">
-  <img alt="Redis" src="https://img.shields.io/badge/Redis-7.4-DC382D?logo=redis&logoColor=white">
-  <img alt="Flyway" src="https://img.shields.io/badge/Flyway-V1→V38-CC0200?logo=flyway&logoColor=white">
+  <img alt="Redis" src="https://img.shields.io/badge/Redis-Redisson-DC382D?logo=redis&logoColor=white">
+  <img alt="Flyway" src="https://img.shields.io/badge/Flyway-V101-CC0200?logo=flyway&logoColor=white">
   <img alt="WeChat MiniProgram" src="https://img.shields.io/badge/微信小程序-原生-07C160?logo=wechat&logoColor=white">
 </p>
 
@@ -26,29 +25,29 @@
 - [功能预览](#功能预览)
 - [技术栈](#技术栈)
 - [系统架构](#系统架构)
-- [核心功能](#核心功能)
-- [技术亮点](#技术亮点)
+- [功能覆盖](#功能覆盖)
+- [工程特点](#工程特点)
 - [模块结构](#模块结构)
 - [快速开始](#快速开始)
-- [目录结构](#目录结构)
-- [接口文档](#接口文档)
+- [工作区结构](#工作区结构)
+- [接口与项目文档](#接口与项目文档)
 - [项目状态](#项目状态)
 
 ---
 
 ## 项目简介
 
-恒德志愿者管理平台是一套**白标可复用**的公益组织数字化解决方案，包含三端：
+平台当前包含三个实际交付部分：
 
-| 端 | 形态 | 使用者 |
+| 部分 | 形态 | 使用者 / 说明 |
 |---|---|---|
-| 志愿者端 | 微信小程序（原生） | 志愿者 / 游客 |
-| 管理后台 | Web 控制台（React） | 协会各部门管理团队 |
-| 后端服务 | Spring Boot 4 模块化单体 | —— |
+| 志愿者端 | 原生微信小程序 | 游客、志愿者、活动临时负责人与管理团队志愿者 |
+| 管理控制台 | 静态托管的 React 页面，无前端构建链 | 协会各部门、理事会与后台子账号 |
+| 业务后端 | Java 17 + Spring Boot 4，14 个 Maven 模块 | 唯一业务部署单元为 `hengde-volunteer-api` |
 
-业务上完整实现了**「实名注册 → 加入小组/分队 → 报名活动 → GPS 签到 → 统一签退算时长 → 秘书部确认 → 积分发放」**的志愿服务全流程闭环，并配套了组织架构管理、细粒度子账号权限（RBAC）、信息公示与全局搜索、数据看板等运营能力。
+业务主链为：**实名注册 → 加入小组 / 分队 → 按场次报名 → 扫码与 GPS 签到 → 签退计算时长 → 秘书部确认 → 积分入账与证书生成**。
 
-> 架构上按「领域垂直切分的模块化单体」组织，每个业务领域是独立 jar、内部自带三层结构，预留了向微服务平滑演进的边界；同时支持「白标多实例」部署——每个公益组织一套独立库与配置、跑同一份制品。
+后端采用领域垂直切分的模块化单体；多组织复用采用**白标多实例**：每个组织独立业务库与配置，运行同一份 api 制品，不在单实例业务表中增加租户字段。
 
 ---
 
@@ -60,7 +59,7 @@
 |:---:|:---:|:---:|
 | ![小程序-首页](docs/screenshots/mp-home.png) | ![小程序-活动详情](docs/screenshots/mp-activity.png) | ![小程序-签到](docs/screenshots/mp-checkin.png) |
 
-### Web 管理后台
+### Web 管理控制台
 
 | 数据看板 | 活动管理 | 报名 / 审核 | 子账号与权限 |
 |:---:|:---:|:---:|:---:|
@@ -70,20 +69,22 @@
 
 ## 技术栈
 
-| 分类 | 技术选型 |
+| 分类 | 实际使用 |
 |---|---|
-| 基础框架 | Spring Boot 4.0.6 · Spring Cloud 2025 · Spring Cloud Alibaba · Java 17 |
-| 认证授权 | Sa-Token 1.43（双域 StpLogic 隔离志愿者端/后台端）· JWT（jjwt）|
-| 持久层 | MyBatis-Plus 3.5.16 · MySQL 8.0.17+ · HikariCP · Flyway（数据库版本迁移）|
-| 缓存 / 并发 | Redis 7.4 · Redisson 4.4（分布式锁，watchdog 自动续期）|
-| 对象存储 | 阿里云 OSS / 火山引擎 TOS / MinIO（可插拔）|
-| 消息 / 第三方 | 火山引擎短信 · 微信小程序登录 · 企业微信群校验 |
-| 文档处理 | EasyExcel + Apache POI（批量导入导出）· iText（电子证书）· ZXing（二维码）|
-| 接口文档 | springdoc-openapi + Knife4j（分组：volunteer / admin / enterprise）|
-| 工程化 | MapStruct（DTO 映射）· Lombok · Hutool · 限流（Sentinel）· XXL-Job（定时任务）|
-| 测试 | JUnit 5 + Testcontainers（真实 MySQL / Redis 容器，非 H2）|
-| 前端 | 微信小程序原生 · React（管理后台，无构建 / 静态托管）|
-| 部署 | Nginx（静态托管 + `/api` 反向代理）· systemd · 环境变量启动守卫 |
+| 基础框架 | Java 17 · Spring Boot 4 · Maven Wrapper |
+| 认证授权 | Sa-Token：志愿者 `/v`、管理后台 `/a`、爱心企业 `/e` 三套登录态 |
+| 持久层 | MyBatis-Plus 3.5.16 · MySQL 8.0.17+ · HikariCP · Flyway |
+| 缓存与并发 | Redis · Redisson · `DistributedLockSupport` 分布式锁助手 |
+| 对象存储 | 阿里云 OSS / 火山引擎 TOS |
+| 第三方能力 | 火山引擎短信 · 腾讯云实名核验 · 微信小程序与微信支付 · 快递100 |
+| 文档处理 | EasyExcel + Apache POI · iText · ZXing |
+| 接口文档 | springdoc-openapi + Knife4j；生产环境关闭文档入口 |
+| 工程化 | Lombok · Hutool · Spring `@Scheduled` · 手写 DTO / VO 转换 |
+| 测试 | JUnit 5 · `@SpringBootTest` · Testcontainers MySQL / Redis，不使用 H2 |
+| 前端 | 微信原生小程序 · React `createElement` 静态管理控制台 |
+| 部署 | Nginx · systemd · 环境变量与生产启动守卫 |
+
+> Spring Cloud / Alibaba、Sentinel、MapStruct、XXL-Job、MinIO 等虽可能出现在历史规划或依赖管理中，但当前代码并未使用，不作为项目实际技术栈宣传。
 
 ---
 
@@ -91,120 +92,89 @@
 
 ```mermaid
 graph TD
-    NGINX["Nginx 静态托管 + /api 反向代理"]
-    CFG["hengde-volunteer-api<br/>启动类 + 全局配置"]
-    COMMON["common 公共基础设施<br/>加解密 / 分布式锁 / 对象存储 / Flyway 迁移"]
+    MP["微信小程序<br/>志愿者端 /v"]
+    ADMIN["Web 管理控制台<br/>后台 /a"]
+    ENT["爱心企业接口<br/>企业端 /e"]
+    NGINX["Nginx<br/>静态托管与 /api 反向代理"]
+    API["hengde-volunteer-api<br/>唯一业务部署单元"]
 
-    subgraph 客户端
-      MP["微信小程序<br/>志愿者端 /v"]
-      ADMIN["Web 管理后台<br/>React /a"]
+    subgraph DOMAIN["14 个 Maven 模块中的领域层"]
+      CORE["auth · organization · user<br/>账号、实名、组织与资料"]
+      BIZ["activity · donate · trade<br/>活动、积分、捐赠与收付"]
+      GOV["honor · social · enterprise<br/>荣誉、社区与爱心企业"]
+      OPS["publicity · data · system<br/>公示、看板、投诉与系统治理"]
     end
 
-    subgraph 领域模块
-      AUTH["auth 认证/实名"]
-      ORG["organization 组织/RBAC"]
-      ACT["activity 活动/签到/积分"]
-      PUB["publicity 公示/搜索"]
-      USER["user 志愿者管理"]
-      DATA["data 数据看板"]
-    end
-
-    subgraph 存储
-      MYSQL["MySQL"]
-      REDIS["Redis"]
-      OSS["对象存储 OSS / TOS"]
-    end
+    COMMON["common<br/>基础设施与 Flyway 迁移"]
+    MYSQL["每组织独立 MySQL 业务库"]
+    REDIS["Redis"]
+    OSS["OSS / TOS"]
 
     MP --> NGINX
     ADMIN --> NGINX
-    NGINX --> CFG
-    CFG --> AUTH
-    CFG --> ORG
-    CFG --> ACT
-    CFG --> PUB
-    CFG --> USER
-    CFG --> DATA
-    AUTH --> COMMON
-    ORG --> COMMON
-    ACT --> COMMON
-    PUB --> COMMON
-    USER --> COMMON
-    DATA --> COMMON
+    ENT --> NGINX
+    NGINX --> API
+    API --> CORE
+    API --> BIZ
+    API --> GOV
+    API --> OPS
+    CORE --> COMMON
+    BIZ --> COMMON
+    GOV --> COMMON
+    OPS --> COMMON
     COMMON --> MYSQL
     COMMON --> REDIS
     COMMON --> OSS
 ```
 
-**设计要点：**
+**架构约定：**
 
-- **领域垂直切分**：父工程仅做依赖管理，下挂各领域模块，每个模块内部自带 `controller / service / dao / entity` 三层；`hengde-volunteer-api` 依赖全部领域模块、持有唯一启动类，是唯一可部署单元。
-- **公共能力下沉**：返回体/异常、加解密、分布式锁、对象存储、短信、分页、测试基座等统一沉到 `common`，避免循环依赖。
-- **数据库迁移集中**：Flyway 脚本集中在 `common`（全局唯一版本序列，目前 V1→V38），api 运行期与各模块测试都经依赖拿到脚本自动建表。
-
----
-
-## 核心功能
-
-<table>
-<tr><td valign="top" width="50%">
-
-**🙋 志愿者端（小程序 `/v`）**
-
-- 手机号验证码/密码登录（微信登录并存）→ 实名注册 → 协议阅读 + 手写签名
-- 志愿小组发起/加入/退出、分队归属
-- 活动浏览、按场次报名 / 取消、**同小组互相代报名**
-- 资格校验（年龄 / 年级 / 性别 / 已参加场次 / 服务时长门槛）
-- **扫码 + GPS 签到/签退**、确认到家、双向评价、活动留言
-- 我的活动、我的服务记录与积分、我的资料（编号/改绑手机/头像）
-- 「管理团队」志愿者可在小程序内发布**多场次**活动（走审核）
-- **报名管理团队**（问卷申请 + 后台审核）、信息公示浏览、全局搜索
-
-</td><td valign="top" width="50%">
-
-**🛠️ 管理后台（`/a`）**
-
-- 账号登录（防爆破）、基于权限码的菜单/按钮动态渲染
-- 活动发布/编辑/复制（**多场次 + 服务保障**）、**周期发布**、历史活动、**发布审核**
-- 报名管理（审核/手动新增/Excel 导出）
-- 现场负责人指派（报名志愿者/管理团队两页签选人）、考勤/积分确认、考勤变更二次审核、活动补录
-- 志愿者管理（多条件筛选/详情/停用恢复/导出/清空式重置密码）
-- 组织架构、小组/分队管理与审批、**报名管理团队审核**
-- 子账号与细粒度权限分配、「管理团队」标记与授权
-- 轮播图/公告/文件公示、数据看板与待办
-
-</td></tr>
-</table>
+- 父工程只做依赖管理；各领域模块内部包含 `controller / service / dao / entity / dto / vo`。
+- 领域之间通过对方 service 接口协作，不直接使用其他领域的 Mapper。
+- `common` 持有公共基础设施与业务库 Flyway 迁移；`api` 负责启动、鉴权路由、全局配置和跨域聚合。
+- 监管后台是另一个独立应用；V5 规划已完成，但尚未建设，不属于当前业务 Reactor。
 
 ---
 
-## 技术亮点
+## 功能覆盖
 
-> 以下是项目中较有代表性的工程实现，也是简历可着重展开的点。
+> “后端已实现”不等于“小程序页面已全部完成”。下表区分当前主要交付边界，详细状态以知识库领域页为准。
 
-### 🔐 安全与认证
+| 领域 | 主要内容 | 当前覆盖 |
+|---|---|---|
+| 账号与组织 | 手机号 / 密码 / 微信登录、实名与协议签名、注销恢复、小组、分队、组织架构、问卷与考试、RBAC | 后端与控制台已覆盖；小程序主要流程已接真实接口 |
+| 志愿活动 | 多场次发布、周期 / 历史活动、按场次报名与取消、名额、代报名、签到签退、考勤、名单公示、相册 | 主流程已实现；复杂活动编辑等余项见领域二待办 |
+| 积分与商城 | 积分账本、积分中心、商品与规格、卷、兑换、自提 / 快递、核销、企业积分 | 后端与控制台已实现；小程序商城页面仍待补齐 |
+| 公益捐赠与收付 | 捐书、微心愿、结对、众筹、捐款发票、物流、微信支付与退款对账 | 业务后端已实现；小程序捐赠页面待补齐；真实支付与物流仍受外部条件限制 |
+| 社区与爱心企业 | 帖子、评论、关注、私信、审核风控、举报禁言、企业入驻、赞助商品与评价 | 后端已实现；小程序社区和企业端页面尚未全部接通 |
+| 荣誉与个人中心 | 排行榜、勋章、榜样、电子证书、奖惩申诉、志愿者证、地址、安全中心与通知偏好 | 后端与控制台已实现；小程序已有多个对应页面 |
+| 信息与系统治理 | 轮播公告、文件网盘、数据看板与汇总、投诉建议、全局搜索、日志、水印与编号 | 后端与控制台已覆盖 |
+| 监管后台 | 多组织开通、账号管理、用量配额、跨组织监管与切入组织后台 | **V5 已规划，未建设** |
 
-- **双域 RBAC 鉴权**：基于 Sa-Token 配置两套相互隔离的 `StpLogic`——志愿者端（`/v`）与管理后台（`/a`）独立登录态、互不串权；后台采用「权限点（permission）」细粒度控制，超管走 `*` 通配；V18 起把活动域权限子集扩展到志愿者端，打通「授权 → 志愿者 token 带权限码 → `@SaCheckPermission` 在小程序端生效」链路，让「管理团队」志愿者可在小程序内管理/发布活动。
-- **PII 字段加密**：身份证、手机号等敏感信息采用 **AES-GCM 密文 + HMAC 可查询哈希** 双列存储——既保证落库加密，又支持按手机号/身份证精确检索（如活动补录定位志愿者）而无需解密。
-- **多维度防滥用**：短信验证码按「同号跨场景日限量 + 来源 IP 时/日限量」原子计数限流、同码错满次数作废；后台登录按「账号维度锁定 + IP 维度喷洒上限」双重防爆破（Redis INCR 计数）。
-- **配置安全与启动守卫**：所有密钥/开关均为 `${ENV_VAR:dev默认值}` 形式，生产配置由 `.gitignore` 排除；`ProductionConfigGuard` 在 prod profile 下对弱默认密钥、开发登录开关等 **fail-fast 拒绝启动**，杜绝以开发配置静默上线。
+---
 
-### ⚡ 高并发与一致性
+## 工程特点
 
-- **分布式锁纪律收敛**：报名、建组/加入等竞态场景统一委托 `common` 的 `DistributedLockSupport`（Redisson），集中实现「升序去重加锁 → 反序释放 → `isHeldByCurrentThread` 才解锁 → watchdog 续期」的死锁安全纪律；各业务以不同 key 前缀复用（`lock:enroll:volunteer:` / `lock:group:volunteer:`）。
-- **批量原子操作**：同小组代报名用 `runLockedMany`（按 id 升序去重多锁）+ 单事务，保证批量报名要么全成要么全败。
-- **CAS 条件更新**：报名审核、考勤变更审核、活动发布审核等状态流转均用乐观条件更新（`WHERE status = 旧值`）防并发覆盖，配合数据库唯一约束兜底「一人一组」「一活动一考勤行」。
+### 安全与鉴权
 
-### 📋 业务建模
+- 三套业务登录态互不通用；志愿者请求每次重查账号状态，禁用账号只保留奖惩与申诉等小口子。
+- 手机号、身份证等 PII 使用 AES-GCM 密文 + HMAC 查询哈希；日志与公开出参按场景脱敏。
+- 短信验证码与后台登录具备 Redis 原子限流、防刷和防爆破；生产弱配置由启动守卫拒绝。
+- 上传按目录、权限和文件类型校验，文件头与 MIME 由服务端核验；私有文件使用短期签名地址。
 
-- **服务时长与积分引擎**：GPS 签到（Haversine 距活动坐标判定 + 时间窗口）→ 统一签退算时长 → 秘书部确认 → 积分发放，形成 CAS 状态机；积分 = 基数 × 角色倍率（负责人 1.4 / 管理团队 1.2 / 普通 1.0）× 违规系数，请假/缺席记 0。
-- **活动发布审核闭环**：小程序提交的活动落「待审核」态、志愿者端不可见，须后台审核才上线；并对所有按 id 的常规写动作拦截审核态活动，防止绕过审核上线（权限边界统一收敛到 `ActivityStatus.isUnderReview`）。
-- **跨模块只读聚合**：各领域对外只暴露只读 service（如 `VolunteerQueryService` / `GroupQueryService` / `ActivityStatsService`），消费方只调接口不直接捅外域表，且批量查询消除 N+1。
+### 一致性与业务建模
 
-### 🧪 工程化
+- 积分只认 `point_record` 账本，所有读写经 `PointService`，不以活动考勤快照求和。
+- 报名、名额、建组、库存、核销等并发入口使用分布式锁、唯一键与 CAS 条件更新。
+- 支付到账、退款、证书生成与通知采用幂等事件和补偿任务；第三方回调免登录但验签。
+- 数据看板与汇总只调 owner 域只读 service，避免跨模块重复定义统计口径。
 
-- **真实容器集成测试**：统一 `@SpringBootTest` + Testcontainers 拉起**真实 MySQL / Redis**（不用 H2，避免方言与迁移不兼容），Flyway 在容器库跑真实迁移，测试贴近生产行为。
-- **数据库版本化**：Flyway 单一全局版本序列（V1→V38）集中管理表结构与权限点种子，演进可追溯。
-- **生产部署就绪**：Nginx 分离部署（前端静态托管 + `/api` 同源反代，无运行期 CORS）、systemd 单元、环境变量模板、上传体积三层对齐（nginx 16M > Spring 12M > 业务校验 10M），配套完整部署文档与上线 checklist。
+### 测试与发布
+
+- 测试统一使用真实 MySQL / Redis 容器，跑真实 Flyway 迁移和 HTTP 路由。
+- 关键并发与故障行为要求变异验证；api 全量测试通过才算全量通过。
+- `/actuator/info` 提供构建版本、构建时间、源码提交与迁移号，便于核对线上实际制品。
+- 知识库包含接口、权限点、表与迁移的脚本生成清单，并提供一致性校验和发布前敏感信息扫描。
 
 ---
 
@@ -212,16 +182,20 @@ graph TD
 
 | 模块 | 职责 |
 |---|---|
-| `hengde-volunteer-common` | 公共基础设施：返回体/异常/错误码、加解密（AES-GCM + HMAC）、Redis、分布式锁助手、短信、对象存储、Excel、分页、全局搜索聚合、Flyway 迁移脚本、Testcontainers 测试基座 |
-| `hengde-volunteer-auth` | 认证：手机号验证码/密码登录体系（V20）、微信登录、实名注册/协议签名、后台账号登录/找回密码（防爆破）、志愿者 PII 加解密、跨模块只读查询 |
-| `hengde-volunteer-organization` | 组织：子账号 / RBAC 权限、志愿小组（发起/审批/转移/解散/导入）、分队归属、组织架构、「管理团队」标记与授权 |
-| `hengde-volunteer-activity` | 活动：发布/编辑/复制/周期发布/历史活动、报名/代报名、签到/时长/积分闭环、现场负责人、考勤变更审核、活动补录、发布审核、活动留言 |
-| `hengde-volunteer-publicity` | 公示：轮播图 / 公告 / 文件下载，志愿者端只读已发布 |
-| `hengde-volunteer-user` | 用户域：后台志愿者管理（多条件列表/详情/修改/停用恢复/导出/重置密码）+ 志愿者端「我的资料」（编号/可改项/手机号改绑）|
-| `hengde-volunteer-data` | 数据看板：跨域只读聚合（注册数/活动场次/服务时长/参与人次/管理团队/分队数）|
-| `hengde-volunteer-api` | 启动类 + 全局配置（Sa-Token / CORS / Jackson / 分页拦截器 / 全局异常 / 接口文档 / 通用上传），唯一可部署单元 |
-
-> 完整的功能 × 完成状态对照见 [`文档/功能清单.md`](文档/功能清单.md)。
+| `hengde-volunteer-common` | 基础设施、加解密、对象存储、短信模板、锁助手、Excel、Flyway 迁移 |
+| `hengde-volunteer-auth` | 三套登录态支持、实名、PII、处置闸门、通知入口、注销冷静期 |
+| `hengde-volunteer-organization` | 子账号与权限、小组、分队、组织架构、管理团队、问卷与临时负责人考试 |
+| `hengde-volunteer-publicity` | 轮播图、公告与公示文件 |
+| `hengde-volunteer-activity` | 活动、报名、签到、时长、相册、名单公示与积分账本 |
+| `hengde-volunteer-trade` | 微信支付、退款与对账；当前真实渠道尚未端到端验收 |
+| `hengde-volunteer-donate` | 积分商城、捐书、微心愿、结对、众筹、捐款发票与物流 |
+| `hengde-volunteer-user` | 志愿者管理、我的资料、地址、年级、志愿者证与个人中心 |
+| `hengde-volunteer-honor` | 排行榜、勋章、榜样、电子证书、奖惩与申诉 |
+| `hengde-volunteer-social` | 社区帖子、互动、审核风控、举报禁言与私信 |
+| `hengde-volunteer-enterprise` | 企业注册登录、赞助商品、企业积分、企业帖与评价 |
+| `hengde-volunteer-data` | 数据看板与汇总、投诉建议 |
+| `hengde-volunteer-system` | 操作日志、水印、编号与文件网盘 |
+| `hengde-volunteer-api` | 启动、全局配置、鉴权路由、跨域聚合、通用上传与 webhook |
 
 ---
 
@@ -230,79 +204,77 @@ graph TD
 ### 环境要求
 
 - JDK 17
-- **MySQL 8.0.17+**（8.0.16 之前解析 `CHECK` 却不执行，V32/V33 的约束将形同注释；`utf8mb4_0900_bin` 则要 8.0.17 才有，V34 在更低版本上直接失败。启动时由 `DatabaseVersionGuard` 在迁移前强制校验）、Redis 7+
-- Docker（仅运行集成测试时需要，用于 Testcontainers）
-- Maven 3.9+（项目自带 Maven Wrapper，可用 `./mvnw`）
+- MySQL 8.0.17+
+- Redis
+- Docker（运行 Testcontainers 集成测试时需要）
+- 无需单独安装 Maven，可使用项目自带 Wrapper
 
-### 构建与运行
-
-> 所有 Maven 命令在父工程目录 `代码/hengde-volunteer-parent/` 下执行。各模块经本地仓库解析依赖，被依赖模块改动后需先 `install`。
+### 构建与启动
 
 ```bash
 cd 代码/hengde-volunteer-parent
 
-# 1) 全量构建（父 POM 已聚合全部 9 个模块，按依赖序自动构建；
-#    构建完核对 Reactor Summary 列满 parent + 9 模块 = 10 行）
+# 全量构建：Reactor Summary 应包含 parent + 14 个模块，共 15 行
 ./mvnw clean install -DskipTests
 
-# 2) 启动应用（需 MySQL / Redis 在线，本地开发用 dev profile）
+# 使用 dev profile 启动，需先准备本地 MySQL 与 Redis
 ./mvnw spring-boot:run -f ../hengde-volunteer-api/pom.xml "-Dspring-boot.run.profiles=dev"
 ```
 
-启动后默认监听 `http://localhost:8080`，context-path 为 `/api`。
+启动后默认地址为 `http://localhost:8080`，context-path 为 `/api`。
 
-### 运行测试
+### 测试与项目校验
 
 ```bash
-# 运行某模块全部测试（需本机 Docker）
+# 某领域模块测试
 ./mvnw test -f ../hengde-volunteer-activity/pom.xml
+
+# 在文档仓库根执行：知识库生成物与引用检查
+python3 tools/gen_knowledge_base.py --check
+python3 tools/verify_knowledge_base.py
 ```
 
-> 本地开发可开启「开发登录」（`POST /v/auth/login/dev`，跳过微信 code 换 openid）联调；生产环境由启动守卫强制关闭。生产部署详见 [`文档/v1/部署说明.md`](文档/v1/部署说明.md)。
+> **本地联调注意**：小程序 `app.js` 与管理控制台默认 API 配置可能指向线上环境，点击会真实写库。本地写操作联调前先改为本机后端；管理控制台使用 `tools/serve_admin_local.py`。生产部署见 `文档/v1/部署说明.md` 与 `部署/`。
 
 ---
 
-## 目录结构
+## 工作区结构
 
+```text
+<工作区>/
+├── volunteerplatform/                 # 本文档仓库
+│   ├── 代码/                          # 后端独立 Git 仓库，14 个 Maven 模块
+│   ├── 知识库/                        # 业务口径、决策、模块规则与回归验证
+│   ├── 文档/                          # V1–V5 规划、需求、接口与联调记录
+│   ├── 部署/                          # Nginx / systemd / 环境变量模板
+│   └── tools/                         # 契约、生成、校验与发布脚本
+├── volunteerplatform-miniprogram/     # 微信小程序独立仓库
+└── volunteerplatform-back/            # 管理控制台独立仓库
 ```
-.
-├── 代码/                          # 后端 Maven 多模块工程
-│   ├── hengde-volunteer-parent/   # 父工程（依赖管理）
-│   ├── hengde-volunteer-common/   # 公共基础设施 + Flyway 迁移
-│   ├── hengde-volunteer-auth/     # 认证
-│   ├── hengde-volunteer-organization/ # 组织 / RBAC
-│   ├── hengde-volunteer-activity/ # 活动 / 签到 / 积分
-│   ├── hengde-volunteer-publicity/# 公示 / 搜索
-│   ├── hengde-volunteer-user/     # 志愿者管理
-│   ├── hengde-volunteer-data/     # 数据看板
-│   └── hengde-volunteer-api/      # 启动类 + 全局配置（可部署单元）
-├── 部署/                          # nginx.conf / systemd 单元 / 环境变量模板
-└── 文档/                          # 需求、接口、部署、自测等文档
-```
-
-> **前端代码在独立仓库**：微信小程序与 Web 管理后台各自独立成库，本仓库保留后端、文档与部署配置。
 
 ---
 
-## 接口文档
+## 接口与项目文档
 
-后端集成 springdoc-openapi + Knife4j，启动后访问：
-
-- Knife4j 文档：`http://localhost:8080/api/doc.html`
-- 分组：`volunteer`（`/v/**`）、`admin`（`/a/**`）、`enterprise`（`/e/**`，预留）
-
-接口路径遵循 `/{角色}/{领域}/{资源}/{动作?}` 约定，完整端点表见 [`文档/v1/url文档v1.md`](文档/v1/url文档v1.md)。
+- 本地 Knife4j：`http://localhost:8080/api/doc.html`；生产环境不提供该入口。
+- 接口分组：`volunteer`（`/v/**`）、`admin`（`/a/**`）、`enterprise`（`/e/**`）。
+- 历史接口契约：`文档/v1/` 至 `文档/v4/`；脚本生成的现行索引见 `知识库/生成/接口索引.md`。
+- 业务入口：`AGENTS.md` 与 `知识库/README.md`。
+- V5 监管后台规划：`文档/v5/V5规划.md`。
+- 回归方法、最近一次结果与已知缺口：`知识库/回归验证.md`。
 
 ---
 
 ## 项目状态
 
-- ✅ **V1 核心已完成**：认证（含手机号登录体系）、组织/RBAC（含报名管理团队问卷审核）、活动全流程（多场次发布、服务保障、签到/时长/积分闭环、发布审核）、公示/搜索、志愿者管理与我的资料、数据看板，后端均带 Testcontainers 集成测试（迁移至 V33）；管理后台前端已全页面对接真实接口并完成生产硬化。
-- ✅ **第三方能力已接通并实测**：短信下发（火山引擎，分场景模板）、对象存储（火山引擎 TOS）、身份证二要素实名核验（腾讯云）、地图选点（高德 JSAPI）均已用真实凭证跑通。
-- ✅ **已部署上线验证**：后端与 Web 管理后台已部署至服务器并测试通过。
-- 🚧 **小程序端待完成**：需已备案 HTTPS 域名（微信硬性要求）、小程序 AppSecret，以及关闭小程序默认的 mock 模式后做真机全流程验证。企业微信群校验为可选项，实接未做。
-- 🗺️ **规划中（后续版本）**：爱心企业、积分商城/捐赠、社区互动、荣誉榜样，以及面向多组织一键开通的 SaaS 监管后台。
+- **V1–V4 主体功能已落地**：账号组织、活动与积分、商城捐赠、社区企业、个人中心和系统治理均已有后端实现与相应控制台覆盖。
+- **最近一次完整记录（2026-11-01）**：后端 15/15 个 Reactor 项目成功，1176 条用例全部通过；小程序 836 条中 829 通过、7 跳过、0 失败；控制台 119 条 Node 用例通过，另有 58 条 Playwright 用例受本机环境限制未运行。
+- **V5 监管后台已完成规划、尚未开工**：规划为独立控制面与组织侧受控连接器，不改变现有业务库的多实例隔离方式。
+- **仍有外部验收边界**：微信支付、快递100、服务号模板消息、小程序码与对象存储视频直传等不能仅凭本地用例宣称已经真实打通。
+- **冻结 / 推迟项**：纸质证书、i志愿证书、仓库管理、评优评先等，按对应领域页和协会问题单处理。
+
+最新状态以 `知识库/领域/`、`知识库/变更日志.md` 与 `知识库/回归验证.md` 为准；README 只作为项目入口，不替代持续更新的知识库。
 
 ---
 
-<sub>本项目为个人独立开发的公益组织管理平台，技术栈与架构均为完整设计实现。更多实现细节欢迎查阅 [`文档/`](文档/)。</sub>
+<sub>本项目为个人独立开发的公益组织管理平台。更多需求、决策、实现与验证细节请查阅 `知识库/` 和 `文档/`。</sub>
