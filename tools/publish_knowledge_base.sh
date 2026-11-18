@@ -73,7 +73,7 @@ $(git log -1 --format=%s HEAD)"
 $KB_TRAILER"
 # ${arr[@]+…}：macOS 自带的 bash 3.2 在 set -u 下把空数组当未定义变量
 snapshot=$(git commit-tree "$tree" ${parent_args[@]+"${parent_args[@]}"} -m "$msg")
-echo "将发布 $snapshot（树 $tree，来自文档仓库 $source_commit）→ $REMOTE_URL ($BRANCH)"
+echo "将发布 ${snapshot}（树 ${tree}，来自文档仓库 ${source_commit}）→ ${REMOTE_URL} (${BRANCH})"
 if [[ $DRY_RUN -eq 1 ]]; then
   echo "（--dry-run：不推送）"
   exit 0
