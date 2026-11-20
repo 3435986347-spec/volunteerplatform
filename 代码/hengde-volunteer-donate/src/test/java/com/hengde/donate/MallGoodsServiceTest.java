@@ -280,6 +280,30 @@ class MallGoodsServiceTest {
                 "已上架的商品不该还挂着上一次的驳回原因");
     }
 
+    @Test
+    void volunteerGoodsSupportRealCategoryAndFixedPointSorting() {
+        List<Long> ids = new java.util.ArrayList<>();
+        for (String[] row : List.of(new String[]{"用例商品排序高价", "90"}, new String[]{"用例商品排序低价", "10"},
+                new String[]{"用例商品排序虚拟", "50"})) {
+            Long id = goodsService.create(dto(row[0], spec(null, "均码", Integer.parseInt(row[1]), 2)), ADMIN_ID);
+            ids.add(id);
+            goodsService.submit(id);
+            goodsService.approve(id, ADMIN_ID);
+        }
+        jdbcTemplate.update("UPDATE mall_goods SET virtual_goods = 1 WHERE id = ?", ids.get(2));
+
+        List<MallGoodsVO> ascending = goodsService.listForVolunteer(new PageQuery(), "用例商品排序",
+                null, "all", "pointsAsc").getRecords();
+        assertEquals(List.of("用例商品排序低价", "用例商品排序虚拟", "用例商品排序高价"),
+                ascending.stream().map(MallGoodsVO::getName).toList());
+        assertEquals(List.of("用例商品排序虚拟"), goodsService.listForVolunteer(new PageQuery(), "用例商品排序",
+                null, "virtual", "default").getRecords().stream().map(MallGoodsVO::getName).toList());
+        assertEquals(2, goodsService.listForVolunteer(new PageQuery(), "用例商品排序",
+                null, "physical", "pointsDesc").getRecords().size());
+        assertThrows(BusinessException.class, () -> goodsService.listForVolunteer(new PageQuery(), null,
+                null, "all", " pointsAsc; DROP TABLE mall_goods"));
+    }
+
     // ---------------- helpers ----------------
 
     private MallGoodsSaveDTO dto(String name, MallGoodsSpecDTO... specs) {

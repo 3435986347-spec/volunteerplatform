@@ -2,7 +2,7 @@
 
 # donate 模块的接口
 
-163 个端点。模块说明见 [`知识库/模块/donate.md`](../../模块/donate.md)。
+164 个端点。模块说明见 [`知识库/模块/donate.md`](../../模块/donate.md)。
 
 ## 志愿者端 `/v`
 
@@ -24,10 +24,10 @@
 | GET | `/v/donate/donations/{id}` |  | 我的一笔捐款详情 | `DonationController` |
 | GET | `/v/donate/donations/{id}/invoice-file` |  | 下载我的发票（短期签名地址，约 2 分钟有效；还没开出时报「发票还没有开出」） | `DonationController` |
 | POST | `/v/donate/donations/{id}/pay` |  | 重新发起付款（仅待支付；复用活的交易单） | `DonationController` |
-| GET | `/v/donate/exchange-records` |  | 全部兑换记录（Row 8 C「全部人的」；只放姓名/商品/时间，不含单号与取货码） | `MallController` |
+| GET | `/v/donate/exchange-records` |  | 全部兑换记录（姓名/商品 id/商品/积分/时间，不含单号与取货码） | `MallController` |
 | GET | `/v/donate/exchange-rules` |  | 兑换规则（文字 + 图片，Row 8 C） | `MallController` |
 | GET | `/v/donate/express-companies` |  | 可选的快递公司 | `BookDonationController` |
-| GET | `/v/donate/goods` |  | 商品列表（仅已上架且未隐藏） | `MallController` |
+| GET | `/v/donate/goods` |  | 商品列表（仅已上架且未隐藏，支持实物/虚拟分类与积分排序） | `MallController` |
 | GET | `/v/donate/goods/{id}` |  | 商品详情（含规格、赞助方、评价摘要、是否需持卷兑换） | `MallController` |
 | GET | `/v/donate/goods/{id}/reviews` |  | 该商品的全部评价 | `MallController` |
 | GET | `/v/donate/items/mine` |  | 我的捐书记录（Row 38：编号、名称、编码、受捐学校、审核状态、物资类型、借阅次数） | `BookDonationController` |
@@ -49,6 +49,7 @@
 | GET | `/v/donate/pair-projects/{id}/updates` |  | 活动动态（协会的发放凭证，一律公开；时间倒序） | `PairController` |
 | GET | `/v/donate/pairs/mine` |  | 我的结对记录（结对中心，Row 34） | `PairController` |
 | GET | `/v/donate/pairs/mine/{id}` |  | 结对中心详情（Row 34：这条结对 + 为它付过的每一笔款，含发票字段） | `PairController` |
+| GET | `/v/donate/reviews` |  | 全部商品评价（仅正常展示的评价） | `MallController` |
 | GET | `/v/donate/reviews/mine` |  | 我的评价 | `MallController` |
 | GET | `/v/donate/shipments/mine` |  | 我的运单（含物资明细与流转轨迹，Row 38 运单管理） | `BookDonationController` |
 | DELETE | `/v/donate/shipments/{id}` |  | 取消寄送（仅机构确认到货之前） | `BookDonationController` |

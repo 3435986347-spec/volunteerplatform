@@ -51,6 +51,8 @@ class MallPickupAndReviewTest {
     @Autowired
     private MallOrderService orderService;
     @Autowired
+    private com.hengde.donate.service.MallGoodsService goodsService;
+    @Autowired
     private MallReviewService reviewService;
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -292,6 +294,8 @@ class MallPickupAndReviewTest {
         assertEquals(1, reviews.size());
         assertEquals(GOODS_ID, reviews.get(0).getGoodsId());
         assertEquals("帆布袋", reviews.get(0).getGoodsName(), "商品名取订单快照");
+        assertEquals(reviews.get(0).getId(), reviewService.listAll(new PageQuery()).getRecords().get(0).getId(),
+                "全部评价与单商品评价复用同一份姓名、商品快照转换");
     }
 
     @Test
@@ -308,6 +312,8 @@ class MallPickupAndReviewTest {
 
         reviewService.delist(reviewId);
         assertTrue(reviewService.listByGoods(GOODS_ID, new PageQuery()).getRecords().isEmpty());
+        assertTrue(reviewService.listAll(new PageQuery()).getRecords().isEmpty(),
+                "下架评价也不能出现在全部评价里");
     }
 
     /** 「我的兑换」要显示评价状态（Row 8 C）。 */
@@ -340,6 +346,8 @@ class MallPickupAndReviewTest {
         assertEquals(1, records.stream()
                         .filter(r -> "帆布袋".equals(r.getGoodsName())).count(),
                 "待审核的那张不该公开——过程态会让人以为「他兑到了」。pendingId=" + pending.getId());
+        assertEquals(1, goodsService.detailForVolunteer(GOODS_ID).getRedeemedCount(),
+                "已兑数量只含已过审订单，待审核不计入");
     }
 
     // ---------------- helpers ----------------

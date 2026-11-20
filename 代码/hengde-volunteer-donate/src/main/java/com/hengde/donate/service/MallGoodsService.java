@@ -7,8 +7,10 @@ import com.hengde.common.oss.FileStorageService;
 import com.hengde.common.page.PageQuery;
 import com.hengde.common.page.PageResult;
 import com.hengde.donate.constant.MallGoodsStatus;
+import com.hengde.donate.constant.MallOrderStatus;
 import com.hengde.donate.dao.MallGoodsMapper;
 import com.hengde.donate.dao.MallGoodsReviewMapper;
+import com.hengde.donate.dao.MallOrderMapper;
 import com.hengde.donate.dao.MallGoodsSpecMapper;
 import com.hengde.donate.dto.MallGoodsSaveDTO;
 import com.hengde.donate.dto.MallGoodsSpecDTO;
@@ -46,6 +48,7 @@ public class MallGoodsService {
     private MallGoodsMapper goodsMapper;
     private MallGoodsSpecMapper specMapper;
     private MallGoodsReviewMapper reviewMapper;
+    private MallOrderMapper orderMapper;
     private MallCouponService couponService;
     private MallPickupPointService pickupPointService;
     private MallShippingCalculator shippingCalculator;
@@ -84,6 +87,11 @@ public class MallGoodsService {
     @Autowired
     public void setReviewMapper(MallGoodsReviewMapper reviewMapper) {
         this.reviewMapper = reviewMapper;
+    }
+
+    @Autowired
+    public void setOrderMapper(MallOrderMapper orderMapper) {
+        this.orderMapper = orderMapper;
     }
 
     @Autowired
@@ -623,23 +631,32 @@ public class MallGoodsService {
      * <p>草稿 / 待审核 / 驳回 / 已停用一律不可见，与活动「仅已发布可见」同口径。</p>
      */
     public PageResult<MallGoodsVO> listForVolunteer(PageQuery query, String keyword) {
-        return listForVolunteer(query, keyword, null);
+        return listForVolunteer(query, keyword, null, null, null);
     }
 
     /**
      * @param sponsorEnterpriseId 只看某个赞助企业的（企业主页「赞助商品」）；null＝全部
      */
     public PageResult<MallGoodsVO> listForVolunteer(PageQuery query, String keyword, Long sponsorEnterpriseId) {
-        IPage<MallGoods> page = goodsMapper.selectPage(query.toPage(),
-                Wrappers.<MallGoods>lambdaQuery()
-                        .eq(MallGoods::getStatus, MallGoodsStatus.ON_SALE)
-                        .eq(MallGoods::getHidden, 0)
-                        // 赞助企业被暂停 / 删除：它的商品一并不可见（V78；下单那条 UPDATE 同样带着这个条件）
-                        .eq(MallGoods::getSponsorSuspended, 0)
-                        .eq(sponsorEnterpriseId != null, MallGoods::getSponsorEnterpriseId, sponsorEnterpriseId)
-                        .like(StringUtils.hasText(keyword), MallGoods::getName, keyword)
-                        .orderByAsc(MallGoods::getSort)
-                        .orderByDesc(MallGoods::getId));
+        return listForVolunteer(query, keyword, sponsorEnterpriseId, null, null);
+    }
+
+    /**
+     * @param category physical=实物、virtual=虚拟，null/空=全部
+     * @param sort     pointsAsc/pointsDesc=按有效规格最低积分排序，null/空/default=后台排序
+     */
+    public PageResult<MallGoodsVO> listForVolunteer(PageQuery query, String keyword, Long sponsorEnterpriseId,
+            String category, String sort) {
+        String normalizedCategory = StringUtils.hasText(category) ? category.trim() : "all";
+        String normalizedSort = StringUtils.hasText(sort) ? sort.trim() : "default";
+        if (!Set.of("all", "physical", "virtual").contains(normalizedCategory)) {
+            throw new BusinessException("商品分类无效");
+        }
+        if (!Set.of("default", "pointsAsc", "pointsDesc").contains(normalizedSort)) {
+            throw new BusinessException("商品排序无效");
+        }
+        IPage<MallGoods> page = goodsMapper.selectVolunteerPage(query.toPage(), keyword, sponsorEnterpriseId,
+                normalizedCategory, normalizedSort, MallGoodsStatus.ON_SALE);
         PageResult<MallGoodsVO> result = PageResult.of(page.convert(g -> toVO(g, false)));
         fill(result.getRecords());
         return result;
@@ -701,6 +718,10 @@ public class MallGoodsService {
                         Collectors.mapping(MallGoodsService::toSpecVO, Collectors.toList())));
 
         Map<Long, Map<String, Object>> stats = reviewStats(ids);
+        Map<Long, Integer> redeemed = orderMapper.countRedeemedByGoodsIds(ids,
+                        List.of(MallOrderStatus.READY, MallOrderStatus.SHIPPED, MallOrderStatus.PICKED))
+                .stream().collect(Collectors.toMap(row -> ((Number) row.get("goodsId")).longValue(),
+                        row -> ((Number) row.get("cnt")).intValue()));
 
         // 自提点：整页一次查（只含启用中的），按各商品自己的顺序回填
         Map<Long, MallPickupPointVO> points = pickupPointService.usableByIds(records.stream()
@@ -723,6 +744,7 @@ public class MallGoodsService {
                     .filter(Objects::nonNull).min(Integer::compareTo).orElse(null));
             vo.setTotalStock(list.stream().map(MallGoodsSpecVO::getStock)
                     .filter(Objects::nonNull).mapToInt(Integer::intValue).sum());
+            vo.setRedeemedCount(redeemed.getOrDefault(vo.getId(), 0));
             Map<String, Object> row = stats.get(vo.getId());
             vo.setReviewCount(row == null ? 0 : ((Number) row.get("cnt")).intValue());
             vo.setAvgRating(row == null ? null

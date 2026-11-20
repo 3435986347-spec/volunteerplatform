@@ -15,6 +15,19 @@ import org.apache.ibatis.annotations.Select;
  */
 public interface MallOrderMapper extends BaseMapper<MallOrder> {
 
+    /** 一页商品的已兑数量一次取回；状态集合由服务层传入，不在 SQL 里散落魔法数。 */
+    @Select("<script>"
+            + "SELECT goods_id AS goodsId, COUNT(*) AS cnt FROM mall_order "
+            + "WHERE is_deleted = 0 AND status IN "
+            + "<foreach collection='statuses' item='status' open='(' separator=',' close=')'>#{status}</foreach> "
+            + "AND goods_id IN "
+            + "<foreach collection='goodsIds' item='goodsId' open='(' separator=',' close=')'>#{goodsId}</foreach> "
+            + "GROUP BY goods_id"
+            + "</script>")
+    java.util.List<java.util.Map<String, Object>> countRedeemedByGoodsIds(
+            @Param("goodsIds") java.util.Collection<Long> goodsIds,
+            @Param("statuses") java.util.Collection<Integer> statuses);
+
     /**
      * 按取货码<b>当前读</b>（共享锁）取单。用于核销 CAS 之后的复核与说明。
      *

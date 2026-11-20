@@ -1306,7 +1306,7 @@ public class MallOrderService {
     /**
      * 「全部兑换记录」——Row 8 C 明写要展示<b>全部人的</b>兑换记录。
      *
-     * <p>只放「谁 · 兑换了什么 · 什么时候」，<b>不含订单编号与取货码</b>：
+     * <p>只放「谁 · 兑换了什么 · 商品 id · 实扣积分 · 什么时候」，<b>不含订单编号与取货码</b>：
      * 取货码是柜台上的持有者凭据，在人人可见的列表里出现一次，就等于把东西送给任何看见的人。
      * 「公开到什么程度」本身待协会确认。</p>
      *
@@ -1324,7 +1324,9 @@ public class MallOrderService {
         return PageResult.of(page.convert(o -> {
             ExchangeRecordVO vo = new ExchangeRecordVO();
             vo.setVolunteerName(names.get(o.getVolunteerId()));
+            vo.setGoodsId(o.getGoodsId());
             vo.setGoodsName(o.getGoodsName());
+            vo.setPoints(o.getPoints());
             vo.setSpecName(o.getSpecName());
             vo.setCreateTime(o.getCreateTime());
             return vo;

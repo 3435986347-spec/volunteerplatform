@@ -74,8 +74,8 @@ EXTERNAL_ALLOWLIST = {
     "IdCardVerification", "XxlJob", "BoundedInputStream", "EnvironmentFile", "MinAPIVersion",
 }
 
-# 第三方工具的配置键 / 参数名（蛇形或小驼峰，代码里本来就没有）
-EXTERNAL_WORDS = {"project_doc_max_bytes", "project_doc_fallback_filenames"}
+# 第三方工具的配置键 / 参数名，以及只在 WXML 出现的小程序组件属性
+EXTERNAL_WORDS = {"project_doc_max_bytes", "project_doc_fallback_filenames", "aspectFit"}
 
 # 页里**明说是旧名 / 反例**的名字（「第一版叫 `DataPermission`」）——它们本来就不该在代码里
 HISTORICAL_NAMES = {"DataPermission"}
@@ -159,10 +159,10 @@ def build_index(root: Path) -> CodeIndex:
     for f in code.rglob("*.sql"):
         if not _skip(f):
             idx.words.update(_WORD.findall(f.read_text(encoding="utf-8", errors="ignore")))
-    # 前端（控制台 / 小程序）里出现过的大写开头标识符：组件名、页面对象名
+    # 前端与文档仓库同级是标准布局；本机也允许它们作为文档仓库里的独立 git 仓库。
     for sibling in ("volunteerplatform-back", "volunteerplatform-miniprogram"):
-        d = root.parent / sibling
-        if d.is_dir():
+        d = next((candidate for candidate in (root.parent / sibling, root / sibling) if candidate.is_dir()), None)
+        if d is not None:
             for f in d.rglob("*.js"):
                 if _skip(f) or "vendor" in f.parts:
                     continue
@@ -224,8 +224,10 @@ def check_span(span: str, idx: CodeIndex, root: Path, where: str) -> list[Proble
         path = re.split(r"[\s（(]", s, maxsplit=1)[0]
         path = re.sub(r":\d+(-\d+)?$", "", path).rstrip("/，。；")
         if not any(ch in path for ch in "{}<>*…") and "..." not in path.split("/", 1)[-1]:
-            target = (root / path).resolve() if not path.startswith("../") else (root / path).resolve()
-            if not target.exists():
+            targets = [(root / path).resolve()]
+            if path.startswith("../"):
+                targets.append((root / path[3:]).resolve())
+            if not any(target.exists() for target in targets):
                 out.append(Problem(where, s, "路径不存在"))
         return out
     # 4. 配置键

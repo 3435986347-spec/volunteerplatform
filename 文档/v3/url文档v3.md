@@ -53,9 +53,10 @@
 
 | Method | URL | 状态 · 说明 | 鉴权 |
 |---|---|---|---|
-| GET | /v/donate/goods | 商品列表（仅已上架且未隐藏），`?keyword=&page=&size=` | 需登录 |
-| GET | /v/donate/goods/{id} | 商品详情（含规格、赞助方快照、评价摘要） | 需登录 |
+| GET | /v/donate/goods | 商品列表（仅已上架且未隐藏），`?keyword=&category=physical|virtual&sort=default|pointsAsc|pointsDesc&page=&size=`；分类不传为全部，积分排序按有效规格最低积分；商品带 `redeemedCount`（待领取、已发货、已领取的兑换单数） | 需登录 |
+| GET | /v/donate/goods/{id} | 商品详情（含规格、赞助方快照、评价摘要、已兑数量） | 需登录 |
 | GET | /v/donate/goods/{id}/reviews | 该商品的全部评价 | 需登录 |
+| GET | /v/donate/reviews | 全部商品评价（仅正常展示项，分页），不含已下架评价 | 需登录 |
 | GET | /v/donate/orders | 我的兑换 | 需登录 |
 | POST | /v/donate/orders | 下单兑换（**下单即扣分**，见 V3规划 D4/D5/D7(b)）；卷批起可带 `couponGrantId`（**一单一卷**；商品要求指定卷时必填；兑换卷全额抵扣、实付 0 不记流水）；**✅ 商城快递批**起可带 `deliveryType`（1 自提默认 / 2 快递）、快递时必填 `shippingPayType`（1 现金 / 2 积分抵扣）与 `recvName`/`recvPhone`/`recvAddress`（**自提带了这些报错、不静默清空**）；快递费与汇率**下单时快照**，积分抵扣的并进同一笔 EXCHANGE 流水；**有现金要付的（商品现金部分或现金快递费）落 status=5 待支付**，积分库存卷照样占住；**微信支付未开通时需要现金的单当场拒绝** | 需登录 |
 | GET | /v/donate/orders/{id} | 我的兑换详情（含取货码） | 需登录 |
@@ -65,7 +66,7 @@
 | POST | /v/donate/orders/{id}/reviews | 评价（**须真兑换过**——资格闸门，比照 `submitReview`） | 需登录 |
 | GET | /v/donate/reviews/mine | 我的评价 | 需登录 |
 | GET | /v/donate/exchange-rules | 兑换规则（文字 + 图片，Row 8 C）；**单行、无版本**，未填写时返回空内容而非报错 | 需登录 |
-| GET | /v/donate/exchange-records | 全部兑换记录（**Row 8 C 要求「全部人的」**，隐私待确认 ⑯ 相邻项） | 需登录 |
+| GET | /v/donate/exchange-records | 全部兑换记录（**Row 8 C 要求「全部人的」**；含姓名、商品 id／名称／规格、实扣积分和时间，用于展示与商品跳转；不含订单号、取货码、审核与驳回信息） | 需登录 |
 | GET | /v/donate/coupons/mine | 我的卷（`?status=` 0可用 / 1已使用 / 2已作废 / 3已过期——**3 为按时间现算的派生态，不落库**） | 需登录 |
 | GET | /v/donate/coupons/usable | 这件规格我此刻能用的卷（`?specId=`，先到期的在前；**适用判定与下单同一处实现**） | 需登录 |
 | GET | /v/donate/verifiers/me | 我是不是核销员（小程序据此显示「扫一扫核销」入口，**仅 UX**，核销接口另有兜底） | 需登录 |

@@ -94,6 +94,9 @@ public class MallGoodsVO {
     @Schema(description = "总库存")
     private Integer totalStock;
 
+    @Schema(description = "已过审且未取消的兑换数量（待领取、已发货、已领取）；旧版本接口不下发")
+    private Integer redeemedCount;
+
     @Schema(description = "评价条数")
     private Integer reviewCount;
 

@@ -89,12 +89,14 @@ public class MallController {
         this.verifierService = verifierService;
     }
 
-    @Operation(summary = "商品列表（仅已上架且未隐藏）")
+    @Operation(summary = "商品列表（仅已上架且未隐藏，支持实物/虚拟分类与积分排序）")
     @GetMapping("/goods")
     public Result<PageResult<MallGoodsVO>> goods(
             PageQuery query,
-            @Parameter(description = "按商品名模糊") @RequestParam(required = false) String keyword) {
-        return Result.ok(goodsService.listForVolunteer(query, keyword));
+            @Parameter(description = "按商品名模糊") @RequestParam(required = false) String keyword,
+            @Parameter(description = "分类：physical实物/virtual，不传=全部") @RequestParam(required = false) String category,
+            @Parameter(description = "排序：default默认/pointsAsc积分升序/pointsDesc积分降序") @RequestParam(required = false) String sort) {
+        return Result.ok(goodsService.listForVolunteer(query, keyword, null, category, sort));
     }
 
     @Operation(summary = "商品详情（含规格、赞助方、评价摘要、是否需持卷兑换）")
@@ -107,6 +109,12 @@ public class MallController {
     @GetMapping("/goods/{id}/reviews")
     public Result<PageResult<MallReviewVO>> goodsReviews(@PathVariable Long id, PageQuery query) {
         return Result.ok(reviewService.listByGoods(id, query));
+    }
+
+    @Operation(summary = "全部商品评价（仅正常展示的评价）")
+    @GetMapping("/reviews")
+    public Result<PageResult<MallReviewVO>> allReviews(PageQuery query) {
+        return Result.ok(reviewService.listAll(query));
     }
 
     @Operation(summary = "我的兑换（status 可筛选 0待审核/1待领取·待发货/2已驳回/3已领取·已签收/4已取消/5待支付/6已发货）")
@@ -169,7 +177,7 @@ public class MallController {
         return Result.ok(exchangeRuleService.get());
     }
 
-    @Operation(summary = "全部兑换记录（Row 8 C「全部人的」；只放姓名/商品/时间，不含单号与取货码）")
+    @Operation(summary = "全部兑换记录（姓名/商品 id/商品/积分/时间，不含单号与取货码）")
     @GetMapping("/exchange-records")
     public Result<PageResult<ExchangeRecordVO>> exchangeRecords(PageQuery query) {
         return Result.ok(orderService.listExchangeRecords(query));

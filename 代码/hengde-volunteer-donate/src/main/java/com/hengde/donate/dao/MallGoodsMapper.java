@@ -30,4 +30,31 @@ public interface MallGoodsMapper extends BaseMapper<MallGoods> {
      */
     @Select("SELECT * FROM mall_goods WHERE id = #{id} AND is_deleted = 0 FOR SHARE")
     MallGoods selectByIdForShare(@Param("id") Long id);
+
+    /**
+     * 志愿者端货架。排序分支固定在 SQL 中，客户端只传白名单里的名称；
+     * 积分排序按未删除规格的最低积分，缺规格的商品始终排在有积分商品之后。
+     */
+    @Select("<script>"
+            + "SELECT g.* FROM mall_goods g "
+            + "LEFT JOIN (SELECT goods_id, MIN(points) AS min_points FROM mall_goods_spec "
+            + "WHERE is_deleted = 0 GROUP BY goods_id) sp ON sp.goods_id = g.id "
+            + "WHERE g.is_deleted = 0 AND g.status = #{onSale} AND g.hidden = 0 AND g.sponsor_suspended = 0 "
+            + "<if test='sponsorEnterpriseId != null'>AND g.sponsor_enterprise_id = #{sponsorEnterpriseId} </if>"
+            + "<if test='keyword != null and keyword != \"\"'>AND g.name LIKE CONCAT('%', #{keyword}, '%') </if>"
+            + "<if test='category == \"physical\"'>AND (g.virtual_goods IS NULL OR g.virtual_goods = 0) </if>"
+            + "<if test='category == \"virtual\"'>AND g.virtual_goods = 1 </if>"
+            + "<choose>"
+            + "<when test='sort == \"pointsAsc\"'>ORDER BY sp.min_points IS NULL, sp.min_points ASC, g.id DESC</when>"
+            + "<when test='sort == \"pointsDesc\"'>ORDER BY sp.min_points IS NULL, sp.min_points DESC, g.id DESC</when>"
+            + "<otherwise>ORDER BY g.sort ASC, g.id DESC</otherwise>"
+            + "</choose>"
+            + "</script>")
+    com.baomidou.mybatisplus.core.metadata.IPage<MallGoods> selectVolunteerPage(
+            com.baomidou.mybatisplus.extension.plugins.pagination.Page<MallGoods> page,
+            @Param("keyword") String keyword,
+            @Param("sponsorEnterpriseId") Long sponsorEnterpriseId,
+            @Param("category") String category,
+            @Param("sort") String sort,
+            @Param("onSale") int onSale);
 }

@@ -125,6 +125,15 @@ public class MallReviewService {
         return convert(page);
     }
 
+    /** 全部商品评价（仅正常展示项，逻辑删除自动排除）。 */
+    public PageResult<MallReviewVO> listAll(PageQuery query) {
+        IPage<MallGoodsReview> page = reviewMapper.selectPage(query.toPage(),
+                Wrappers.<MallGoodsReview>lambdaQuery()
+                        .eq(MallGoodsReview::getStatus, 1)
+                        .orderByDesc(MallGoodsReview::getId));
+        return convert(page);
+    }
+
     /** 我的评价。 */
     public PageResult<MallReviewVO> listMine(Long volunteerId, PageQuery query) {
         IPage<MallGoodsReview> page = reviewMapper.selectPage(query.toPage(),
