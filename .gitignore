@@ -75,3 +75,7 @@ secrets/
 # --- Python 工具缓存（tools/verify_url_contract.py）---
 __pycache__/
 *.py[cod]
+
+# --- 知识库（独立 Gitee 仓库，本仓库不跟踪）---
+# 知识库本身是 Gitee volunteerplatform-knowlegebase 的克隆，两边各留一份会把内容互相覆盖
+知识库/
