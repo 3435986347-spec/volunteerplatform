@@ -1201,6 +1201,7 @@ public class MallOrderService {
                         .eq(status != null, MallOrder::getStatus, status)
                         .orderByDesc(MallOrder::getId));
         PageResult<MallOrderVO> result = PageResult.of(page.convert(o -> toVO(o, false, false)));
+        fillSponsorNames(result.getRecords());
         markReviewed(result.getRecords());
         return result;
     }
@@ -1216,6 +1217,7 @@ public class MallOrderService {
             throw new BusinessException("兑换单不存在");
         }
         MallOrderVO vo = toVO(order, false, true);
+        fillSponsorNames(List.of(vo));
         markReviewed(List.of(vo));
         // 虚拟商品（协会 2026-10-16 丙-3）：兑换成功后，兑换二维码在本人的兑换详情里（不在公开的商品页上）
         MallGoods goods = goodsMapper.selectById(order.getGoodsId());
@@ -1353,6 +1355,21 @@ public class MallOrderService {
         Map<Long, String> names = volunteerQueryService.listNamesByIds(
                 records.stream().map(MallOrderVO::getVolunteerId).collect(Collectors.toSet()));
         records.forEach(vo -> vo.setVolunteerName(names.get(vo.getVolunteerId())));
+    }
+
+    /** 我的兑换按整页补齐赞助商家，禁止为每张订单单独回查商品。 */
+    private void fillSponsorNames(List<MallOrderVO> records) {
+        if (records == null || records.isEmpty()) {
+            return;
+        }
+        List<Long> goodsIds = records.stream().map(MallOrderVO::getGoodsId)
+                .filter(id -> id != null).distinct().toList();
+        if (goodsIds.isEmpty()) {
+            return;
+        }
+        Map<Long, String> sponsorNames = goodsMapper.selectBatchIds(goodsIds).stream()
+                .collect(Collectors.toMap(MallGoods::getId, goods -> goods.getSponsorName() == null ? "" : goods.getSponsorName()));
+        records.forEach(vo -> vo.setSponsorName(sponsorNames.get(vo.getGoodsId())));
     }
 
     /**

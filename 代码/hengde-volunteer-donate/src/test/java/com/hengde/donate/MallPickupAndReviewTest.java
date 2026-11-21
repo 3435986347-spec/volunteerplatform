@@ -67,8 +67,8 @@ class MallPickupAndReviewTest {
                 VOLUNTEER_ID, OTHER_VOLUNTEER_ID);
         jdbcTemplate.update("DELETE FROM mall_goods_spec WHERE id = ?", SPEC_ID);
         jdbcTemplate.update("DELETE FROM mall_goods WHERE id = ?", GOODS_ID);
-        jdbcTemplate.update("INSERT INTO mall_goods (id, name, status, hidden, sort, create_time, "
-                + "update_time, is_deleted) VALUES (?, '帆布袋', ?, 0, 0, NOW(), NOW(), 0)",
+        jdbcTemplate.update("INSERT INTO mall_goods (id, name, sponsor_name, status, hidden, sort, create_time, "
+                + "update_time, is_deleted) VALUES (?, '帆布袋', '恒德测试赞助商', ?, 0, 0, NOW(), NOW(), 0)",
                 GOODS_ID, MallGoodsStatus.ON_SALE);
         jdbcTemplate.update("INSERT INTO mall_goods_spec (id, goods_id, name, points, stock, sort, "
                 + "create_time, update_time, is_deleted) VALUES (?, ?, '米白', ?, 5, 0, NOW(), NOW(), 0)",
@@ -326,6 +326,14 @@ class MallPickupAndReviewTest {
         reviewService.submit(VOLUNTEER_ID, orderId, review(5, "好"));
         assertTrue(orderService.listMine(VOLUNTEER_ID, new PageQuery(), null)
                 .getRecords().get(0).getReviewed());
+    }
+
+    @Test
+    void myOrdersCarrySponsorNameInListAndDetail() {
+        MallOrder order = orderService.placeOrder(VOLUNTEER_ID, SPEC_ID);
+        assertEquals("恒德测试赞助商", orderService.listMine(VOLUNTEER_ID, new PageQuery(), null)
+                .getRecords().get(0).getSponsorName());
+        assertEquals("恒德测试赞助商", orderService.detailMine(order.getId(), VOLUNTEER_ID).getSponsorName());
     }
 
     // ---------------- 公开兑换记录 ----------------

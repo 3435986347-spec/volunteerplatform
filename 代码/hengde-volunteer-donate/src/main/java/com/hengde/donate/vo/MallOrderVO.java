@@ -32,6 +32,9 @@ public class MallOrderVO {
     @Schema(description = "商品规格（下单时快照）")
     private String specName;
 
+    @Schema(description = "赞助商家名称（按商品资料批量补齐；商品已删除时为空）")
+    private String sponsorName;
+
     @Schema(description = "实际扣除积分（下单时快照；用卷后可能低于标价，兑换卷为 0）")
     private Integer points;
 

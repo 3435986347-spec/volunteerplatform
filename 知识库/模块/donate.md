@@ -12,6 +12,7 @@
 - 兑换：下单即扣分、占库存、占卷；**默认不审核**（`hengde.donate.mall.order-review=false`）——纯积分的单下单即成功、有现金的付款即成功，成功的单只能协会取消。
 - 领取方式按商品设置（V95）；「老商品」的判定只在 `MallGoodsService.deliveryConfigured`；虚拟商品的兑换二维码只在本人兑换详情里给，商品页不下发。
 - 志愿者端商品列表由 `MallGoodsService.listForVolunteer` 接收 `category=physical|virtual` 与 `sort=default|pointsAsc|pointsDesc`，固定 SQL 分支按有效规格最低积分排序；`MallGoodsVO.redeemedCount` 由整页批量统计待领取、已发货与已领取订单。`MallReviewService.listAll` 只列正常展示评价；公开兑换记录含商品 id 与实扣积分用于跳转和展示，仍不含订单号、取货码与审核信息。
+- 本人兑换列表与详情的 `MallOrderVO.sponsorName` 取当前商品资料，经 `MallOrderService.fillSponsorNames` 按整页去重后批量补齐；商品已删除时为空，不改订单的商品名、规格与积分快照。
 - 库存 CAS 折成一条 `UPDATE … JOIN`；**CAS 失败之后的复核读必须是当前读**。
 - 物资流转：运单 / 物资 / 箱 / 轨迹都带 `biz_type + biz_id`；碰箱子的动作一律先箱后物。
 - 微心愿：受助人姓名学校密文，只有当前认领人看全文；看详情要已验手机号，并记录查看人与手机号。
@@ -54,3 +55,5 @@
 **协会答复五落地批的代码评审补正（2026-10-17）**：① 商品列过的自提点**全部停用 / 删除**时按「没列」处理（到配置里的唯一自提点领），判据是「此刻还能选的」而不是「列过的」——否则商品页给的可选列表是空的、下单却要求选一个，这件商品就再也兑不了；② 后台编辑**企业发布的虚拟商品**时，原样带回的兑换二维码不再按后台上传目录（`goods/`）重新校验（企业的码在 `enterprise/` 下），换成新码仍要校验；③ 兑换二维码的隐藏收进 `toVO(g, forAdmin=false)`，不再靠两个志愿者端方法事后置空——新加的志愿者端商品接口自动不会漏出它；④ 捐书 / 众筹捐物证书跟着核对之后的物资变化走：已核对的包裹补录一件合格物资会补出证书（核对时全不合格、没出过证的那种），移除到一件合格的都不剩会撤销证书（留原因，再补录即恢复原编号）；⑤ 重传发票时删掉被替换的旧文件；⑥「老商品」判定收成 `MallGoodsService.deliveryConfigured` 一处。控制台同批：改造前两样都收的众筹项目，编辑时不再替人默认成「只收物」，必须明确选一种才能保存。测试：`MallImmediateOrderTest` 12（新增「列过的点全停用」与「后台改企业虚拟商品」）、`DonationCertificateKindsTest` 5（新增补录 / 移除物资）；四处变异必红。
 
 **商城原型读取补齐（2026-11-21，无迁移）**：为小程序 P29–P34 补 `GET /v/donate/reviews`、商品分类／积分排序、整页已兑数量和公开兑换记录的商品 id／实扣积分。排序只允许固定白名单并落到固定 SQL 分支，禁止把客户端文字拼进 `ORDER BY`；已兑数量一次聚合整页，禁止按商品 N+1 查询。旧接口未下发 `redeemedCount` 时前端显示“—”，不把缺失值伪作 0。公开记录扩展仍不得带出单号、取货码或审核字段。服务层测试为 `MallGoodsServiceTest`、`MallPickupAndReviewTest`；本批 donate 全量 220 项通过，未跑后端全模块与 api 全量，未部署。
+
+**“我的兑换”原型复查（2026-11-21，无迁移）**：本人兑换列表与详情给 `MallOrderVO` 补 `sponsorName`，`fillSponsorNames` 对当前页商品 id 去重后一次批量查询；取当前商品资料，商品已删除时为空，订单商品名、规格与积分仍为下单快照。`MallPickupAndReviewTest.myOrdersCarrySponsorNameInListAndDetail` 同时钉住列表与详情；该测试类 18 项、donate 全量 221 项通过，未跑后端全模块与 api 全量，未部署。
