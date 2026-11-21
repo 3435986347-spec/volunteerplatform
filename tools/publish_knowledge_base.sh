@@ -53,14 +53,14 @@ source_commit=$(git rev-parse --short HEAD)
 parent_args=()
 # ls-remote 失败（网络断、证书握手失败）要停下来，不能当成「空仓库」——那样会做出一个没有父提交的快照，推上去被拒成非快进
 if ! remote_refs=$(git ls-remote "$REMOTE_URL" "refs/heads/$BRANCH"); then
-  echo "✗ 连不上发布仓库 $REMOTE_URL（git ls-remote 失败），稍后重试" >&2
+  echo "✗ 连不上发布仓库 ${REMOTE_URL}（git ls-remote 失败），稍后重试" >&2
   exit 1
 fi
 remote_head=$(printf '%s' "$remote_refs" | cut -f1)
 if [[ -n "$remote_head" ]]; then
   git fetch -q "$REMOTE_URL" "refs/heads/$BRANCH"
   if [[ "$(git rev-parse FETCH_HEAD^{tree})" == "$tree" ]]; then
-    echo "✓ 发布仓库已经是这一版（文档仓库 $source_commit），不用再发"
+    echo "✓ 发布仓库已经是这一版（文档仓库 ${source_commit}），不用再发"
     exit 0
   fi
   parent_args=(-p "$remote_head")
