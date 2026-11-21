@@ -2,7 +2,7 @@
 
 雷州市恒德爱心公益协会志愿者管理平台的**总入口**，写给所有 coding agent（Codex、Claude Code、Cursor……）。Claude Code 经根 `CLAUDE.md` 的 `@AGENTS.md` 读到同一份。
 
-> **这个文件只放硬规矩和路由**，正文在 `知识库/`（它本身是独立仓库，上游 Gitee `volunteerplatform-knowlegebase`）。
+> **这个文件只放硬规矩和路由**，正文在 `知识库/`（同时发布为独立仓库 Gitee `henge-volunteerplatform-knowlegebase`）。
 > 先按任务找到页，再读那一页的「现行规则 / 现行要点」。冲突时：**代码 > 知识库现行要点 > 按批次的记录 > `文档/` 里的规划与历史材料**。
 
 ## 项目一句话
@@ -13,8 +13,8 @@
 
 ```
 <工作区>/
-├── volunteerplatform/                文档仓库（GitHub）：本文件、文档/、部署/、tools/
-│   ├── 知识库/                       独立 git 仓库：Gitee volunteerplatform-knowlegebase 的克隆，文档仓库不跟踪它
+├── volunteerplatform/                文档仓库（GitHub）：本文件、知识库/、文档/、部署/、tools/
+│   ├── 知识库/                       知识库源头；以快照提交发布到 Gitee 知识库仓库
 │   └── 代码/                         后端仓库（Gitee volunteerplatform-backend，自身是独立 git，文档仓库也跟踪它）
 ├── volunteerplatform-miniprogram/    小程序（Gitee）
 └── volunteerplatform-back/           后台控制台（Gitee）
@@ -145,4 +145,4 @@ Spring Boot 4 · Sa-Token（三套登录态，token 存 Redis）· MyBatis-Plus 
 - **每批收尾**：更新所涉模块页的「现行要点」（只写现在是什么）与「按批次的记录」（为什么、撞过什么）；业务口径变了改 `知识库/领域/`；协会有新答复追加 `知识库/决策/协会决策.md`（新号，不复用）；跨模块的批次记 `知识库/变更日志.md`；跑 `gen_knowledge_base.py` 与 `verify_knowledge_base.py`。
 - 本文件只在规矩或路由变了时才改；一条事实只写在一个页里，别处放链接。
 - **入口文件成对出现**：每个入口目录都有 `AGENTS.md`（内容；Codex、Cursor 等读它）与 `CLAUDE.md`（Claude Code 读它，用 `@` 导入 `AGENTS.md` 或模块页）。后端仓库里的那几对由 `gen_agent_entries.py` 生成，不手改。
-- 发布知识库：在 `知识库/` 里 commit 后 `git push`（它本身就是 Gitee `volunteerplatform-knowlegebase` 的克隆），推前跑 `python3 tools/verify_knowledge_base.py` 与 `python3 tools/gen_knowledge_base.py --check`。旧的 `tools/publish_knowledge_base.sh`（把文档仓库里的 `知识库/` 快照推到 Gitee）在知识库改为独立仓库后不再适用。
+- 发布知识库：`tools/publish_knowledge_base.sh`（校验 → 敏感信息扫描 → 把 `知识库/` 当前这棵树作为一个快照提交推到 Gitee 知识库仓库；不推历史，早期提交里清掉的内容不会带出去）。
