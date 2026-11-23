@@ -2,7 +2,7 @@
 
 # donate 模块的接口
 
-164 个端点。模块说明见 [`知识库/模块/donate.md`](../../模块/donate.md)。
+164 个端点。模块说明见 [`volunteerplatform-knowlegebase/模块/donate.md`](../../模块/donate.md)。
 
 ## 志愿者端 `/v`
 

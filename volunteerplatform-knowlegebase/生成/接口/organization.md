@@ -2,7 +2,7 @@
 
 # organization 模块的接口
 
-100 个端点。模块说明见 [`知识库/模块/organization.md`](../../模块/organization.md)。
+100 个端点。模块说明见 [`volunteerplatform-knowlegebase/模块/organization.md`](../../模块/organization.md)。
 
 ## 志愿者端 `/v`
 

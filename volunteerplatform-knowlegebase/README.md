@@ -2,8 +2,8 @@
 
 雷州市恒德爱心公益协会志愿者管理平台（微信小程序 + 后台控制台 + Spring Boot 4 模块化单体）的知识库：业务口径、协会决策、需求原文、模块的代码不变式与踩坑、从代码生成的接口 / 权限点 / 表 / 迁移清单。
 
-- **源头**在文档仓库（GitHub `volunteerplatform`）的 `知识库/` 目录；**发布**为独立仓库 Gitee `huang-mingzhang/henge-volunteerplatform-knowlegebase`（每次发布一个快照提交，见文末）。在发布仓库里直接改的内容要回到源头，否则下次发布会被覆盖。
-- 页里写的 `代码/…`、`文档/…`、`tools/…`、`部署/…` 路径**相对文档仓库根目录**；单独克隆本仓库时它们指向另外几个仓库。
+- 本目录自身就是 Gitee `huang-mingzhang/volunteerplatform-knowlegebase` 的克隆，放在文档仓库（GitHub `volunteerplatform`）的 `volunteerplatform-knowlegebase/` 下；文档仓库也跟踪同一批文件（原型图除外），改动在两处各提交一次（文档仓库那次用 `python3 tools/kb_gate.py mirror --apply` 对齐）。发布就在本目录里 `git push`。
+- 页里写的 `volunteerplatform-backend/…`、`文档/…`、`tools/…`、`部署/…` 路径**相对文档仓库根目录**；单独克隆本仓库时它们指向另外几个仓库。
 
 ## 目录
 
@@ -24,17 +24,22 @@
 | [`变更日志.md`](变更日志.md) | 涉及多个模块的批次记录 | 手写；新批次追加在最上面 |
 | [`回归验证.md`](回归验证.md) | 能跑通的工作流 × 证明它的用例，由快到慢的回归跑法，最近一次结果 | 手写；新工作流做完时加一行，每次全量回归更新结果 |
 
-## 各 agent 怎么加载（Claude Code 与 Codex 都有入口）
+## 各 agent 怎么加载
 
-**每个入口目录都成对放 `AGENTS.md` 与 `CLAUDE.md`**：`AGENTS.md` 写内容（Codex、Cursor 等读它），`CLAUDE.md` 给 Claude Code，用 `@` 导入 `AGENTS.md` 或知识库页——内容只写一处，两种 agent 读到的一致。
+**每个入口目录都成对放 `AGENTS.md` 与 `CLAUDE.md`**：`AGENTS.md` 写内容（Codex、Cursor、WorkBuddy、Kimi 等读它；WorkBuddy 已核实会把根 `AGENTS.md` 注入上下文），`CLAUDE.md` 给 Claude Code，用 `@` 导入 `AGENTS.md` 或知识库页——内容只写一处，两种 agent 读到的一致。
 
 | 在哪儿开 agent | Claude Code 读到 | Codex 读到 |
 |---|---|---|
 | 文档仓库根 `volunteerplatform/` | `CLAUDE.md` → `@AGENTS.md`（总入口：硬规矩 + 路由） | `AGENTS.md`（同一份总入口） |
-| 后端仓库 `代码/`（自身是 git 根） | 上级 `../CLAUDE.md` 已导入总入口；`代码/CLAUDE.md` 只补一句单独克隆时怎么办 | `代码/AGENTS.md`：总入口按后端路径改写的**生成副本**（Codex 以 git 根为项目根，读不到上级那份） |
-| 后端某个模块 `代码/hengde-volunteer-<m>/` | 模块 `CLAUDE.md` 一行 `@../../知识库/模块/<m>.md`，**动到这个模块时自动读入** | 模块 `AGENTS.md`：写明「改这个模块前先读 `../../知识库/模块/<m>.md`」（Codex 不支持 `@` 导入；按 AGENTS.md 约定，改到某目录下的文件时要遵守该目录的 AGENTS.md） |
+| 后端仓库 `volunteerplatform-backend/`（自身是 git 根） | 上级 `../CLAUDE.md` 已导入总入口；`volunteerplatform-backend/CLAUDE.md` 只补一句单独克隆时怎么办 | `volunteerplatform-backend/AGENTS.md`：总入口按后端路径改写的**生成副本**（Codex 以 git 根为项目根，读不到上级那份） |
+| 后端某个模块 `volunteerplatform-backend/hengde-volunteer-<m>/` | 模块 `CLAUDE.md` 一行 `@../../volunteerplatform-knowlegebase/模块/<m>.md`，**动到这个模块时自动读入** | 模块 `AGENTS.md`：写明「改这个模块前先读 `../../volunteerplatform-knowlegebase/模块/<m>.md`」（Codex 不支持 `@` 导入；按 AGENTS.md 约定，改到某目录下的文件时要遵守该目录的 AGENTS.md） |
 | 小程序 `volunteerplatform-miniprogram/`、控制台 `volunteerplatform-back/` | `CLAUDE.md` → `@AGENTS.md` | `AGENTS.md`：仓库自己的要点 + 指向知识库的哪几页 |
-| 知识库本身（`知识库/` 或发布仓库根） | `CLAUDE.md` → `@AGENTS.md` | `AGENTS.md`：维护知识库的规矩 |
+| 知识库本身（`volunteerplatform-knowlegebase/` 或发布仓库根） | `CLAUDE.md` → `@AGENTS.md` | `AGENTS.md`：维护知识库的规矩 |
+
+**读到了不等于照做**：各家 agent 都读到了入口，却照样凭印象写、做完忘了回写。所以入口最上面是「开工协议」（先列知识库依据再动手，收尾回写），另外有两道不靠自觉的关：
+
+- **提交闸门** `tools/kb_gate.py`：五个仓库的 `commit-msg` / `pre-push` 钩子（`core.hooksPath` → `tools/githooks/`）。改了后端模块却没动 `模块/<m>.md`、改了前端页面却没动 `跨端/前端页面进度.md` 之类，就拒绝提交或推送。规则写在脚本文件头。
+- **Cursor 的常驻规则** `.cursor/rules/knowledge-base-protocol.mdc`（文档仓库根，alwaysApply）：每轮对话都带上协议，不只在开头读一次。
 
 Codex 的几点：
 
@@ -45,15 +50,15 @@ Codex 的几点：
 ## 目录约定（单独克隆时）
 
 ```
-<工作区>/
-├── volunteerplatform/                文档仓库：知识库/ 就在这里（完整工作区，推荐）
-│   └── 代码/                         后端仓库
-├── volunteerplatform-miniprogram/    其 AGENTS.md 找 ../volunteerplatform/知识库/，找不到再找 ../henge-volunteerplatform-knowlegebase/
-└── volunteerplatform-back/           同上
+volunteerplatform/                      文档仓库（完整工作区，推荐）
+├── volunteerplatform-knowlegebase/     本仓库
+├── volunteerplatform-backend/          后端仓库：模块入口找 ../../volunteerplatform-knowlegebase/
+├── volunteerplatform-miniprogram/      其 AGENTS.md 找 ../volunteerplatform-knowlegebase/，再找 ../volunteerplatform/volunteerplatform-knowlegebase/
+└── volunteerplatform-back/             同上
 ```
 
-- 只克隆了**后端**：把本仓库克隆到与后端仓库同级、名为 `知识库` 的目录（`git clone <本仓库地址> 知识库`），模块入口里的 `../../知识库/模块/…` 才成立。
-- 只克隆了**小程序 / 控制台**：把本仓库克隆到同级的 `henge-volunteerplatform-knowlegebase/`（默认目录名）即可。
+- 只克隆了**后端**：把本仓库克隆到与后端仓库同级、名为 `volunteerplatform-knowlegebase` 的目录（默认目录名，`git clone <本仓库地址>` 即可），模块入口里的 `../../volunteerplatform-knowlegebase/模块/…` 才成立。
+- 只克隆了**小程序 / 控制台**：同样把本仓库克隆到与它同级的 `volunteerplatform-knowlegebase/`。
 
 ## 维护（在文档仓库根运行）
 
@@ -62,7 +67,11 @@ python3 tools/gen_knowledge_base.py          # 重写 生成/（--check 只比�
 python3 tools/convert_requirements.py        # 需求原件变了时重转 需求/
 python3 tools/gen_agent_entries.py           # 根 AGENTS.md 改了之后，重新生成后端仓库里的入口（--check 只比对）
 python3 tools/verify_knowledge_base.py       # 页里点名的类 / 方法 / 路径 / 配置键 / 权限点 / 迁移号 / XH 号 / 页内链接是否都还在
-tools/publish_knowledge_base.sh              # 校验 + 敏感信息扫描通过后，把 知识库/ 作为一个快照提交推到 Gitee 知识库仓库
+python3 tools/kb_gate.py audit               # 最近哪些提交改了代码却没回写知识库、哪些声明了「不涉及」
+python3 tools/kb_gate.py install             # 给五个仓库装提交闸门（新克隆后跑一次）
+python3 tools/kb_gate.py mirror --apply      # 文档仓库里镜像的后端 / 知识库对齐到子仓库 HEAD（双提交的第二次）
 ```
+
+`tools/publish_knowledge_base.sh` 是旧的快照发布方式，与直接 `git push` 混用会让历史分叉，只有拿不到 git 时才用。
 
 **不进知识库的**：密钥与 AppSecret、服务器地址与登录方式、线上安全状况（如《线上升级核对》）、真实手机号与身份证号。这些留在文档仓库或部署人员手里。

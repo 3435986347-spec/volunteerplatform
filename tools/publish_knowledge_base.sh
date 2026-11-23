@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# 把文档仓库的 知识库/ 发布到 Gitee 知识库仓库（henge-volunteerplatform-knowlegebase）。
+# 把文档仓库的 volunteerplatform-knowlegebase/ 发布到 Gitee 知识库仓库（henge-volunteerplatform-knowlegebase）。
 #
-# 发布方式是「快照提交」：每次发布在发布仓库的最新提交之上加一个提交，内容恰好是文档仓库 HEAD 里的 知识库/ 目录树。
-# 不用 git subtree split——那会把 知识库/ 的全部历史一起推上去，而早期提交里可能还有后来才清掉的内容
+# 发布方式是「快照提交」：每次发布在发布仓库的最新提交之上加一个提交，内容恰好是文档仓库 HEAD 里的 volunteerplatform-knowlegebase/ 目录树。
+# 不用 git subtree split——那会把 volunteerplatform-knowlegebase/ 的全部历史一起推上去，而早期提交里可能还有后来才清掉的内容
 # （2026-10-17 首次发布前就查到一条：拆页那一版的控制台页里写着线上服务器地址）。快照只发布通过了下面扫描的那一棵树。
 #
-# 源头永远是文档仓库的 知识库/：在发布仓库里直接改的内容会被下一次快照覆盖——要改回源头再发。
+# 源头永远是文档仓库的 volunteerplatform-knowlegebase/：在发布仓库里直接改的内容会被下一次快照覆盖——要改回源头再发。
 #
 # 用法（在文档仓库任意位置运行）：
 #   tools/publish_knowledge_base.sh            # 校验 → 敏感信息扫描 → 快照提交 → push
@@ -17,11 +17,11 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 REMOTE_URL="${KB_REMOTE_URL:-https://gitee.com/huang-mingzhang/henge-volunteerplatform-knowlegebase.git}"
 BRANCH="${KB_BRANCH:-master}"
-PREFIX="知识库"
+PREFIX="volunteerplatform-knowlegebase"
 DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
 
-# 1. 发布的是已提交的内容：知识库/ 有未提交改动时先提交
+# 1. 发布的是已提交的内容：volunteerplatform-knowlegebase/ 有未提交改动时先提交
 if ! git diff --quiet HEAD -- "$PREFIX" || [[ -n "$(git ls-files --others --exclude-standard -- "$PREFIX")" ]]; then
   echo "✗ $PREFIX/ 有未提交的改动——只发布已提交的内容，先提交再发布" >&2
   exit 1
@@ -65,7 +65,7 @@ if [[ -n "$remote_head" ]]; then
   fi
   parent_args=(-p "$remote_head")
 fi
-msg="发布：文档仓库 $source_commit 的 知识库/
+msg="发布：文档仓库 $source_commit 的 volunteerplatform-knowlegebase/
 
 $(git log -1 --format=%s HEAD)"
 [[ -n "${KB_TRAILER:-}" ]] && msg="$msg

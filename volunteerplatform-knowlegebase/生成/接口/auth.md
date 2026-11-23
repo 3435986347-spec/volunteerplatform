@@ -2,7 +2,7 @@
 
 # auth 模块的接口
 
-19 个端点。模块说明见 [`知识库/模块/auth.md`](../../模块/auth.md)。
+19 个端点。模块说明见 [`volunteerplatform-knowlegebase/模块/auth.md`](../../模块/auth.md)。
 
 ## 志愿者端 `/v`
 

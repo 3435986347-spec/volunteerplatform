@@ -2,7 +2,7 @@
 
 # data 模块的接口
 
-14 个端点。模块说明见 [`知识库/模块/data.md`](../../模块/data.md)。
+14 个端点。模块说明见 [`volunteerplatform-knowlegebase/模块/data.md`](../../模块/data.md)。
 
 ## 志愿者端 `/v`
 

@@ -4,7 +4,7 @@
 这些数字和清单以前手写在 CLAUDE.md / 模块页里，每批都要同步，漏一处就互相矛盾（权限点总数先后写过
 51 / 57 / 58 / 60 / … / 96，读者不知道哪个是现在的）。改成从代码生成后，**页里只放链接，不再手抄数字**。
 
-输出到 `知识库/生成/`（整个目录都是生成物，不要手改）：
+输出到 `volunteerplatform-knowlegebase/生成/`（整个目录都是生成物，不要手改）：
 
     迁移.md             V1…Vn：文件名 + 文件头第一行注释
     权限点.md           code / 名称 / 模块 / 类型 / 登记于哪个迁移（回放 INSERT 与改名的 UPDATE）
@@ -13,7 +13,7 @@
 
 用法：
 
-    python3 tools/gen_knowledge_base.py           # 在仓库根运行，重写 知识库/生成/
+    python3 tools/gen_knowledge_base.py           # 在仓库根运行，重写 volunteerplatform-knowlegebase/生成/
     python3 tools/gen_knowledge_base.py --check   # 只比对、不写；生成物过期则退出码 1（收尾 / CI 用）
 
 接口解析复用 `tools/verify_url_contract.py`（剥注释、按注解簇切方法、权限常量解引用），口径与契约核对一致。
@@ -83,8 +83,8 @@ def migrations(mig_dir: Path) -> list[tuple[int, str, str]]:
 def render_migrations(rows) -> str:
     out = [HEADER, "# 迁移清单\n\n",
            f"共 {len(rows)} 个，当前最大 **V{rows[-1][0]}**，下一个从 **V{rows[-1][0] + 1}** 起"
-           "（挑号前先跑跨分支最大号命令，见 `知识库/模块/common.md`）。"
-           "脚本在 `代码/hengde-volunteer-common/src/main/resources/db/migration/`。\n\n",
+           "（挑号前先跑跨分支最大号命令，见 `volunteerplatform-knowlegebase/模块/common.md`）。"
+           "脚本在 `volunteerplatform-backend/hengde-volunteer-common/src/main/resources/db/migration/`。\n\n",
            "| 版本 | 文件 | 文件头第一行 |\n|---|---|---|\n"]
     for num, name, first in reversed(rows):
         out.append(f"| V{num} | `{name}` | {_md(first)} |\n")
@@ -211,7 +211,7 @@ def _role(path: str) -> str:
 def render_endpoint_index(eps: dict) -> str:
     total = sum(len(v) for v in eps.values())
     out = [HEADER, "# 接口索引（按模块）\n\n",
-           f"共 **{total}** 个端点，从 `代码/` 的 Controller 注解解析（剥注释后解析，口径同 `tools/verify_url_contract.py`）。"
+           f"共 **{total}** 个端点，从 `volunteerplatform-backend/` 的 Controller 注解解析（剥注释后解析，口径同 `tools/verify_url_contract.py`）。"
            "路径不含 context-path `/api`。权限列为空＝方法上没有 `@SaCheckPermission`（只需登录，或公开——公开的见根文件鉴权白名单）。"
            "请求体 / 响应字段看 `文档/v1~v4/url文档v*.md` 或运行中的 `/api/doc.html`。\n\n",
            "| 模块 | `/v` | `/a` | `/e` | 其他 | 页 |\n|---|---|---|---|---|---|\n"]
@@ -226,7 +226,7 @@ def render_endpoint_index(eps: dict) -> str:
 
 def render_endpoints(module: str, rows: list[tuple]) -> str:
     out = [HEADER, f"# {module} 模块的接口\n\n",
-           f"{len(rows)} 个端点。模块说明见 [`知识库/模块/{module}.md`](../../模块/{module}.md)。\n"]
+           f"{len(rows)} 个端点。模块说明见 [`volunteerplatform-knowlegebase/模块/{module}.md`](../../模块/{module}.md)。\n"]
     by_role = defaultdict(list)
     for r in rows:
         by_role[_role(r[1])].append(r)
@@ -243,9 +243,9 @@ def render_endpoints(module: str, rows: list[tuple]) -> str:
 # ---------------------------------------------------------------- 入口
 
 def generate(root: Path) -> dict[Path, str]:
-    code = root / "代码"
+    code = root / "volunteerplatform-backend"
     mig = code / "hengde-volunteer-common/src/main/resources/db/migration"
-    out_dir = root / "知识库" / "生成"
+    out_dir = root / "volunteerplatform-knowlegebase" / "生成"
     files: dict[Path, str] = {}
     files[out_dir / "迁移.md"] = render_migrations(migrations(mig))
     files[out_dir / "权限点.md"] = render_permissions(load_permissions(mig))
@@ -263,11 +263,11 @@ def main() -> int:
     ap.add_argument("--check", action="store_true", help="只比对，不写")
     args = ap.parse_args()
     root = Path(args.root).resolve()
-    if not (root / "代码").is_dir():
-        print(f"找不到 {root}/代码——请在文档仓库根目录运行", file=sys.stderr)
+    if not (root / "volunteerplatform-backend").is_dir():
+        print(f"找不到 {root}/volunteerplatform-backend——请在文档仓库根目录运行", file=sys.stderr)
         return 2
     files = generate(root)
-    out_dir = root / "知识库" / "生成"
+    out_dir = root / "volunteerplatform-knowlegebase" / "生成"
     existing = {p for p in out_dir.rglob("*.md") if p.name != "README.md"} if out_dir.exists() else set()
     stale = [p for p, text in files.items() if not p.exists() or p.read_text(encoding="utf-8") != text]
     orphans = sorted(existing - set(files))

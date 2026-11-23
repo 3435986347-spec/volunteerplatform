@@ -2,7 +2,7 @@
 
 # CLAUDE.md（后端仓库）
 
-- **完整工作区里**（本仓库是文档仓库的 `代码/`）：上级 `../CLAUDE.md` 已经导入了总入口 `../AGENTS.md`，这里不重复导入。
+- **完整工作区里**（本仓库是文档仓库的 `volunteerplatform-backend/`）：上级 `../CLAUDE.md` 已经导入了总入口 `../AGENTS.md`，这里不重复导入。
 - **单独克隆后端仓库时**：上级没有总入口——开始任何任务前先读同目录的 `AGENTS.md`（总入口按本仓库路径改写的副本），
-  并把知识库仓库克隆到同级的 `知识库/` 目录。
-- 动到某个模块时，那个模块目录的 `CLAUDE.md` 会自动导入 `../../知识库/模块/<模块>.md`。
+  并把知识库仓库克隆到同级的 `volunteerplatform-knowlegebase/` 目录。
+- 动到某个模块时，那个模块目录的 `CLAUDE.md` 会自动导入 `../../volunteerplatform-knowlegebase/模块/<模块>.md`。

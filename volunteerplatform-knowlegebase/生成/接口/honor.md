@@ -2,7 +2,7 @@
 
 # honor 模块的接口
 
-54 个端点。模块说明见 [`知识库/模块/honor.md`](../../模块/honor.md)。
+54 个端点。模块说明见 [`volunteerplatform-knowlegebase/模块/honor.md`](../../模块/honor.md)。
 
 ## 志愿者端 `/v`
 

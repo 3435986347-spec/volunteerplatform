@@ -2,6 +2,6 @@
 
 # hengde-volunteer-auth
 
-三套登录态、实名、PII、处置表与闸门、通知短信入口、注销冷静期。本模块的现行要点与按批次的记录在知识库 `知识库/模块/auth.md`，下面这行会自动导入（完整工作区里成立；单独克隆后端时要把知识库仓库克隆到与后端同级的 `知识库/` 目录）：
+三套登录态、实名、PII、处置表与闸门、通知短信入口、注销冷静期。本模块的现行要点与按批次的记录在知识库 `volunteerplatform-knowlegebase/模块/auth.md`，下面这行会自动导入（完整工作区里成立；单独克隆后端时要把知识库仓库克隆到与后端同级的 `volunteerplatform-knowlegebase/` 目录）：
 
-@../../知识库/模块/auth.md
+@../../volunteerplatform-knowlegebase/模块/auth.md

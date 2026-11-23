@@ -10,10 +10,12 @@
 4. **协会决策只追加**：新答复用新的 `XH` 号（不复用、不改号），被推翻的旧条目在「推翻」里互相指认；原编号（「乙-5」「丙-3」……）写进对照表，方便 grep。冲突时以最新一次答复为准。
 5. **点名要能核对**：写类名、方法名、路径、配置键、权限点、迁移号时用反引号括起来，改完跑 `python3 tools/verify_knowledge_base.py`（在文档仓库根），它逐个对回代码，并检查 `XH` 号与页内链接。
 6. **不写进知识库**：密钥、AppSecret、服务器地址与登录方式、线上安全状况、真实手机号与身份证号（原型里的号码已打码，新材料同样处理）。本目录会发布到单独的仓库。
-7. **路径写法**：指向代码与文档时写相对文档仓库根的路径（`代码/hengde-volunteer-donate/…`、`文档/v3/url文档v3.md`）；知识库页之间用相对链接（`[模块/donate.md](../模块/donate.md)`）。
+7. **路径写法**：指向代码与文档时写相对文档仓库根的路径（`volunteerplatform-backend/hengde-volunteer-donate/…`、`文档/v3/url文档v3.md`）；知识库页之间用相对链接（`[模块/donate.md](../模块/donate.md)`）。
 8. 加了新页要在 `README.md` 的目录表或对应索引页（`横切/约定与踩坑.md`、根 `AGENTS.md` 的路由表）里挂上，否则没人找得到。
 
 ## 每批收尾的检查单
+
+**这张单是写代码的那一方要做的，不是另找时间补**：改代码的 agent 在同一批里就把知识库改好。提交闸门（文档仓库 `tools/kb_gate.py`）会拦下「改了模块代码，却没动 `模块/<m>.md`」「改了前端页面，却没动 `跨端/前端页面进度.md`」的提交。
 
 - [ ] 所涉模块页：现行要点改成现在的样子，按批次的记录末尾追加这一批
 - [ ] 业务口径变了：改 `领域/` 对应页的现行规则与功能状态表
@@ -22,4 +24,5 @@
 - [ ] 新做完一条工作流：在 `回归验证.md` 第二节加一行（工作流 · 证明它的用例 · H / S）
 - [ ] `python3 tools/gen_knowledge_base.py`、`python3 tools/verify_knowledge_base.py` 都过
 - [ ] 根 `AGENTS.md` 改了：`python3 tools/gen_agent_entries.py`
-- [ ] 需要同步到 Gitee 知识库仓库：`tools/publish_knowledge_base.sh`
+- [ ] 本仓库提交一次；文档仓库跑 `python3 tools/kb_gate.py mirror --apply` 后用同名说明再提交一次
+- [ ] 收尾汇报里写「知识库回写：改了哪几页」

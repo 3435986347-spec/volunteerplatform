@@ -1,0 +1,3 @@
+#!/bin/sh
+# 知识库提交闸门：推送前把要推的每个提交再查一遍（拦住 --no-verify 提交进来的）。
+exec python3 "$(dirname "$0")/../kb_gate.py" push --remote "$1"

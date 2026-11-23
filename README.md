@@ -212,7 +212,7 @@ graph TD
 ### 构建与启动
 
 ```bash
-cd 代码/hengde-volunteer-parent
+cd volunteerplatform-backend/hengde-volunteer-parent
 
 # 全量构建：Reactor Summary 应包含 parent + 14 个模块，共 15 行
 ./mvnw clean install -DskipTests
@@ -241,15 +241,14 @@ python3 tools/verify_knowledge_base.py
 ## 工作区结构
 
 ```text
-<工作区>/
-├── volunteerplatform/                 # 本文档仓库
-│   ├── 代码/                          # 后端独立 Git 仓库，14 个 Maven 模块
-│   ├── 知识库/                        # 业务口径、决策、模块规则与回归验证
-│   ├── 文档/                          # V1–V5 规划、需求、接口与联调记录
-│   ├── 部署/                          # Nginx / systemd / 环境变量模板
-│   └── tools/                         # 契约、生成、校验与发布脚本
-├── volunteerplatform-miniprogram/     # 微信小程序独立仓库
-└── volunteerplatform-back/            # 管理控制台独立仓库
+volunteerplatform/                      # 本文档仓库
+├── volunteerplatform-backend/          # 后端独立 Git 仓库（Gitee），14 个 Maven 模块；本仓库也跟踪
+├── volunteerplatform-knowlegebase/     # 知识库独立 Git 仓库（Gitee）：业务口径、决策、模块规则与回归验证；本仓库也跟踪
+├── volunteerplatform-miniprogram/      # 微信小程序独立仓库（本仓库不跟踪）
+├── volunteerplatform-back/             # 管理控制台独立仓库（本仓库不跟踪）
+├── 文档/                               # V1–V5 规划、需求、接口与联调记录
+├── 部署/                               # Nginx / systemd / 环境变量模板
+└── tools/                              # 契约、生成、校验脚本与知识库提交闸门（kb_gate.py）
 ```
 
 ---
@@ -258,10 +257,10 @@ python3 tools/verify_knowledge_base.py
 
 - 本地 Knife4j：`http://localhost:8080/api/doc.html`；生产环境不提供该入口。
 - 接口分组：`volunteer`（`/v/**`）、`admin`（`/a/**`）、`enterprise`（`/e/**`）。
-- 历史接口契约：`文档/v1/` 至 `文档/v4/`；脚本生成的现行索引见 `知识库/生成/接口索引.md`。
-- 业务入口：`AGENTS.md` 与 `知识库/README.md`。
+- 历史接口契约：`文档/v1/` 至 `文档/v4/`；脚本生成的现行索引见 `volunteerplatform-knowlegebase/生成/接口索引.md`。
+- 业务入口：`AGENTS.md` 与 `volunteerplatform-knowlegebase/README.md`。
 - V5 监管后台规划：`文档/v5/V5规划.md`。
-- 回归方法、最近一次结果与已知缺口：`知识库/回归验证.md`。
+- 回归方法、最近一次结果与已知缺口：`volunteerplatform-knowlegebase/回归验证.md`。
 
 ---
 
@@ -273,8 +272,8 @@ python3 tools/verify_knowledge_base.py
 - **仍有外部验收边界**：微信支付、快递100、服务号模板消息、小程序码与对象存储视频直传等不能仅凭本地用例宣称已经真实打通。
 - **冻结 / 推迟项**：纸质证书、i志愿证书、仓库管理、评优评先等，按对应领域页和协会问题单处理。
 
-最新状态以 `知识库/领域/`、`知识库/变更日志.md` 与 `知识库/回归验证.md` 为准；README 只作为项目入口，不替代持续更新的知识库。
+最新状态以 `volunteerplatform-knowlegebase/领域/`、`volunteerplatform-knowlegebase/变更日志.md` 与 `volunteerplatform-knowlegebase/回归验证.md` 为准；README 只作为项目入口，不替代持续更新的知识库。
 
 ---
 
-<sub>本项目为个人独立开发的公益组织管理平台。更多需求、决策、实现与验证细节请查阅 `知识库/` 和 `文档/`。</sub>
+<sub>本项目为个人独立开发的公益组织管理平台。更多需求、决策、实现与验证细节请查阅 `volunteerplatform-knowlegebase/` 和 `文档/`。</sub>

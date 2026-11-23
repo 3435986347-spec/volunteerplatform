@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """线上只读冒烟：发版后不登录、不写库，确认服务器上跑的是新包、鉴权没漏、没有接口一碰就 500。
 
-回归验证第 6 层（`知识库/回归验证.md`）里不需要任何账号的那一半；要登录、会写库的验收用
+回归验证第 6 层（`volunteerplatform-knowlegebase/回归验证.md`）里不需要任何账号的那一半；要登录、会写库的验收用
 `tools/miniprogram_acceptance.py`（要你自己的 token，且会在目标库里建数据）。
 
 **只发 GET**（外加一个 HEAD），不带任何 token。检查六类：
@@ -15,14 +15,14 @@
   5. 控制台  `/assets/api.js` 200、首页带着几十个页面脚本（只有个位数说明还是旧的 index.html）
   6. 文档    `/api/doc.html` 应是 403（不是就提示：nginx 还没加屏蔽规则）
 
-端点清单从本地 `代码/` 的 Controller 解析（与 `tools/gen_knowledge_base.py` 同一套），所以**本地代码要与线上包是同一版**——
-脚本会把线上的构建时间与提交号打出来，与发版手册第 1.1 步的值、本地 `代码/` 的 HEAD 对一下。公开白名单从 `SaTokenConfigure` 的 `notMatch` 里读。
+端点清单从本地 `volunteerplatform-backend/` 的 Controller 解析（与 `tools/gen_knowledge_base.py` 同一套），所以**本地代码要与线上包是同一版**——
+脚本会把线上的构建时间与提交号打出来，与发版手册第 1.1 步的值、本地 `volunteerplatform-backend/` 的 HEAD 对一下。公开白名单从 `SaTokenConfigure` 的 `notMatch` 里读。
 
 用法（文档仓库根）：
 
     python3 tools/online_smoke.py --base http://<服务器>/api
     python3 tools/online_smoke.py --base http://<服务器>/api --expect-build-time 2026-10-17T07:49:47.599Z --report smoke.md
-    python3 tools/online_smoke.py --base http://<服务器>/api --expect-commit "$(git -C 代码 rev-parse HEAD)"
+    python3 tools/online_smoke.py --base http://<服务器>/api --expect-commit "$(git -C volunteerplatform-backend rev-parse HEAD)"
 
 退出码：0 = 全部符合；1 = 有不符合的；2 = 用法 / 连不上。
 """
@@ -112,7 +112,7 @@ class Run:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--base", required=True, help="接口基址，含 context-path，如 http://host/api")
-    ap.add_argument("--root", default=".", help="文档仓库根（读 代码/ 里的端点清单）")
+    ap.add_argument("--root", default=".", help="文档仓库根（读 volunteerplatform-backend/ 里的端点清单）")
     ap.add_argument("--delay", type=float, default=0.15, help="两次请求之间的间隔秒数（别压线上）")
     ap.add_argument("--expect-build-time", help="发版手册第 1.1 步打出来的 build.time，给了就逐字比对")
     ap.add_argument("--expect-commit", help="打包所用的后端提交号（完整或前缀），给了就与 /actuator/info 的 git.commit.id.full 比对")
@@ -124,9 +124,9 @@ def main() -> int:
         OPENER = urllib.request.build_opener()
     base = args.base.rstrip("/")
     origin = re.sub(r"/api$", "", base)
-    code_root = Path(args.root).resolve() / "代码"
+    code_root = Path(args.root).resolve() / "volunteerplatform-backend"
     if not code_root.is_dir():
-        print("找不到 代码/——请在文档仓库根运行或用 --root 指定", file=sys.stderr)
+        print("找不到 volunteerplatform-backend/——请在文档仓库根运行或用 --root 指定", file=sys.stderr)
         return 2
     run = Run()
 

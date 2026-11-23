@@ -4,18 +4,18 @@
 知识库的页是手写的，代码一改名、一删类，页里那句话就悄悄过期——而 agent 会照着过期的名字去找、去调。
 本脚本把页里**能机械核对的引用**逐个对回代码，对不上的列出来（`文件:行号  引用  原因`）。
 
-核对范围：`知识库/**/*.md`、根 `CLAUDE.md` / `AGENTS.md`。只看反引号里的内容（行内代码），正文里的中文叙述不核对。
+核对范围：`volunteerplatform-knowlegebase/**/*.md`、根 `CLAUDE.md` / `AGENTS.md`。只看反引号里的内容（行内代码），正文里的中文叙述不核对。
 
   1. 类名        `PointService`、`MallImmediateOrderTest` —— 代码里（main 或 test）要有这个类型声明；
                  第三方类（代码里 import 过的）与前端组件名（控制台 / 小程序的 js 里出现过的）放行
   2. 成员        `PointService.record`、`ActivityStatus#isUnderReview` —— 声明该类型的文件里要出现这个名字
-  3. 路径        `代码/...`、`文档/...`、`知识库/...`、`tools/...`、`部署/...`、`../volunteerplatform-back/...` —— 要存在
+  3. 路径        `volunteerplatform-backend/...`、`文档/...`、`volunteerplatform-knowlegebase/...`、`tools/...`、`部署/...`、`../volunteerplatform-back/...` —— 要存在
   4. 配置键      `hengde.donate.mall.order-review` —— 代码或 yml 里要出现
   5. 权限点      `donate:mall-order` 这类（前缀是 14 个模块的权限域）—— 迁移里要登记过
   6. 方法名 / 表列名  单独写的 `detailForVolunteer`、`point_record` —— 代码（java / sql / yml / 前端 js）里要出现过这个词
   7. 迁移号      正文里的 `V123` —— 不能大于「当前最大号 + 1」（写了还不存在的号，多半是笔误或计划被推翻）
   8. 数字        根文件里「迁移当前到 **Vn**」「权限点现行 **n** 个」「n 个 Maven 模块」—— 要与代码一致
-  9. 协会决策号  `XH21` 这类引用 —— `知识库/决策/协会决策.md` 里要有这一条
+  9. 协会决策号  `XH21` 这类引用 —— `volunteerplatform-knowlegebase/决策/协会决策.md` 里要有这一条
  10. 页内链接    `[文字](../模块/donate.md)` 这类相对链接 —— 目标文件要存在（拆页、改名之后最容易断）
 
 用法：
@@ -83,7 +83,7 @@ HISTORICAL_NAMES = {"DataPermission"}
 # 按设计**不入权限点表**的码（V2 迁移抬头列明的两个高危点，写死仅超管，见 url 契约脚本的同名豁免）
 PERM_EXEMPT = {"user:edit", "org:perm-assign"}
 
-PATH_ROOTS = ("代码/", "文档/", "知识库/", "tools/", "部署/", "docs/",
+PATH_ROOTS = ("volunteerplatform-backend/", "文档/", "volunteerplatform-knowlegebase/", "tools/", "部署/", "docs/",
               "../volunteerplatform-back/", "../volunteerplatform-miniprogram/")
 
 _SPAN = re.compile(r"`([^`\n]+)`")
@@ -139,7 +139,7 @@ def _skip(p: Path) -> bool:
 
 def build_index(root: Path) -> CodeIndex:
     idx = CodeIndex()
-    code = root / "代码"
+    code = root / "volunteerplatform-backend"
     for f in code.rglob("*.java"):
         if _skip(f):
             continue
@@ -176,7 +176,7 @@ def build_index(root: Path) -> CodeIndex:
         idx.max_migration = max(idx.max_migration, int(re.match(r"V(\d+)", f.name).group(1)))
         idx.words.add(f.stem.split("__", 1)[-1])
     idx.perms = set(load_permissions(mig))
-    record = root / "知识库" / "决策" / "协会决策.md"
+    record = root / "volunteerplatform-knowlegebase" / "决策" / "协会决策.md"
     if record.exists():
         idx.decisions = set(_DECISION_HEAD.findall(record.read_text(encoding="utf-8")))
     pom = (code / "hengde-volunteer-parent/pom.xml").read_text(encoding="utf-8")
@@ -209,7 +209,7 @@ def load_permissions(migration_dir: Path) -> dict:
 # ---------------------------------------------------------------- 文档侧
 
 def doc_files(root: Path) -> list[Path]:
-    files = sorted((root / "知识库").rglob("*.md"))
+    files = sorted((root / "volunteerplatform-knowlegebase").rglob("*.md"))
     for name in ("CLAUDE.md", "AGENTS.md"):
         if (root / name).exists():
             files.append(root / name)
@@ -339,15 +339,15 @@ def selftest() -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--root", default=".", help="文档仓库根目录（含 代码/ 与 知识库/）")
+    ap.add_argument("--root", default=".", help="文档仓库根目录（含 volunteerplatform-backend/ 与 volunteerplatform-knowlegebase/）")
     ap.add_argument("--verbose", action="store_true")
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
     if args.selftest:
         return selftest()
     root = Path(args.root).resolve()
-    if not (root / "代码").is_dir() or not (root / "知识库").is_dir():
-        print(f"找不到 {root}/代码 或 {root}/知识库——请在文档仓库根目录运行，或用 --root 指定", file=sys.stderr)
+    if not (root / "volunteerplatform-backend").is_dir() or not (root / "volunteerplatform-knowlegebase").is_dir():
+        print(f"找不到 {root}/volunteerplatform-backend 或 {root}/volunteerplatform-knowlegebase——请在文档仓库根目录运行，或用 --root 指定", file=sys.stderr)
         return 2
     idx = build_index(root)
     problems: list[Problem] = []

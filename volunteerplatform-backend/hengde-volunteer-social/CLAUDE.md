@@ -2,6 +2,6 @@
 
 # hengde-volunteer-social
 
-社区、审核与风控、举报、禁言、私信。本模块的现行要点与按批次的记录在知识库 `知识库/模块/social.md`，下面这行会自动导入（完整工作区里成立；单独克隆后端时要把知识库仓库克隆到与后端同级的 `知识库/` 目录）：
+社区、审核与风控、举报、禁言、私信。本模块的现行要点与按批次的记录在知识库 `volunteerplatform-knowlegebase/模块/social.md`，下面这行会自动导入（完整工作区里成立；单独克隆后端时要把知识库仓库克隆到与后端同级的 `volunteerplatform-knowlegebase/` 目录）：
 
-@../../知识库/模块/social.md
+@../../volunteerplatform-knowlegebase/模块/social.md

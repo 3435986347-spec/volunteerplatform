@@ -2,7 +2,7 @@
 
 # activity 模块的接口
 
-106 个端点。模块说明见 [`知识库/模块/activity.md`](../../模块/activity.md)。
+106 个端点。模块说明见 [`volunteerplatform-knowlegebase/模块/activity.md`](../../模块/activity.md)。
 
 ## 志愿者端 `/v`
 

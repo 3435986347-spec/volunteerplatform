@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""接口契约校验：让**各版本的 url 文档**与 `代码/` 里的 Controller 保持一致。
+"""接口契约校验：让**各版本的 url 文档**与 `volunteerplatform-backend/` 里的 Controller 保持一致。
 
 读取 `DOC_PATHS` 列出的全部文档并**合并成一张表**再与代码比对——V3 起文档按版本分文件
 （`url文档v2.md` + `url文档v3.md`），只读其中一份会让另一份的端点整片变成「代码有而文档无」，
@@ -735,11 +735,11 @@ def main() -> int:
         return selftest()
 
     root = Path(args.root).resolve()
-    code_root = root / "代码"
+    code_root = root / "volunteerplatform-backend"
     docs = [root / rel for rel in DOC_PATHS]
     missing = [str(d.relative_to(root)) for d in docs if not d.is_file()]
     if not code_root.is_dir() or missing:
-        print(f"找不到 代码/ 或以下文档（--root={root}）：{'、'.join(missing)}", file=sys.stderr)
+        print(f"找不到 volunteerplatform-backend/ 或以下文档（--root={root}）：{'、'.join(missing)}", file=sys.stderr)
         return 2
 
     consts = load_permission_constants(code_root)

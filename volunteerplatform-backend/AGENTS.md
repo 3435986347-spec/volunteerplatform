@@ -3,12 +3,33 @@
 # AGENTS.md
 
 > **这一份是后端仓库的入口**：由文档仓库根 `AGENTS.md` 改写路径生成（Codex 以本仓库为项目根时读不到上级那份）。
-> 路径都相对本目录：`../知识库/` 是知识库，`../tools/`、`../文档/`、`../部署/` 只在完整工作区（本仓库位于文档仓库的 `代码/` 下）里有。
-> **单独克隆后端时**，把知识库仓库（Gitee `henge-volunteerplatform-knowlegebase`）克隆到与本仓库同级、名为 `知识库` 的目录。
+> 路径都相对本目录：`../volunteerplatform-knowlegebase/` 是知识库，`../tools/`、`../文档/`、`../部署/` 只在完整工作区（本仓库位于文档仓库的 `volunteerplatform-backend/` 下）里有。
+> **单独克隆后端时**，把知识库仓库（Gitee `volunteerplatform-knowlegebase`）克隆到与本仓库同级、名为 `volunteerplatform-knowlegebase` 的目录。
 
-雷州市恒德爱心公益协会志愿者管理平台的**总入口**，写给所有 coding agent（Codex、Claude Code、Cursor……）。Claude Code 在完整工作区里经文档仓库根 `CLAUDE.md` 读到同一份。
+雷州市恒德爱心公益协会志愿者管理平台的**总入口**，写给所有 coding agent（Codex、Claude Code、Cursor、WorkBuddy、Kimi……）。Claude Code 在完整工作区里经文档仓库根 `CLAUDE.md` 读到同一份。
 
-> **这个文件只放硬规矩和路由**，正文在 `../知识库/`（它同时是 Gitee `volunteerplatform-knowlegebase` 的克隆，可直接 pull / push）。
+## ⛔ 开工协议（每个任务都照做；跳过任何一步，这次的活就不算数）
+
+在这个项目里，**没有一件事可以凭印象做**。用户反复抓到过这几种情况：agent 读了知识库，却照自己的记忆写代码；照原型的 Markdown 抽取稿、而不是原型图去搭页面；做完不回写知识库。所以：
+
+1. **先找页再动手**：按下面「知识库路由」找到本任务涉及的页——领域页，加上模块页或跨端页；前端还要看 `../volunteerplatform-knowlegebase/需求/原型/页面/P*.jpg`。**读完再改第一行代码。**
+2. **先写出依据**：动手前在回复里列一个「知识库依据」块：读了哪几页，本次改动依据的是哪几条（引原句，或 XH 号、Row 号、原型 P 号）。**列不出依据的改动不做。**
+3. **知识库没写的、与知识库冲突的，停下来问**，或者记进对应领域页的「待办 / 待协会答复」；**不要自己补一个口径**。代码和知识库对不上时，先报告是哪一边错了，不要顺手按自己的理解改。
+4. **只做要求的范围**：不顺手重构，不改无关的文件，不另起平行的说明文档（`docs/*.md`、`SYNC_*.md`、`*_STATUS.md` 之类），不写只在自己机器上成立的路径。要记下来的东西写进知识库对应的页。
+5. **收尾回写知识库**（最常被忘的一步）：
+   - 动了后端 `hengde-volunteer-<m>/src/main`：改 `模块/<m>.md` 的「现行要点」与「按批次的记录」；
+   - 动了小程序或控制台的页面：改 `跨端/前端页面进度.md`，以及涉及到的 `跨端/*页面构建.md`；
+   - 口径变了：改领域页。
+   改完跑 `python3 ../tools/gen_knowledge_base.py` 和 `python3 ../tools/verify_knowledge_base.py`。
+6. **收尾汇报里写「知识库回写」**：改了哪几页；没改就写明为什么不需要。
+
+**提交闸门（机器检查，不是建议）**：五个仓库都由 `python3 ../tools/kb_gate.py install` 装上了 `../tools/githooks/`。
+- **提交时**，`commit-msg` 钩子按这次改了哪些文件，核对第 5 条要回写的页。知识库页只要满足下面任一条就放行：在同一次提交里；在知识库仓库里有没提交的改动；这次提交前后 12 小时内提交过。否则拒绝提交，并列出缺了哪几页。改了接口、迁移或权限点，还要求 `生成/` 是最新的。
+- **推送时**，`pre-push` 钩子把要推的每个提交再查一遍；文档仓库还要求它镜像的后端、知识库跟上两个子仓库的 HEAD。
+- 真的不涉及知识库（纯测试、格式、依赖升级）时，在提交说明里单独写一行 `知识库: 不涉及 — <理由>`；这些提交会列进 `python3 ../tools/kb_gate.py audit` 的报告给用户看。
+- **禁止用 `--no-verify` 绕过，禁止改钩子或闸门脚本来让自己通过**。钩子报错就去补知识库。
+
+> **这个文件只放硬规矩和路由**，正文在 `../volunteerplatform-knowlegebase/`（它同时是 Gitee `volunteerplatform-knowlegebase` 的克隆，可直接 pull / push）。
 > 先按任务找到页，再读那一页的「现行规则 / 现行要点」。冲突时：**代码 > 知识库现行要点 > 按批次的记录 > `../文档/` 里的规划与历史材料**。
 
 ## 项目一句话
@@ -18,41 +39,39 @@
 ## 工作区与四个仓库
 
 ```
-<工作区>/
-├── volunteerplatform/                文档仓库（GitHub）：本文件、知识库/、文档/、部署/、tools/
-│   ├── 知识库/                       知识库源头；自身也是 Gitee `volunteerplatform-knowlegebase` 的克隆（可单独 pull/push），文档仓库也跟踪它
-│   └── 代码/                         后端仓库（Gitee volunteerplatform-backend，自身是独立 git，文档仓库也跟踪它）
-├── volunteerplatform-miniprogram/    小程序（Gitee）
-└── volunteerplatform-back/           后台控制台（Gitee）
+volunteerplatform/                      文档仓库（GitHub）：本文件、文档/、部署/、tools/
+├── volunteerplatform-knowlegebase/     知识库（Gitee volunteerplatform-knowlegebase，独立 git；文档仓库也跟踪它）
+├── volunteerplatform-backend/          后端（Gitee volunteerplatform-backend，独立 git；文档仓库也跟踪它）
+├── volunteerplatform-miniprogram/      小程序（Gitee，独立 git；文档仓库不跟踪，已写进 .gitignore）
+└── volunteerplatform-back/             后台控制台（Gitee，独立 git；文档仓库不跟踪，已写进 .gitignore）
 ```
 
-- 改前端去同级目录；文档仓库里原先的 `hengde-volunteer-miniprogram/`、`volunteer-platform-back/` 已清空。
-- 后端改动要在 `代码/`（Gitee）与文档仓库各提交一次，提交说明同名并注明「同 Gitee 后端仓库同名提交」。
-- 知识库同理：`../知识库/` 自身是 Gitee `volunteerplatform-knowlegebase` 的克隆，在它里面就能 `git pull` / `git push`；文档仓库也跟踪同一批文件，改动要在两处各提交一次，提交说明同名。
-- **单独克隆后端仓库时**，把知识库仓库克隆到与它同级、名为 `知识库` 的目录，模块入口里的 `../../知识库/…` 路径才成立。
+- 两个前端仓库也可以放在与文档仓库同级的目录；`../tools/` 里的脚本和控制台契约测试两处都会找。从前端仓库看，知识库是 `../volunteerplatform-knowlegebase/`。
+- 后端、知识库的改动要在**各自仓库与文档仓库各提交一次**，提交说明同名，并注明「同 Gitee 后端仓库同名提交」或「同 Gitee 知识库仓库同名提交」。文档仓库那一次先跑 `python3 ../tools/kb_gate.py mirror --apply`，把索引对齐到两个子仓库的 HEAD（只带已提交的内容，不会把子仓库里没提交的改动带进来），再提交。
+- **单独克隆后端仓库时**，把知识库仓库克隆到与它同级、名为 `volunteerplatform-knowlegebase` 的目录，模块入口里的 `../../volunteerplatform-knowlegebase/…` 路径才成立。
 
 ## 当前状态
 
-- **迁移**：全项目唯一序列在 common，当前到 **V101**，下一个从 V102 起；**权限点现行 99 个**（清单 `../知识库/生成/权限点.md`，脚本生成）。
-- **控制台**：无构建、纯 `React.createElement`；⚠️ **在本地打开 `index.html` 时 API 基址指向线上**，点一下就写线上库，联调用 `../tools/serve_admin_local.py`。见 `../知识库/跨端/后台控制台.md`。
+- **迁移**：全项目唯一序列在 common，当前到 **V101**，下一个从 V102 起；**权限点现行 99 个**（清单 `../volunteerplatform-knowlegebase/生成/权限点.md`，脚本生成）。
+- **控制台**：无构建、纯 `React.createElement`；⚠️ **在本地打开 `index.html` 时 API 基址指向线上**，点一下就写线上库，联调用 `../tools/serve_admin_local.py`。见 `../volunteerplatform-knowlegebase/跨端/后台控制台.md`。
 - **小程序**：`app.js` 的 `globalData.useMockApi = false`、`apiBaseUrl` 指向**线上**服务器（开发版放行 HTTP）——开发者工具里点的也写线上库；本地联调改成 `http://localhost:8080/api`。（`utils/api-mode.js` 的 `DEFAULT_USE_MOCK_API` 只在 `app.js` 没给值时生效，现为 `false`；小程序 `README.md` 里「默认 mock」的说法已过期。）
-- **线上**：跑的是哪一版**以 `GET /api/actuator/info` 为准**（免登录：构建版本与时间、打包所用的后端提交与是否干净、迁移号），最近一次发版与线上冒烟结果记在 `../知识库/回归验证.md` 末节。入口里不写「线上是哪一版」——写了就会过期。
+- **线上**：跑的是哪一版**以 `GET /api/actuator/info` 为准**（免登录：构建版本与时间、打包所用的后端提交与是否干净、迁移号），最近一次发版与线上冒烟结果记在 `../volunteerplatform-knowlegebase/回归验证.md` 末节。入口里不写「线上是哪一版」——写了就会过期。
 - **只验到假渠道 / 未端到端**：微信支付、快递100 推送、小程序码、对象存储视频直传、服务号模板消息。
 
 ## 知识库路由
 
 | 想知道 | 读 |
 |---|---|
-| 业务口径、功能状态、需求出处、待办（**按业务说的任务从这里进**） | `../知识库/领域/01…12-*.md`（用户与身份认证 / 志愿活动 / 积分体系 / 公益捐赠 / 组织管理 / 爱心企业 / 社区交流 / 荣誉展示 / 信息与公示 / 个人中心 / 后台管理系统 / 监管后台） |
-| 某个模块的代码不变式、关键类、承重测试、踩过的坑（**改代码前读**） | `../知识库/模块/<模块>.md` |
-| 协会答复与口径（统一编号 **XH01…**，原编号如「乙-5」「丙-3」也能 grep 到） | `../知识库/决策/协会决策.md` |
-| 需求原文（「Row 47」＝表格行号、「原型 P83」＝PDF 页码） | `../知识库/需求/需求表.md`、`../知识库/需求/原型.md` |
-| 接口清单、权限点、表、迁移（**脚本生成，不手改**） | `../知识库/生成/` |
-| 跨模块套路：并发与锁、积分口径、通知与处置、测试纪律、依赖与部署 | `../知识库/横切/` |
-| 后台控制台的组件坑与联调方式 | `../知识库/跨端/后台控制台.md` |
-| 前端画面做了没有、接口能不能开工 | `../知识库/跨端/前端页面进度.md` |
-| 跨模块批次的历史记录 | `../知识库/变更日志.md` |
-| **改完之后怎么回归**：哪些工作流能跑通、各由哪条用例证明、由快到慢的跑法 | `../知识库/回归验证.md` |
+| 业务口径、功能状态、需求出处、待办（**按业务说的任务从这里进**） | `../volunteerplatform-knowlegebase/领域/01…12-*.md`（用户与身份认证 / 志愿活动 / 积分体系 / 公益捐赠 / 组织管理 / 爱心企业 / 社区交流 / 荣誉展示 / 信息与公示 / 个人中心 / 后台管理系统 / 监管后台） |
+| 某个模块的代码不变式、关键类、承重测试、踩过的坑（**改代码前读**） | `../volunteerplatform-knowlegebase/模块/<模块>.md` |
+| 协会答复与口径（统一编号 **XH01…**，原编号如「乙-5」「丙-3」也能 grep 到） | `../volunteerplatform-knowlegebase/决策/协会决策.md` |
+| 需求原文（「Row 47」＝表格行号、「原型 P83」＝PDF 页码） | `../volunteerplatform-knowlegebase/需求/需求表.md`、`../volunteerplatform-knowlegebase/需求/原型.md` |
+| 接口清单、权限点、表、迁移（**脚本生成，不手改**） | `../volunteerplatform-knowlegebase/生成/` |
+| 跨模块套路：并发与锁、积分口径、通知与处置、测试纪律、依赖与部署 | `../volunteerplatform-knowlegebase/横切/` |
+| 后台控制台的组件坑与联调方式 | `../volunteerplatform-knowlegebase/跨端/后台控制台.md` |
+| 前端画面做了没有、接口能不能开工 | `../volunteerplatform-knowlegebase/跨端/前端页面进度.md` |
+| 跨模块批次的历史记录 | `../volunteerplatform-knowlegebase/变更日志.md` |
+| **改完之后怎么回归**：哪些工作流能跑通、各由哪条用例证明、由快到慢的跑法 | `../volunteerplatform-knowlegebase/回归验证.md` |
 
 | 模块 | 管什么 | | 模块 | 管什么 |
 |---|---|---|---|---|
@@ -65,9 +84,9 @@
 
 常见跨模块话题：**积分**（账本在 activity、商城在 donate、企业积分在 enterprise、排行在 honor）· **证书**（activity 确认考勤 / donate 捐赠事件 → honor 出证）· **处置与禁言**（表与闸门在 auth、开单在 honor、社区禁言在 social）· **通知短信**（模板在 common、入口在 auth）· **收付**（trade；订阅方在 donate）。
 
-## 硬规矩（完整说明见 `../知识库/横切/`）
+## 硬规矩（完整说明见 `../volunteerplatform-knowlegebase/横切/`）
 
-- **迁移**只放 common 的 `db/migration/`；挑号前跑跨分支最大号命令（`../知识库/模块/common.md`）；跑过的不能原地改、只能加新号；一个文件只放一条有失败可能的语句；脚本连注释里也不能出现美元花括号占位符。
+- **迁移**只放 common 的 `db/migration/`；挑号前跑跨分支最大号命令（`../volunteerplatform-knowlegebase/模块/common.md`）；跑过的不能原地改、只能加新号；一个文件只放一条有失败可能的语句；脚本连注释里也不能出现美元花括号占位符。
 - **积分只认账本**：读写一律经 `PointService`，不要 `SUM(activity_attendance.points_award)`；新来源独占类型码。
 - **通知短信只走 `SmsNotifyService`**，模板先在 `SmsNotifyTemplate` 登记（键 + 变量名 + 顺序），并在 `NotifyTopic` 归到一个话题。
 - **分布式锁用 `DistributedLockSupport`**，锁在事务外取；「幂等键 + 唯一键」挡不住并发重放时按幂等键上锁。
@@ -96,7 +115,7 @@ cd hengde-volunteer-parent
 ./mvnw versions:set -DnewVersion=2.0.2 -DgenerateBackupPoms=false          # 改版本号（父 POM + 14 个 <parent>）
 ```
 
-- 压力测试（`@Tag("stress")`，默认排除）的命令见 `../知识库/横切/测试纪律.md`。
+- 压力测试（`@Tag("stress")`，默认排除）的命令见 `../volunteerplatform-knowlegebase/横切/测试纪律.md`。
 - ⚠️ 仓库在 iCloud 同步的桌面上时 `target/` 里会冒出「X 2.class」冲突副本——构建一律带 `clean`；更稳妥的是 rsync 到临时目录（排除 `target/` 与「* 2*」）再构建测试。
 - 改了 Controller：`python3 ../tools/verify_url_contract.py`（核对 `../文档/v2~v4/url文档v*.md`），再 `javap -p` 确认方法真的在编译产物里。
 - 改了知识库或代码里被知识库点名的东西：`python3 ../tools/verify_knowledge_base.py`；改了迁移 / 权限点 / Controller：`python3 ../tools/gen_knowledge_base.py`；改了本文件：`python3 ../tools/gen_agent_entries.py`（重新生成后端仓库里的 `AGENTS.md` / `CLAUDE.md`）。三个生成脚本都有 `--check`。
@@ -107,11 +126,11 @@ cd hengde-volunteer-parent
 
 容易混淆的归属：首页数据看板归 **data**；投诉建议归 **data**、帖子举报归 **social**；活动**临时负责人考试**归 **organization**（activity 里的「活动负责人」是单次活动的现场负责人）；全局搜索在 api 聚合层；处置表在 **auth**（放 honor 会成环）。
 
-**多组织部署＝白标多实例**（每个组织一套独立库 + 配置，跑同一份 api 制品）；「监管后台」是另一个独立应用，未建（`../知识库/领域/12-监管后台.md`）。
+**多组织部署＝白标多实例**（每个组织一套独立库 + 配置，跑同一份 api 制品）；「监管后台」是另一个独立应用，未建（`../volunteerplatform-knowlegebase/领域/12-监管后台.md`）。
 
 ## 接口 URL 约定
 
-写 Controller 前先查 `../文档/v1~v4/url文档v*.md`（按版本切；v1 冻结）与 `../知识库/生成/接口/<模块>.md`。
+写 Controller 前先查 `../文档/v1~v4/url文档v*.md`（按版本切；v1 冻结）与 `../volunteerplatform-knowlegebase/生成/接口/<模块>.md`。
 
 - 路径 `/{role}/{domain}/{resource}/{action?}`，context-path `/api` 不写进代码。role：`/v` 小程序志愿者端、`/a` 管理后台、`/e` 爱心企业端。
 - 资源用复数名词；动作走 HTTP 方法；动词性操作用子资源后缀（`POST /a/activity/enrollments/{id}/approve`），不造 `/doXxx`。
@@ -149,8 +168,8 @@ Spring Boot 4 · Sa-Token（三套登录态，token 存 Redis）· MyBatis-Plus 
 
 ## 维护规则
 
-- **发版前**按 `../知识库/回归验证.md` 第一节由快到慢跑一遍（至少第 1、2、4 层），把结果记到它的最后一节。
-- **每批收尾**：更新所涉模块页的「现行要点」（只写现在是什么）与「按批次的记录」（为什么、撞过什么）；业务口径变了改 `../知识库/领域/`；协会有新答复追加 `../知识库/决策/协会决策.md`（新号，不复用）；跨模块的批次记 `../知识库/变更日志.md`；跑 `gen_knowledge_base.py` 与 `verify_knowledge_base.py`。
+- **发版前**按 `../volunteerplatform-knowlegebase/回归验证.md` 第一节由快到慢跑一遍（至少第 1、2、4 层），把结果记到它的最后一节。
+- **每批收尾**：更新所涉模块页的「现行要点」（只写现在是什么）与「按批次的记录」（为什么、撞过什么）；业务口径变了改 `../volunteerplatform-knowlegebase/领域/`；协会有新答复追加 `../volunteerplatform-knowlegebase/决策/协会决策.md`（新号，不复用）；跨模块的批次记 `../volunteerplatform-knowlegebase/变更日志.md`；跑 `gen_knowledge_base.py` 与 `verify_knowledge_base.py`。提交闸门（`../tools/kb_gate.py`）按「开工协议」第 5 条机械核对；用户随时可以跑 `python3 ../tools/kb_gate.py audit` 查最近哪些提交没回写知识库。新克隆或新加仓库后，跑一次 `python3 ../tools/kb_gate.py install`。
 - 文档仓库根 `AGENTS.md` 只在规矩或路由变了时才改；一条事实只写在一个页里，别处放链接。
 - **入口文件成对出现**：每个入口目录都有 `AGENTS.md`（内容；Codex、Cursor 等读它）与 `CLAUDE.md`（Claude Code 读它，用 `@` 导入 `AGENTS.md` 或模块页）。后端仓库里的那几对由 `gen_agent_entries.py` 生成，不手改。
-- 发布知识库：在 `../知识库/` 里 `git push` 即可（它是 Gitee `volunteerplatform-knowlegebase` 的克隆，`origin/master` 跟踪上游）。`../tools/publish_knowledge_base.sh` 是旧的「快照发布」方式，与直接 push 混用会让历史分叉，只有拿不到 git 时才考虑。
+- 发布知识库：在 `../volunteerplatform-knowlegebase/` 里 `git push` 即可（它是 Gitee `volunteerplatform-knowlegebase` 的克隆，`origin/master` 跟踪上游）。`../tools/publish_knowledge_base.sh` 是旧的「快照发布」方式，与直接 push 混用会让历史分叉，只有拿不到 git 时才考虑。

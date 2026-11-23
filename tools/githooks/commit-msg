@@ -1,0 +1,4 @@
+#!/bin/sh
+# 知识库提交闸门（规则见 tools/kb_gate.py 文件头、AGENTS.md「开工协议」）。
+# 由 `python3 tools/kb_gate.py install` 经 core.hooksPath 装到五个仓库。不要用 --no-verify 绕过。
+exec python3 "$(dirname "$0")/../kb_gate.py" check --msg-file "$1"

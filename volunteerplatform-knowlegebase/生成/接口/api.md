@@ -2,7 +2,7 @@
 
 # api 模块的接口
 
-24 个端点。模块说明见 [`知识库/模块/api.md`](../../模块/api.md)。
+24 个端点。模块说明见 [`volunteerplatform-knowlegebase/模块/api.md`](../../模块/api.md)。
 
 ## 志愿者端 `/v`
 

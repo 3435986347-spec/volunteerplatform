@@ -2,7 +2,7 @@
 
 # enterprise 模块的接口
 
-53 个端点。模块说明见 [`知识库/模块/enterprise.md`](../../模块/enterprise.md)。
+53 个端点。模块说明见 [`volunteerplatform-knowlegebase/模块/enterprise.md`](../../模块/enterprise.md)。
 
 ## 志愿者端 `/v`
 

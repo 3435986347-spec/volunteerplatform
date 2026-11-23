@@ -212,7 +212,7 @@ graph TD
 ### Build and Run
 
 ```bash
-cd 代码/hengde-volunteer-parent
+cd volunteerplatform-backend/hengde-volunteer-parent
 
 # Full build: the Reactor Summary should contain parent + 14 modules = 15 rows
 ./mvnw clean install -DskipTests
@@ -241,15 +241,14 @@ python3 tools/verify_knowledge_base.py
 ## Workspace Layout
 
 ```text
-<workspace>/
-├── volunteerplatform/                 # This documentation repository
-│   ├── 代码/                          # Backend Git repository with 14 Maven modules
-│   ├── 知识库/                        # Business rules, decisions, module guidance, regression evidence
-│   ├── 文档/                          # V1–V5 plans, requirements, API contracts, integration records
-│   ├── 部署/                          # Nginx / systemd / environment templates
-│   └── tools/                         # Contract, generation, verification, and publication scripts
-├── volunteerplatform-miniprogram/     # Independent WeChat Mini Program repository
-└── volunteerplatform-back/            # Independent management-console repository
+volunteerplatform/                      # This documentation repository
+├── volunteerplatform-backend/          # Backend Git repository (Gitee), 14 Maven modules; also tracked here
+├── volunteerplatform-knowlegebase/     # Knowledge-base Git repository (Gitee): business rules, decisions, module guidance, regression evidence; also tracked here
+├── volunteerplatform-miniprogram/      # Independent WeChat Mini Program repository (not tracked here)
+├── volunteerplatform-back/             # Independent management-console repository (not tracked here)
+├── 文档/                               # V1–V5 plans, requirements, API contracts, integration records
+├── 部署/                               # Nginx / systemd / environment templates
+└── tools/                              # Contract, generation, verification scripts and the knowledge-base commit gate (kb_gate.py)
 ```
 
 ---
@@ -258,10 +257,10 @@ python3 tools/verify_knowledge_base.py
 
 - Local Knife4j: `http://localhost:8080/api/doc.html`; this endpoint is unavailable in production.
 - API groups: `volunteer` (`/v/**`), `admin` (`/a/**`), and `enterprise` (`/e/**`).
-- Historical API contracts: `文档/v1/` through `文档/v4/`; the generated current index is `知识库/生成/接口索引.md`.
-- Project entry points: `AGENTS.md` and `知识库/README.md`.
+- Historical API contracts: `文档/v1/` through `文档/v4/`; the generated current index is `volunteerplatform-knowlegebase/生成/接口索引.md`.
+- Project entry points: `AGENTS.md` and `volunteerplatform-knowlegebase/README.md`.
 - V5 supervision-console plan: `文档/v5/V5规划.md`.
-- Regression method, latest recorded results, and known gaps: `知识库/回归验证.md`.
+- Regression method, latest recorded results, and known gaps: `volunteerplatform-knowlegebase/回归验证.md`.
 
 ---
 
@@ -273,8 +272,8 @@ python3 tools/verify_knowledge_base.py
 - **External acceptance boundaries remain**: WeChat Pay, Kuaidi100, service-account template messages, Mini Program codes, and direct object-storage video upload must not be described as production-verified solely on the basis of local tests.
 - **Frozen or deferred items**: paper certificates, iVolunteer certificates, warehouse management, and recognition workflows are governed by their domain pages and association question lists.
 
-For current status, use `知识库/领域/`, `知识库/变更日志.md`, and `知识库/回归验证.md`. This README is a project entry point, not a replacement for the continuously updated knowledge base.
+For current status, use `volunteerplatform-knowlegebase/领域/`, `volunteerplatform-knowlegebase/变更日志.md`, and `volunteerplatform-knowlegebase/回归验证.md`. This README is a project entry point, not a replacement for the continuously updated knowledge base.
 
 ---
 
-<sub>An independently developed management platform for charity organizations. See `知识库/` and `文档/` for requirements, decisions, implementation details, and verification records.</sub>
+<sub>An independently developed management platform for charity organizations. See `volunteerplatform-knowlegebase/` and `文档/` for requirements, decisions, implementation details, and verification records.</sub>

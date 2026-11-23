@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""本地联调用：把后台控制台（../volunteerplatform-back）以静态站点起在本机，
+"""本地联调用：把后台控制台（文档仓库里的 volunteerplatform-back/，或与文档仓库同级的）以静态站点起在本机，
 并在返回 index.html 时把接口基址改写成本机后端 http://localhost:8080/api。
 
 为什么要这个脚本：控制台 index.html 在 localhost 下打开时【指向线上服务器】（有意为之，
@@ -14,7 +14,12 @@ import sys
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 5601
 API = sys.argv[2] if len(sys.argv) > 2 else 'http://localhost:8080/api'
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'volunteerplatform-back'))
+# 控制台仓库：先找文档仓库里的 volunteerplatform-back/（本机现状），再找与文档仓库同级的。
+_HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = next((d for d in (os.path.join(_HERE, '..', 'volunteerplatform-back'),
+                         os.path.join(_HERE, '..', '..', 'volunteerplatform-back')) if os.path.isdir(d)),
+            os.path.join(_HERE, '..', 'volunteerplatform-back'))
+ROOT = os.path.abspath(ROOT)
 REMOTE = "'http://118.145.69.25/api'"
 
 

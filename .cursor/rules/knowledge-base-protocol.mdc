@@ -1,0 +1,15 @@
+---
+description: 恒德志愿者平台：每个任务都要照做的知识库开工协议
+alwaysApply: true
+---
+
+本仓库的规矩写在根目录 `AGENTS.md`，正文在 `volunteerplatform-knowlegebase/`。**每一轮**都照 `AGENTS.md` 的「⛔ 开工协议」六步来；这里只列提纲，细节以那一节为准：
+
+1. 先按「知识库路由」找到页、读完，再改第一行代码。前端的版式只认 `volunteerplatform-knowlegebase/需求/原型/页面/P*.jpg`，不认 Markdown 抽取稿。
+2. 动手前在回复里列出「知识库依据」：读了哪几页，依据哪几条（原句、XH 号、Row 号、P 号）。列不出来就不做。
+3. 知识库没写的、与知识库冲突的，停下来问；不要自己补口径，不要凭记忆。
+4. 只做要求的范围；不另起 `docs/*.md`、`SYNC_*.md` 之类的说明文档。
+5. 收尾回写知识库：后端模块改 `模块/<m>.md`，前端页面改 `跨端/前端页面进度.md`；再跑 `gen_knowledge_base.py`、`verify_knowledge_base.py`。
+6. 汇报里写「知识库回写：改了哪几页」。
+
+提交闸门 `tools/kb_gate.py` 会拒绝没有回写知识库的提交和推送。不要用 `--no-verify`，也不要改钩子。
