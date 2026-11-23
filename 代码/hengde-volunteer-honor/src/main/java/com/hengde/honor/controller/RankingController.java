@@ -32,7 +32,7 @@ public class RankingController {
         this.rankingService = rankingService;
     }
 
-    @Operation(summary = "排行榜（次数/时长/积分 × 月/年/总；往期读冻结快照）")
+    @Operation(summary = "排行榜（次数/时长/积分/微心愿 × 月/年/总；往期读冻结快照）")
     @GetMapping("/rankings")
     public Result<RankingVO> ranking(
             @Parameter(description = "榜单 1活动次数/2活动时长/3积分/4微心愿（V3 起）") @RequestParam Integer rankType,

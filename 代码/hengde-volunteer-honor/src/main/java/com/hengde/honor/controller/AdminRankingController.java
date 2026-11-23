@@ -37,7 +37,7 @@ public class AdminRankingController {
     @SaCheckPermission(value = PermissionCode.HONOR_RANKING_VIEW, type = "admin")
     @GetMapping("/rankings")
     public Result<RankingVO> ranking(
-            @Parameter(description = "榜单 1活动次数/2活动时长/3积分") @RequestParam Integer rankType,
+            @Parameter(description = "榜单 1活动次数/2活动时长/3积分/4微心愿（V3 起）") @RequestParam Integer rankType,
             @Parameter(description = "周期 1月/2年/3总") @RequestParam Integer periodType,
             @Parameter(description = "周期标识：月 2026-07 / 年 2026；总榜可不传")
             @RequestParam(required = false) String periodKey,
