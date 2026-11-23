@@ -75,3 +75,14 @@ secrets/
 # --- Python 工具缓存（tools/verify_url_contract.py）---
 __pycache__/
 *.py[cod]
+
+# --- 子仓库与只进 Gitee 的内容（布局见 AGENTS.md「工作区与四个仓库」）---
+# 两个前端是独立 git，文档仓库不跟踪；不忽略的话 `git add -A` 会把它们整个吞进来
+/volunteerplatform-miniprogram/
+/volunteerplatform-back/
+# 原型逐页渲染图（约 35MB）只进 Gitee 知识库仓库，不进 GitHub 历史
+/volunteerplatform-knowlegebase/需求/原型/
+/volunteerplatform-knowlegebase/.idea/
+# 各家 agent 的临时工作目录
+/.kimi-work/
+/.pdf-pages/
