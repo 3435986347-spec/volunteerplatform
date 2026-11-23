@@ -13,7 +13,7 @@
 | GET | `/v/honor/certificates/{id}/file` |  | 下载：文件缺失时懒渲染并回填，返回短期签名 URL，并累加下载次数 | `CertificateController` |
 | GET | `/v/honor/certificates/{id}/preview` |  | 预览：文件缺失时懒渲染并回填，返回短期签名 URL，不计下载次数 | `CertificateController` |
 | GET | `/v/honor/medals` |  | 我的勋章（已启用勋章 ∪ 本人已获得的勋章 + 是否已获得 + 获取进度；只统计已生效的发放；样式按最后一次过审版本展示） | `MedalController` |
-| GET | `/v/honor/rankings` |  | 排行榜（次数/时长/积分 × 月/年/总；往期读冻结快照） | `RankingController` |
+| GET | `/v/honor/rankings` |  | 排行榜（次数/时长/积分/微心愿 × 月/年/总；往期读冻结快照） | `RankingController` |
 | GET | `/v/honor/reward-punishes` |  | 我的奖惩记录（分页；只返回【终审】已通过的，待初审/待终审/已驳回一律不返回） | `RewardPunishController` |
 | POST | `/v/honor/reward-punishes/{id}/appeal` |  | 对处罚提交申诉（自处罚生效起 7 天内；奖励无需申诉） | `RewardPunishController` |
 | GET | `/v/honor/role-models` |  | 榜样列表（仅已上架；分页 + 关键词 + 个人/团队筛选 + 排序） | `MedalController` |
