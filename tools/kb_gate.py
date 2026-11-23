@@ -63,10 +63,22 @@ _BACKEND_RE = re.compile(r"^hengde-volunteer-([a-z]+)/src/main/(.+)$")
 
 # ---------------------------------------------------------------- git 与仓库
 
-def git(cwd: Path, *args: str, stdin: str | bytes | None = None, check: bool = True) -> str:
+# 钩子里 git 会设置 GIT_INDEX_FILE / GIT_DIR 等变量（`commit -a`、部分提交时尤其如此）。
+# 它们只对正在提交的那个仓库成立，带到别的仓库去就会读错索引、找不到对象。
+_LOCAL_GIT_ENV = ("GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE", "GIT_PREFIX", "GIT_OBJECT_DIRECTORY",
+                  "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_NAMESPACE",
+                  "GIT_QUARANTINE_PATH", "GIT_EDITOR")
+
+
+def clean_env() -> dict[str, str]:
+    return {k: v for k, v in os.environ.items() if k not in _LOCAL_GIT_ENV}
+
+
+def git(cwd: Path, *args: str, stdin: str | bytes | None = None, check: bool = True, own: bool = False) -> str:
+    """own=True：查的是钩子正在提交的那个仓库，保留 git 传给钩子的环境变量；否则清掉。"""
     data = stdin.encode() if isinstance(stdin, str) else stdin
     p = subprocess.run(["git", "-c", "core.quotepath=false", *args], cwd=cwd, input=data,
-                       capture_output=True)
+                       capture_output=True, env=None if own else clean_env())
     if check and p.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} 失败（{cwd}）：{p.stderr.decode(errors='replace').strip()}")
     return p.stdout.decode("utf-8", errors="replace")
@@ -201,7 +213,7 @@ def missing_pages(need: Need, at: int, dirty: set[str] | None) -> list[tuple[str
 
 def run_tool(script: str) -> tuple[bool, str]:
     p = subprocess.run([sys.executable, str(ROOT / "tools" / script), *(["--check"] if script.startswith("gen_") else [])],
-                       cwd=ROOT, capture_output=True, text=True)
+                       cwd=ROOT, capture_output=True, text=True, env=clean_env())
     tail = "\n".join((p.stdout + p.stderr).strip().splitlines()[-12:])
     return p.returncode == 0, tail
 
@@ -256,7 +268,8 @@ def mirror_apply(prefix: str) -> None:
     check = git(ROOT, "cat-file", "--batch-check", stdin="\n".join(shas) + "\n", check=False)
     missing = [l.split()[0] for l in check.splitlines() if l.endswith(" missing")]
     for sha in missing:
-        blob = subprocess.run(["git", "cat-file", "blob", sha], cwd=sub, capture_output=True, check=True).stdout
+        blob = subprocess.run(["git", "cat-file", "blob", sha], cwd=sub, capture_output=True, check=True,
+                              env=clean_env()).stdout
         got = git(ROOT, "hash-object", "-w", "--stdin", stdin=blob).strip()
         if got != sha:
             raise RuntimeError(f"写入对象 {sha} 得到 {got}")
@@ -331,7 +344,7 @@ def evaluate(kind: str, files: list[str], msg: str, at: int, dirty: set[str] | N
 
 
 def toplevel() -> Path:
-    return Path(git(Path.cwd(), "rev-parse", "--show-toplevel").strip())
+    return Path(git(Path.cwd(), "rev-parse", "--show-toplevel", own=True).strip())
 
 
 def cmd_check(args) -> int:
@@ -339,11 +352,11 @@ def cmd_check(args) -> int:
     kind = kind_of(top)
     if kind is None:
         return 0
-    if (Path(git(top, "rev-parse", "--absolute-git-dir").strip()) / "MERGE_HEAD").exists():
+    if (Path(git(top, "rev-parse", "--absolute-git-dir", own=True).strip()) / "MERGE_HEAD").exists():
         return 0
     msg = Path(args.msg_file).read_text(encoding="utf-8", errors="replace") if args.msg_file else ""
     msg = "\n".join(l for l in msg.splitlines() if not l.startswith("#"))
-    files = [f for f in git(top, "diff", "--cached", "--name-only", "-z").split("\0") if f]
+    files = [f for f in git(top, "diff", "--cached", "--name-only", "-z", own=True).split("\0") if f]
     state, text = evaluate(kind, files, msg, int(time.time()), kb_dirty_pages(), run_tools=True)
     if state == "fail":
         print(text, file=sys.stderr)
